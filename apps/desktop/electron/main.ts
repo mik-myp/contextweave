@@ -15,6 +15,9 @@ import {
   type KernelManifest,
   type TargetArchitecture,
   type TargetPlatform,
+  defaultThemeConfig,
+  themeConfigSchema,
+  type ThemeConfig,
 } from '@contextweave/contracts'
 import {
   installKernelPackage,
@@ -54,8 +57,12 @@ const targetPlatform = process.platform as TargetPlatform
 const targetArch = (process.arch === 'arm64' ? 'arm64' : 'x64') as TargetArchitecture
 
 const registry = new KernelRegistry()
-registry.register(new FingerprintChromiumAdapter(createFingerprintChromiumManifest(targetPlatform, targetArch)))
-registry.register(new StandardChromiumAdapter(createStandardChromiumManifest(targetPlatform, targetArch)))
+registry.register(
+  new FingerprintChromiumAdapter(createFingerprintChromiumManifest(targetPlatform, targetArch)),
+)
+registry.register(
+  new StandardChromiumAdapter(createStandardChromiumManifest(targetPlatform, targetArch)),
+)
 
 type ManagedSession = {
   child: ChildProcess
@@ -99,7 +106,10 @@ function readCredentialFile(): CredentialFile {
     const parsed = JSON.parse(readFileSync(credentialFilePath(), { encoding: 'utf8' })) as unknown
     if (!parsed || typeof parsed !== 'object') return {}
     return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string'),
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === 'string' && typeof entry[1] === 'string',
+      ),
     )
   } catch {
     return {}
@@ -108,7 +118,10 @@ function readCredentialFile(): CredentialFile {
 
 function writeCredentialFile(credentials: CredentialFile): void {
   const temporaryPath = `${credentialFilePath()}.${randomUUID()}.tmp`
-  writeFileSync(temporaryPath, `${JSON.stringify(credentials, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  writeFileSync(temporaryPath, `${JSON.stringify(credentials, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
   renameSync(temporaryPath, credentialFilePath())
 }
 
@@ -173,7 +186,11 @@ function manifestToKernelSummary(
     platform: manifest.platform,
     arch: manifest.arch,
     version: manifest.version,
-    status: executablePath ? 'available' : installation?.state === 'installed' ? 'not-installed' : 'not-configured',
+    status: executablePath
+      ? 'available'
+      : installation?.state === 'installed'
+        ? 'not-installed'
+        : 'not-configured',
     executablePath,
     installationPath: installation?.installPath,
     packageAvailable: Boolean(manifest.package?.url && manifest.package.sha256),
@@ -219,7 +236,11 @@ function recoverRuntimeSessions(): void {
     if (!isActiveSessionStatus(persisted.status)) continue
     const record = repository.get(persisted.environmentId)
     if (!record) {
-      repository.updateRuntimeSession(persisted.sessionId, 'crashed', 'Environment record no longer exists')
+      repository.updateRuntimeSession(
+        persisted.sessionId,
+        'crashed',
+        'Environment record no longer exists',
+      )
       continue
     }
 
@@ -243,13 +264,21 @@ function recoverRuntimeSessions(): void {
           log.warn('Unable to preserve an orphan browser lock', error)
         }
       }
-      repository.updateRuntimeSession(persisted.sessionId, 'stopping', 'Browser process survived the previous client session')
+      repository.updateRuntimeSession(
+        persisted.sessionId,
+        'stopping',
+        'Browser process survived the previous client session',
+      )
       repository.updateStatus(record.environmentId, 'needs-recovery')
       continue
     }
 
     releaseRuntimeLock(record.dataDir, persisted.sessionId)
-    repository.updateRuntimeSession(persisted.sessionId, 'crashed', 'Browser process was not running during recovery')
+    repository.updateRuntimeSession(
+      persisted.sessionId,
+      'crashed',
+      'Browser process was not running during recovery',
+    )
     repository.updateStatus(record.environmentId, 'needs-recovery')
   }
 }
@@ -323,7 +352,9 @@ function executableFor(record: EnvironmentRecord, config: EnvironmentConfig): st
   return undefined
 }
 
-async function installKernel(kernelId: string): Promise<IpcResult<ReturnType<typeof manifestToKernelSummary>>> {
+async function installKernel(
+  kernelId: string,
+): Promise<IpcResult<ReturnType<typeof manifestToKernelSummary>>> {
   let adapter: BrowserKernelAdapter
   try {
     adapter = registry.get(kernelId)
@@ -345,11 +376,18 @@ async function installKernel(kernelId: string): Promise<IpcResult<ReturnType<typ
     })
     return ok(manifestToKernelSummary(manifest, result.executablePath, installation))
   } catch (error) {
-    return fail('KERNEL_INSTALL_FAILED', error instanceof Error ? error.message : 'Kernel installation failed')
+    return fail(
+      'KERNEL_INSTALL_FAILED',
+      error instanceof Error ? error.message : 'Kernel installation failed',
+    )
   }
 }
 
-function buildLaunchPlan(record: EnvironmentRecord, config: EnvironmentConfig, port: number): LaunchPlan {
+function buildLaunchPlan(
+  record: EnvironmentRecord,
+  config: EnvironmentConfig,
+  port: number,
+): LaunchPlan {
   const adapter = registry.get(record.kernelId) as BrowserKernelAdapter
   const executablePath = executableFor(record, config)
   if (!executablePath) {
@@ -382,7 +420,8 @@ function workerProxyCredentials(environmentId: string): WorkerProxyCredentials |
   const proxy = config.proxy
   if (!proxy?.username || !proxy.credentialRef) return undefined
   const password = readCredential(proxy.credentialRef)
-  if (password === undefined) throw new Error('Proxy credential is unavailable in system secure storage')
+  if (password === undefined)
+    throw new Error('Proxy credential is unavailable in system secure storage')
   return { username: proxy.username, password }
 }
 
@@ -403,8 +442,12 @@ function runWorker(taskInput: unknown, controlPort: number): Promise<WorkerResul
   return new Promise((resolveWorker, rejectWorker) => {
     let stdout = ''
     let stderr = ''
-    child.stdout?.on('data', (chunk) => { stdout += String(chunk) })
-    child.stderr?.on('data', (chunk) => { stderr += String(chunk) })
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
     child.once('error', (error) => {
       workerProcesses.delete(task.taskId)
       if (managedWorker.cancelRequested) {
@@ -458,7 +501,8 @@ function cancelWorker(taskId: string): IpcResult<boolean> {
 
 async function createEnvironment(input: unknown): Promise<IpcResult<EnvironmentSummary>> {
   const parsed = createEnvironmentInputSchema.safeParse(input)
-  if (!parsed.success) return fail('INVALID_INPUT', parsed.error.issues.map((issue) => issue.message).join('; '))
+  if (!parsed.success)
+    return fail('INVALID_INPUT', parsed.error.issues.map((issue) => issue.message).join('; '))
   let kernel: BrowserKernelAdapter
   try {
     kernel = registry.get(parsed.data.kernelId)
@@ -468,15 +512,16 @@ async function createEnvironment(input: unknown): Promise<IpcResult<EnvironmentS
   const manifest = kernel.getManifest()
   const repository = databaseOrThrow()
   const proxyRecord = parsed.data.proxyId ? repository.getProxy(parsed.data.proxyId) : undefined
-  if (parsed.data.proxyId && !proxyRecord) return fail('PROXY_NOT_FOUND', 'The selected proxy was not found')
+  if (parsed.data.proxyId && !proxyRecord)
+    return fail('PROXY_NOT_FOUND', 'The selected proxy was not found')
   const proxy = proxyRecord
     ? {
-      type: proxyRecord.type,
-      host: proxyRecord.host,
-      port: proxyRecord.port,
-      username: proxyRecord.username,
-      credentialRef: proxyRecord.credentialRef,
-    }
+        type: proxyRecord.type,
+        host: proxyRecord.host,
+        port: proxyRecord.port,
+        username: proxyRecord.username,
+        credentialRef: proxyRecord.credentialRef,
+      }
     : parsed.data.proxy
   const environmentId = `env-${randomUUID()}`
   const config: EnvironmentConfig = environmentConfigSchema.parse({
@@ -499,9 +544,24 @@ function proxySummary(record: ProxyRecord): ProxyRecord {
   return record
 }
 
+function getThemeSettings(): ThemeConfig {
+  const stored = databaseOrThrow().getSetting<unknown>('theme')
+  const parsed = themeConfigSchema.safeParse(stored)
+  return parsed.success ? parsed.data : defaultThemeConfig
+}
+
+function setThemeSettings(input: unknown): IpcResult<ThemeConfig> {
+  const parsed = themeConfigSchema.safeParse(input)
+  if (!parsed.success)
+    return fail('INVALID_THEME', parsed.error.issues.map((issue) => issue.message).join('; '))
+  databaseOrThrow().setSetting('theme', parsed.data)
+  return ok(parsed.data)
+}
+
 async function saveProxy(input: unknown): Promise<IpcResult<ProxyRecord>> {
   const parsed = saveProxyInputSchema.safeParse(input)
-  if (!parsed.success) return fail('INVALID_INPUT', parsed.error.issues.map((issue) => issue.message).join('; '))
+  if (!parsed.success)
+    return fail('INVALID_INPUT', parsed.error.issues.map((issue) => issue.message).join('; '))
   const repository = databaseOrThrow()
   const proxyId = parsed.data.proxyId ?? `proxy-${randomUUID()}`
   const previous = parsed.data.proxyId ? repository.getProxy(proxyId) : undefined
@@ -517,7 +577,10 @@ async function saveProxy(input: unknown): Promise<IpcResult<ProxyRecord>> {
     })
     return ok(proxySummary(record))
   } catch (error) {
-    return fail('PROXY_SAVE_FAILED', error instanceof Error ? error.message : 'Unable to save proxy')
+    return fail(
+      'PROXY_SAVE_FAILED',
+      error instanceof Error ? error.message : 'Unable to save proxy',
+    )
   }
 }
 
@@ -534,18 +597,25 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
   const repository = databaseOrThrow()
   const record = repository.get(environmentId)
   if (!record) return fail('NOT_FOUND', 'Browser environment was not found')
-  if (sessions.has(environmentId)) return fail('ALREADY_RUNNING', 'This environment is already running')
+  if (sessions.has(environmentId))
+    return fail('ALREADY_RUNNING', 'This environment is already running')
   let config: EnvironmentConfig
   try {
     config = environmentConfigSchema.parse(JSON.parse(record.configJson))
   } catch (error) {
-    return fail('INVALID_CONFIG', error instanceof Error ? error.message : 'Environment configuration is invalid')
+    return fail(
+      'INVALID_CONFIG',
+      error instanceof Error ? error.message : 'Environment configuration is invalid',
+    )
   }
   let port: number
   try {
     port = await findFreePort()
   } catch (error) {
-    return fail('PORT_ALLOCATION_FAILED', error instanceof Error ? error.message : 'Unable to allocate a control port')
+    return fail(
+      'PORT_ALLOCATION_FAILED',
+      error instanceof Error ? error.message : 'Unable to allocate a control port',
+    )
   }
   const sessionId = `session-${randomUUID()}`
   const lockResult = acquireRuntimeLock(record.dataDir, {
@@ -598,8 +668,16 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
       const expectedStop = managedSession?.stopRequested === true
       const startFailed = managedSession?.startFailed === true
       const runtimeStatus = code === 0 || expectedStop ? 'stopped' : 'crashed'
-      const environmentStatus = startFailed ? 'error' : runtimeStatus === 'stopped' ? 'stopped' : 'needs-recovery'
-      repository.updateRuntimeSession(sessionId, runtimeStatus, signal ? `signal:${signal}` : code === null ? 'unknown-exit' : `exit:${code}`)
+      const environmentStatus = startFailed
+        ? 'error'
+        : runtimeStatus === 'stopped'
+          ? 'stopped'
+          : 'needs-recovery'
+      repository.updateRuntimeSession(
+        sessionId,
+        runtimeStatus,
+        signal ? `signal:${signal}` : code === null ? 'unknown-exit' : `exit:${code}`,
+      )
       repository.updateStatus(environmentId, environmentStatus)
       releaseRuntimeLock(record.dataDir, sessionId)
       log.info('Browser process exited', { environmentId, code, signal })
@@ -614,7 +692,11 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
       terminateChild(managedSession.child)
     }
     if (persistedSession) {
-      repository.updateRuntimeSession(sessionId, 'crashed', error instanceof Error ? error.message : 'Browser failed to start')
+      repository.updateRuntimeSession(
+        sessionId,
+        'crashed',
+        error instanceof Error ? error.message : 'Browser failed to start',
+      )
     }
     sessions.delete(environmentId)
     releaseRuntimeLock(record.dataDir, sessionId)
@@ -629,12 +711,21 @@ async function stopEnvironment(environmentId: string): Promise<IpcResult<Environ
   if (!record) return fail('NOT_FOUND', 'Browser environment was not found')
   const session = sessions.get(environmentId)
   if (!session) {
-    const persisted = repository.listRuntimeSessions()
+    const persisted = repository
+      .listRuntimeSessions()
       .find((item) => item.environmentId === environmentId && isActiveSessionStatus(item.status))
     if (persisted && isProcessAlive(persisted.pid)) {
-      return fail('RUNTIME_ORPHANED', 'The browser process is still running from a previous client session; recover it before starting again')
+      return fail(
+        'RUNTIME_ORPHANED',
+        'The browser process is still running from a previous client session; recover it before starting again',
+      )
     }
-    if (persisted) repository.updateRuntimeSession(persisted.sessionId, 'crashed', 'Browser process was not running when stop was requested')
+    if (persisted)
+      repository.updateRuntimeSession(
+        persisted.sessionId,
+        'crashed',
+        'Browser process was not running when stop was requested',
+      )
     releaseRuntimeLock(record.dataDir, persisted?.sessionId)
     repository.updateStatus(environmentId, 'stopped')
     return ok(toSummary(repository.get(environmentId)!))
@@ -663,60 +754,89 @@ async function recoverEnvironment(environmentId: string): Promise<IpcResult<Envi
   const repository = databaseOrThrow()
   const record = repository.get(environmentId)
   if (!record) return fail('NOT_FOUND', 'Browser environment was not found')
-  const persisted = repository.listRuntimeSessions()
+  const persisted = repository
+    .listRuntimeSessions()
     .find((item) => item.environmentId === environmentId && isActiveSessionStatus(item.status))
   if (persisted && isProcessAlive(persisted.pid)) {
     const lock = inspectRuntimeLock(record.dataDir)
     if (lock.owner?.pid !== persisted.pid) {
-      return fail('RECOVERY_UNSAFE', 'The runtime owner could not be verified; stop the browser manually before recovery')
+      return fail(
+        'RECOVERY_UNSAFE',
+        'The runtime owner could not be verified; stop the browser manually before recovery',
+      )
     }
     try {
       process.kill(persisted.pid)
     } catch (error) {
-      return fail('RECOVERY_FAILED', error instanceof Error ? error.message : 'Unable to stop the orphan browser')
+      return fail(
+        'RECOVERY_FAILED',
+        error instanceof Error ? error.message : 'Unable to stop the orphan browser',
+      )
     }
     const startedAt = Date.now()
     while (Date.now() - startedAt < 3000 && isProcessAlive(persisted.pid)) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 100))
     }
-    if (isProcessAlive(persisted.pid)) return fail('RECOVERY_TIMEOUT', 'The orphan browser did not stop')
+    if (isProcessAlive(persisted.pid))
+      return fail('RECOVERY_TIMEOUT', 'The orphan browser did not stop')
   }
-  if (persisted) repository.updateRuntimeSession(persisted.sessionId, 'stopped', 'Recovered after client restart')
+  if (persisted)
+    repository.updateRuntimeSession(
+      persisted.sessionId,
+      'stopped',
+      'Recovered after client restart',
+    )
   releaseRuntimeLock(record.dataDir, persisted?.sessionId)
   repository.updateStatus(environmentId, 'stopped')
   return ok(toSummary(repository.get(environmentId)!))
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('app:get-info', () => ok({
-    name: 'ContextWeave',
-    version: app.getVersion(),
-    platform: targetPlatform,
-    arch: targetArch,
-    secureStorageAvailable: safeStorage.isEncryptionAvailable(),
-  }))
-  ipcMain.handle('app:get-paths', () => ok({
-    userData: app.getPath('userData'),
-    dataRoot: dataRoot(),
-    environmentRoot: environmentRoot(),
-    kernelRoot: join(dataRoot(), 'kernels'),
-    logRoot: join(dataRoot(), 'logs'),
-  }))
+  ipcMain.handle('app:get-info', () =>
+    ok({
+      name: 'ContextWeave',
+      version: app.getVersion(),
+      platform: targetPlatform,
+      arch: targetArch,
+      secureStorageAvailable: safeStorage.isEncryptionAvailable(),
+    }),
+  )
+  ipcMain.handle('app:get-paths', () =>
+    ok({
+      userData: app.getPath('userData'),
+      dataRoot: dataRoot(),
+      environmentRoot: environmentRoot(),
+      kernelRoot: join(dataRoot(), 'kernels'),
+      logRoot: join(dataRoot(), 'logs'),
+    }),
+  )
   ipcMain.handle('kernel:list', () => {
     const standardPath = discoverStandardChromiumExecutable(process.platform)[0]
     const repository = databaseOrThrow()
-    return ok(registry.list().map((adapter) => {
-      const manifest = adapter.getManifest()
-      const installation = repository.getKernelInstallation(manifest.id, manifest.version, manifest.platform, manifest.arch)
-      const installedPath = installation?.state === 'installed'
-        ? join(installation.installPath, manifest.executable)
-        : undefined
-      return manifestToKernelSummary(
-        manifest,
-        manifest.id === 'standard-chromium' ? standardPath : existsSync(installedPath ?? '') ? installedPath : undefined,
-        installation,
-      )
-    }))
+    return ok(
+      registry.list().map((adapter) => {
+        const manifest = adapter.getManifest()
+        const installation = repository.getKernelInstallation(
+          manifest.id,
+          manifest.version,
+          manifest.platform,
+          manifest.arch,
+        )
+        const installedPath =
+          installation?.state === 'installed'
+            ? join(installation.installPath, manifest.executable)
+            : undefined
+        return manifestToKernelSummary(
+          manifest,
+          manifest.id === 'standard-chromium'
+            ? standardPath
+            : existsSync(installedPath ?? '')
+              ? installedPath
+              : undefined,
+          installation,
+        )
+      }),
+    )
   })
   ipcMain.handle('kernel:install', (_event, kernelId: string) => installKernel(kernelId))
   ipcMain.handle('proxy:list', () => ok(databaseOrThrow().listProxies().map(proxySummary)))
@@ -724,14 +844,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle('proxy:delete', (_event, proxyId: string) => deleteProxy(proxyId))
   ipcMain.handle('environment:list', () => ok(databaseOrThrow().list().map(toSummary)))
   ipcMain.handle('environment:create', (_event, input: unknown) => createEnvironment(input))
-  ipcMain.handle('environment:start', (_event, environmentId: string) => startEnvironment(environmentId))
-  ipcMain.handle('environment:stop', (_event, environmentId: string) => stopEnvironment(environmentId))
-  ipcMain.handle('environment:recover', (_event, environmentId: string) => recoverEnvironment(environmentId))
+  ipcMain.handle('environment:start', (_event, environmentId: string) =>
+    startEnvironment(environmentId),
+  )
+  ipcMain.handle('environment:stop', (_event, environmentId: string) =>
+    stopEnvironment(environmentId),
+  )
+  ipcMain.handle('environment:recover', (_event, environmentId: string) =>
+    recoverEnvironment(environmentId),
+  )
   ipcMain.handle('worker:run-smoke', async (_event, input: unknown) => {
     const task = workerTaskSchema.safeParse(input)
-    if (!task.success) return fail('INVALID_TASK', task.error.issues.map((issue) => issue.message).join('; '))
+    if (!task.success)
+      return fail('INVALID_TASK', task.error.issues.map((issue) => issue.message).join('; '))
     const session = sessions.get(task.data.environmentId)
-    if (!session) return fail('ENVIRONMENT_NOT_RUNNING', 'Start the environment before running a Worker task')
+    if (!session)
+      return fail('ENVIRONMENT_NOT_RUNNING', 'Start the environment before running a Worker task')
     try {
       return ok(await runWorker(task.data, session.port))
     } catch (error) {
@@ -744,6 +872,8 @@ function registerIpcHandlers(): void {
     void shell.openExternal(url)
     return ok(true)
   })
+  ipcMain.handle('settings:get-theme', () => ok(getThemeSettings()))
+  ipcMain.handle('settings:set-theme', (_event, input: unknown) => setThemeSettings(input))
 }
 
 function createWindow(): void {
@@ -774,21 +904,24 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  mkdirSync(dataRoot(), { recursive: true })
-  mkdirSync(environmentRoot(), { recursive: true })
-  database = openLocalDatabase(join(dataRoot(), 'contextweave.sqlite'))
-  environments = new EnvironmentRepository(database.sqlite)
-  recoverRuntimeSessions()
-  registerIpcHandlers()
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+app
+  .whenReady()
+  .then(() => {
+    mkdirSync(dataRoot(), { recursive: true })
+    mkdirSync(environmentRoot(), { recursive: true })
+    database = openLocalDatabase(join(dataRoot(), 'contextweave.sqlite'))
+    environments = new EnvironmentRepository(database.sqlite)
+    recoverRuntimeSessions()
+    registerIpcHandlers()
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-}).catch((error) => {
-  log.error('Failed to initialize ContextWeave', error)
-  app.quit()
-})
+  .catch((error) => {
+    log.error('Failed to initialize ContextWeave', error)
+    app.quit()
+  })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
@@ -804,8 +937,9 @@ app.on('before-quit', (event) => {
     environments?.updateStatus(environmentId, 'stopping')
     terminateChild(session.child)
   }
-  void Promise.all([...sessions.values()].map((session) => waitForChildExit(session.child, 3000)))
-    .then(() => app.quit())
+  void Promise.all(
+    [...sessions.values()].map((session) => waitForChildExit(session.child, 3000)),
+  ).then(() => app.quit())
 })
 
 app.on('will-quit', () => {

@@ -55,6 +55,9 @@ docs/versions/
 v0.1-execution-r1：初版分析
 v0.1-execution-r2：回答问题后调整内核范围
 v0.1-execution-r3：用户确认后的最终版本
+v0.1-execution-r4：按用户要求暂缓业务 UI，恢复官方 sidebar-07 空白主体
+v0.1-execution-r5：按用户要求将主题预设、圆角、密度、字体和 Sidebar 布局纳入第一版
+v0.1-execution-r6：恢复 v0.1 UI 闭环并补齐工程门禁和 GitHub Actions 发布验证
 ```
 
 执行文档至少包含：

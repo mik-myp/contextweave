@@ -2,7 +2,7 @@
 
 **适用仓库：** `mik-myp/contextweave`  
 **当前阶段：** v0.1 开发中  
-**当前状态：** v0.1 执行文档 r2 已确认，允许开始正式实现
+**当前状态：** v0.1 执行文档 r6 已确认，允许开始正式实现
 
 本文档是仓库级开发约束。任何设备、任何对话、任何自动化代理或协作者在修改本仓库前，都必须先读取本文件，以及当前版本对应的执行文档和项目规范。聊天记录不能替代仓库中的文档决定。
 
@@ -42,7 +42,7 @@
 
 - 当前阶段：`v0.1` 开发中。
 - 当前分析文档：`docs/versions/v0.1-analysis.md`。
-- 当前执行文档：`docs/versions/v0.1-execution-r2.md`，已由用户确认。
+- 当前执行文档：`docs/versions/v0.1-execution-r6.md`，已由用户确认。
 - 当前允许修改：v0.1 执行文档范围内的正式代码、依赖、构建配置、CI 和文档。
 - 当前禁止修改：团队 API、PostgreSQL、WebUI、工作流、AI/RAG、远程执行和其他 v0.2 以后功能。
 
@@ -56,7 +56,7 @@
 4. `docs/technology-stack.md`：技术栈、库、协议、数据、安全和长期替换边界。
 5. `docs/simprint-review-and-product-plan.md`：Simprint 审阅结论和后期工作流/业务规划。
 6. `docs/versions/v0.1-analysis.md`：当前版本分析和已确认的 v0.1 决策。
-7. `docs/versions/v0.1-execution-r2.md`：当前版本执行基线；用户未确认前只能审阅和维护文档。
+7. `docs/versions/v0.1-execution-r6.md`：当前版本执行基线；用户未确认前只能审阅和维护文档。
 8. `docs/progress/v0.1.md`：当前版本状态、证据和阻塞项。
 9. `docs/adr/0001-local-sqlite-runtime.md`：v0.1 SQLite 运行时实现决策。
 10. `docs/adr/0002-proxy-auth-transport.md`：v0.1 代理认证凭据传输边界。
@@ -74,8 +74,12 @@
 | [`docs/project-plan.md`](docs/project-plan.md) | 产品总体规划和架构方案 | 生效 |
 | [`docs/technology-stack.md`](docs/technology-stack.md) | 技术栈与长期库选型 | 生效 |
 | [`docs/simprint-review-and-product-plan.md`](docs/simprint-review-and-product-plan.md) | Simprint 审阅和后期产品规划 | 生效 |
-| [`docs/versions/v0.1-analysis.md`](docs/versions/v0.1-analysis.md) | v0.1 分析、问题和决策 | 已回答，待执行文档确认 |
-| [`docs/versions/v0.1-execution-r2.md`](docs/versions/v0.1-execution-r2.md) | v0.1 实施范围、任务、测试和验收 | 已确认，开发中 |
+| [`docs/versions/v0.1-analysis.md`](docs/versions/v0.1-analysis.md) | v0.1 分析、问题和决策 | 已完成，执行文档 r6 已确认 |
+| [`docs/versions/v0.1-execution-r6.md`](docs/versions/v0.1-execution-r6.md) | v0.1 实施范围、任务、测试和验收 | 已确认，开发中 |
+| [`docs/versions/v0.1-execution-r5.md`](docs/versions/v0.1-execution-r5.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r6 |
+| [`docs/versions/v0.1-execution-r4.md`](docs/versions/v0.1-execution-r4.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r5 |
+| [`docs/versions/v0.1-execution-r3.md`](docs/versions/v0.1-execution-r3.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r4 |
+| [`docs/versions/v0.1-execution-r2.md`](docs/versions/v0.1-execution-r2.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r3 |
 | [`docs/progress/v0.1.md`](docs/progress/v0.1.md) | v0.1 进度和可复核证据 | 开发中 |
 | [`docs/adr/0001-local-sqlite-runtime.md`](docs/adr/0001-local-sqlite-runtime.md) | v0.1 SQLite 运行时实现和替换条件 | 生效 |
 | [`docs/adr/0002-proxy-auth-transport.md`](docs/adr/0002-proxy-auth-transport.md) | v0.1 代理认证凭据传输边界 | 生效 |

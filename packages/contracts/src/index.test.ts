@@ -4,6 +4,8 @@ import {
   createEnvironmentInputSchema,
   environmentConfigSchema,
   proxyConfigSchema,
+  defaultThemeConfig,
+  themeConfigSchema,
 } from './index'
 
 describe('contracts', () => {
@@ -44,5 +46,10 @@ describe('contracts', () => {
     expect(config.configVersion).toBe(1)
     expect(config.commonConfig.window.width).toBe(1440)
     expect(config.kernelConfig).toEqual({})
+  })
+
+  it('keeps theme preferences versioned and validates supported axes', () => {
+    expect(themeConfigSchema.parse(defaultThemeConfig)).toEqual(defaultThemeConfig)
+    expect(themeConfigSchema.safeParse({ ...defaultThemeConfig, radius: 'rounder' }).success).toBe(false)
   })
 })

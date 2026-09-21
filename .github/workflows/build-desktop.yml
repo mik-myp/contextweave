@@ -44,6 +44,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run checks
+        run: pnpm check
+
       - name: Build desktop package
         run: pnpm --filter @contextweave/desktop build
 
@@ -52,7 +55,8 @@ jobs:
         shell: pwsh
         run: |
           $releaseRoot = Join-Path $PWD 'apps/desktop/release'
-          $versionRoot = Get-ChildItem -LiteralPath $releaseRoot -Directory | Select-Object -First 1
+          $versionRoot = Get-ChildItem -LiteralPath $releaseRoot -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $versionRoot) { throw "No electron-builder output directory found" }
           $stagingRoot = Join-Path $PWD 'release-artifacts/windows-x64'
           New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
           Get-ChildItem -LiteralPath $versionRoot.FullName -File |
@@ -68,7 +72,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          version_root="$(find apps/desktop/release -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          version_root="$(find apps/desktop/release -mindepth 1 -maxdepth 1 -type d -print | sort | tail -n 1)"
+          test -n "$version_root"
           mkdir -p "release-artifacts/${{ matrix.name }}"
           find "$version_root" -maxdepth 1 -type f \
             \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' -o -name 'latest*.yml' \) \

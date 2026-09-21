@@ -1,6 +1,6 @@
 {
   "name": "contextweave",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "An open-source multi-kernel browser workspace for personal and team operations.",
   "engines": {
@@ -14,6 +14,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "format:check": "pnpm --filter @contextweave/desktop format:check",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
   }
 }

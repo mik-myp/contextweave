@@ -4,7 +4,7 @@
 **状态：** 生效  
 **日期：** 2026-09-21  
 **适用范围：** v0.1 个人本地客户端  
-**关联文档：** [v0.1 进度](progress/v0.1.md)、[v0.1 执行文档](versions/v0.1-execution-r2.md)
+**关联文档：** [v0.1 进度](progress/v0.1.md)、[v0.1 执行文档](versions/v0.1-execution-r6.md)
 
 状态含义：
 

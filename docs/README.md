@@ -1,7 +1,7 @@
 # ContextWeave 文档索引
 
 **状态：** 生效  
-**修订号：** r2  
+**修订号：** r6
 **日期：** 2026-09-21  
 **维护规则：** 以根目录 [`AGENTS.md`](../AGENTS.md) 为准
 
@@ -15,7 +15,7 @@
 4. [`technology-stack.md`](technology-stack.md)：技术栈、库、协议和安全约束。
 5. [`simprint-review-and-product-plan.md`](simprint-review-and-product-plan.md)：Simprint 审阅和后期业务规划。
 6. [`versions/v0.1-analysis.md`](versions/v0.1-analysis.md)：v0.1 分析和已确认决策。
-7. [`versions/v0.1-execution-r2.md`](versions/v0.1-execution-r2.md)：v0.1 执行基线，已确认开发中。
+7. [`versions/v0.1-execution-r6.md`](versions/v0.1-execution-r6.md)：v0.1 执行基线，已确认开发中。
 8. [`progress/v0.1.md`](progress/v0.1.md)：v0.1 实际进度和验证证据。
 9. [`adr/0001-local-sqlite-runtime.md`](adr/0001-local-sqlite-runtime.md)：v0.1 SQLite 运行时实现决策。
 10. [`adr/0002-proxy-auth-transport.md`](adr/0002-proxy-auth-transport.md)：v0.1 代理认证凭据传输边界。
@@ -42,6 +42,8 @@
 - [`compatibility-matrix.md`](compatibility-matrix.md)：v0.1 平台和内核验证状态。
 - [`risk-register.md`](risk-register.md)：v0.1 风险登记。
 
+历史执行基线：[`versions/v0.1-execution-r2.md`](versions/v0.1-execution-r2.md)、[`versions/v0.1-execution-r3.md`](versions/v0.1-execution-r3.md)、[`versions/v0.1-execution-r4.md`](versions/v0.1-execution-r4.md) 和 [`versions/v0.1-execution-r5.md`](versions/v0.1-execution-r5.md) 已归档，由 r6 替代。
+
 ## 新文档规范
 
 - 新文档必须使用 UTF-8，并在文件头写明修订号、状态、日期和适用范围。
@@ -55,3 +57,7 @@
 ## 变更记录
 
 - `r2`：登记 ADR 0002，补充 v0.1 代理认证凭据传输边界。
+- `r3`：登记 v0.1 Base UI 迁移、未使用 `react-router-dom` 清理和当前执行基线。
+- `r4`：登记官方 `base-nova` `sidebar-07` 重生成、业务布局暂缓和官方空白主体占位。
+- `r5`：登记第一版主题预设、圆角、密度、字体和官方 Sidebar 布局变体范围。
+- `r6`：登记恢复 v0.1 UI 闭环、工程门禁和 GitHub Actions 发布验证范围。

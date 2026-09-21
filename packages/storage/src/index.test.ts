@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultCommonEnvironmentConfig } from '@contextweave/contracts'
+import { defaultCommonEnvironmentConfig, defaultThemeConfig } from '@contextweave/contracts'
 import {
   acquireRuntimeLock,
   EnvironmentRepository,
@@ -61,6 +61,8 @@ describe('local SQLite storage', () => {
       installPath: join(directory, 'kernels', 'standard'),
       state: 'installed',
     }).state).toBe('installed')
+    repository.setSetting('theme', { ...defaultThemeConfig, mode: 'dark' })
+    expect(repository.getSetting<typeof defaultThemeConfig>('theme')?.mode).toBe('dark')
     database.close()
   })
 

@@ -6,13 +6,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: 'Geist', 'Segoe UI', system-ui, sans-serif;
-  color: #17233b;
-  background: #f4f7fb;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -45,38 +38,6 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  min-width: 1120px;
-  min-height: 100vh;
-  margin: 0;
-}
-
-body {
-  overflow: hidden;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #2d7ff9;
-  outline-offset: 2px;
 }
 
 @theme inline {

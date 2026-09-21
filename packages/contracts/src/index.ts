@@ -112,6 +112,15 @@ export const createEnvironmentInputSchema = z.object({
 })
 export type CreateEnvironmentInput = z.infer<typeof createEnvironmentInputSchema>
 
+// Editing preserves the kernel and profile directory; switching kernels requires a new environment.
+export const updateEnvironmentInputSchema = z.object({
+  version: z.literal(1),
+  environmentId: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(80),
+  proxyId: z.string().trim().min(1).nullable(),
+}).strict()
+export type UpdateEnvironmentInput = z.infer<typeof updateEnvironmentInputSchema>
+
 export const saveProxyInputSchema = z.object({
   proxyId: z.string().trim().min(1).optional(),
   config: proxyConfigSchema,
@@ -164,6 +173,7 @@ export const environmentSummarySchema = z.object({
   status: environmentStatusSchema,
   kernelId: z.string().trim().min(1),
   kernelVersion: z.string().trim().min(1),
+  proxyId: z.string().trim().min(1).optional(),
   platform: platformSchema,
   arch: architectureSchema,
   updatedAt: z.string().datetime(),

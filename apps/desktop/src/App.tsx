@@ -3,9 +3,11 @@ import {
   CheckCircle2Icon,
   CircleAlertIcon,
   GlobeIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
   RocketIcon,
+  SlidersHorizontalIcon,
   SquareIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -37,11 +39,47 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useTheme } from '@/theme'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 const pageByNav: Record<string, string> = {
   环境: 'environments',
@@ -170,7 +208,8 @@ function App() {
   React.useEffect(() => {
     void refresh()
   }, [refresh])
-  const selectPage = (title: string) => setPage(pageByNav[title] ?? 'environments')
+  const selectPage = (title: string) =>
+    setPage(title === '关于 ContextWeave' ? 'about' : (pageByNav[title] ?? 'environments'))
   const perform = async (
     action: () => Promise<{ ok: true; data: EnvironmentSummary } | { ok: false; message: string }>,
     success: string,
@@ -201,7 +240,7 @@ function App() {
               <div className="truncate text-sm font-medium">ContextWeave</div>
               <span className="text-muted-foreground">/</span>
               <div className="truncate text-sm text-muted-foreground">
-                {navByPage[page] ?? '环境'}
+                {page === 'about' ? '关于 ContextWeave' : (navByPage[page] ?? '环境')}
               </div>
             </div>
             <Button variant="ghost" size="icon-sm" onClick={() => void refresh()} aria-label="刷新">
@@ -210,19 +249,20 @@ function App() {
           </header>
           <main className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-4 md:p-6">
             {notice && (
-              <div
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${notice.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-primary/30 bg-primary/10'}`}
-              >
-                <span>{notice.message}</span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-auto"
-                  onClick={() => setNotice(undefined)}
-                >
-                  ×
-                </Button>
-              </div>
+              <Alert variant={notice.kind === 'error' ? 'destructive' : 'default'}>
+                {notice.kind === 'error' ? <CircleAlertIcon /> : <CheckCircle2Icon />}
+                <AlertDescription>{notice.message}</AlertDescription>
+                <AlertAction>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setNotice(undefined)}
+                    aria-label="关闭提示"
+                  >
+                    ×
+                  </Button>
+                </AlertAction>
+              </Alert>
             )}
             {page === 'environments' && (
               <EnvironmentPage
@@ -247,6 +287,7 @@ function App() {
               <KernelPage kernels={kernels} onNotice={setNotice} onRefresh={refresh} />
             )}
             {page === 'settings' && <SettingsPage appInfo={appInfo} paths={paths} />}
+            {page === 'about' && <AboutPage appInfo={appInfo} />}
             {page === 'activity' && (
               <ActivityPage result={lastWorkerResult} environments={environments} />
             )}
@@ -285,8 +326,16 @@ function EnvironmentPage({
   const [name, setName] = React.useState('我的浏览环境')
   const [kernelId, setKernelId] = React.useState('standard-chromium')
   const [proxyId, setProxyId] = React.useState('')
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const [editing, setEditing] = React.useState<EnvironmentSummary>()
+  const [editName, setEditName] = React.useState('')
+  const [editProxyId, setEditProxyId] = React.useState('')
+  const [deleteTarget, setDeleteTarget] = React.useState<EnvironmentSummary>()
+  const [saving, setSaving] = React.useState(false)
   const selected = environments.find((item) => item.id === selectedEnvironment)
   const create = async () => {
+    if (saving) return
+    setSaving(true)
     const input: CreateEnvironmentInput = {
       name,
       kernelId,
@@ -298,10 +347,46 @@ function EnvironmentPage({
     if (result.ok) {
       onNotice({ kind: 'success', message: `环境“${result.data.name}”已创建` })
       setName('我的浏览环境')
+      setCreateOpen(false)
       await onRefresh()
       onSelect(result.data.id)
     } else onNotice({ kind: 'error', message: result.message })
+    setSaving(false)
   }
+  const openEdit = (environment: EnvironmentSummary) => {
+    setEditing(environment)
+    setEditName(environment.name)
+    setEditProxyId(environment.proxyId ?? '')
+  }
+  const update = async () => {
+    if (!editing || saving) return
+    setSaving(true)
+    const result = await window.contextweave.environment.update({
+      version: 1,
+      environmentId: editing.id,
+      name: editName,
+      proxyId: editProxyId || null,
+    })
+    if (result.ok) {
+      onNotice({ kind: 'success', message: '环境配置已更新' })
+      setEditing(undefined)
+      await onRefresh()
+    } else onNotice({ kind: 'error', message: result.message })
+    setSaving(false)
+  }
+  const remove = async () => {
+    if (!deleteTarget || saving) return
+    setSaving(true)
+    const result = await window.contextweave.environment.delete(deleteTarget.id)
+    if (result.ok) {
+      onNotice({ kind: 'success', message: `环境“${deleteTarget.name}”已删除` })
+      setDeleteTarget(undefined)
+      await onRefresh()
+    } else onNotice({ kind: 'error', message: result.message })
+    setSaving(false)
+  }
+  const canManage = (environment: EnvironmentSummary) =>
+    !['starting', 'running', 'stopping', 'needs-recovery'].includes(environment.status)
   const start = () =>
     selected && perform(() => window.contextweave.environment.start(selected.id), '环境已启动')
   const stop = () =>
@@ -335,7 +420,7 @@ function EnvironmentPage({
           为每个工作流保留独立的浏览器用户目录、内核和代理配置。
         </p>
       </section>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
         <Card>
           <CardHeader>
             <CardTitle>环境列表</CardTitle>
@@ -345,92 +430,109 @@ function EnvironmentPage({
                 : '还没有环境，先创建一个开始验证。'}
             </CardDescription>
             <CardAction>
-              <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
-                <RefreshCwIcon />
-                刷新
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+                  <RefreshCwIcon />
+                  刷新
+                </Button>
+                <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <PlusIcon />
+                  新建环境
+                </Button>
+              </div>
             </CardAction>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent>
             {environments.length ? (
-              environments.map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  onClick={() => onSelect(item.id)}
-                  className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/60 ${selectedEnvironment === item.id ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
-                    <GlobeIcon />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{item.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.kernelId} · {item.platform}/{item.arch}
-                    </div>
-                  </div>
-                  <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
-                </button>
-              ))
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>环境</TableHead>
+                    <TableHead>内核</TableHead>
+                    <TableHead>代理</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {environments.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      data-state={selectedEnvironment === item.id ? 'selected' : undefined}
+                      className="cursor-pointer"
+                      onClick={() => onSelect(item.id)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="flex size-8 items-center justify-center rounded-md bg-muted">
+                            <GlobeIcon className="size-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{item.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {item.platform}/{item.arch}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {item.kernelId} · {item.kernelVersion}
+                      </TableCell>
+                      <TableCell>
+                        {item.proxyId
+                          ? (proxies.find((proxy) => proxy.proxyId === item.proxyId)?.host ??
+                            '已绑定')
+                          : '未使用'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(item.status)}>
+                          {statusLabel(item.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={!canManage(item)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              openEdit(item)
+                            }}
+                            aria-label={`编辑${item.name}`}
+                          >
+                            <PencilIcon />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={!canManage(item)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setDeleteTarget(item)
+                            }}
+                            aria-label={`删除${item.name}`}
+                          >
+                            <Trash2Icon />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             ) : (
-              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                没有环境记录
-              </div>
+              <Empty className="min-h-48 border">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <GlobeIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>没有环境记录</EmptyTitle>
+                  <EmptyDescription>创建一个独立的本地浏览环境开始验证。</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>创建环境</CardTitle>
-            <CardDescription>配置后将创建独立的本地用户目录。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="environment-name">名称</Label>
-              <Input
-                id="environment-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="environment-kernel">浏览器内核</Label>
-              <NativeSelect
-                className="w-full"
-                id="environment-kernel"
-                value={kernelId}
-                onChange={(event) => setKernelId(event.target.value)}
-              >
-                {kernels.map((kernel) => (
-                  <NativeSelectOption key={kernel.id} value={kernel.id}>
-                    {kernel.label} · {kernel.version}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="environment-proxy">代理（可选）</Label>
-              <NativeSelect
-                className="w-full"
-                id="environment-proxy"
-                value={proxyId}
-                onChange={(event) => setProxyId(event.target.value)}
-              >
-                <NativeSelectOption value="">不使用代理</NativeSelectOption>
-                {proxies.map((proxy) => (
-                  <NativeSelectOption key={proxy.proxyId} value={proxy.proxyId}>
-                    {proxy.type.toUpperCase()} · {proxy.host}:{proxy.port}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button className="w-full" onClick={() => void create()} disabled={!name.trim()}>
-              <PlusIcon />
-              创建环境
-            </Button>
-          </CardFooter>
         </Card>
       </div>
       {selected && (
@@ -482,6 +584,143 @@ function EnvironmentPage({
           </CardContent>
         </Card>
       )}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建环境</DialogTitle>
+            <DialogDescription>配置后将创建独立的本地用户目录。</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="environment-name">名称</Label>
+              <Input
+                id="environment-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>浏览器内核</Label>
+              <Select value={kernelId} onValueChange={(value) => setKernelId(value ?? '')}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择内核" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {kernels.map((kernel) => (
+                      <SelectItem key={kernel.id} value={kernel.id}>
+                        {kernel.label} · {kernel.version}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>代理（可选）</Label>
+              <Select
+                value={proxyId || 'none'}
+                onValueChange={(value) => setProxyId(value === 'none' ? '' : (value ?? ''))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="不使用代理" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="none">不使用代理</SelectItem>
+                    {proxies.map((proxy) => (
+                      <SelectItem key={proxy.proxyId} value={proxy.proxyId}>
+                        {proxy.type.toUpperCase()} · {proxy.host}:{proxy.port}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => void create()} disabled={!name.trim() || saving}>
+              {saving && <Spinner />}
+              创建环境
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑环境</DialogTitle>
+            <DialogDescription>内核和用户目录属于环境身份，编辑时保持不变。</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-environment-name">名称</Label>
+              <Input
+                id="edit-environment-name"
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>代理（可选）</Label>
+              <Select
+                value={editProxyId || 'none'}
+                onValueChange={(value) => setEditProxyId(value === 'none' ? '' : (value ?? ''))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="不使用代理" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="none">不使用代理</SelectItem>
+                    {proxies.map((proxy) => (
+                      <SelectItem key={proxy.proxyId} value={proxy.proxyId}>
+                        {proxy.type.toUpperCase()} · {proxy.host}:{proxy.port}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(undefined)}>
+              取消
+            </Button>
+            <Button onClick={() => void update()} disabled={!editName.trim() || saving}>
+              {saving && <Spinner />}
+              保存修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(undefined)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除环境“{deleteTarget?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              只删除环境元数据，profile 目录和运行记录会保留，方便后续手动恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void remove()}
+              disabled={saving}
+            >
+              {saving && <Spinner />}
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
@@ -496,12 +735,17 @@ function ProxyPage({
   onRefresh: () => Promise<void>
 }) {
   const [editing, setEditing] = React.useState<string>()
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<ProxySummary>()
+  const [saving, setSaving] = React.useState(false)
   const [type, setType] = React.useState<ProxyType>('http')
   const [host, setHost] = React.useState('127.0.0.1')
   const [port, setPort] = React.useState('8080')
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
   const save = async () => {
+    if (saving) return
+    setSaving(true)
     const config: ProxyConfig = { type, host, port: Number(port), username: username || undefined }
     const result = await window.contextweave.proxy.save({
       proxyId: editing,
@@ -511,9 +755,11 @@ function ProxyPage({
     if (result.ok) {
       onNotice({ kind: 'success', message: '代理配置已保存，密码仅保存在系统安全存储中。' })
       setEditing(undefined)
+      setDialogOpen(false)
       setPassword('')
       await onRefresh()
     } else onNotice({ kind: 'error', message: result.message })
+    setSaving(false)
   }
   const edit = (proxy: ProxySummary) => {
     setEditing(proxy.proxyId)
@@ -521,13 +767,28 @@ function ProxyPage({
     setHost(proxy.host)
     setPort(String(proxy.port))
     setUsername(proxy.username ?? '')
+    setPassword('')
+    setDialogOpen(true)
+  }
+  const add = () => {
+    setEditing(undefined)
+    setType('http')
+    setHost('127.0.0.1')
+    setPort('8080')
+    setUsername('')
+    setPassword('')
+    setDialogOpen(true)
   }
   const remove = async (proxyId: string) => {
+    if (saving) return
+    setSaving(true)
     const result = await window.contextweave.proxy.delete(proxyId)
     if (result.ok) {
       onNotice({ kind: 'success', message: '代理已删除' })
       await onRefresh()
     } else onNotice({ kind: 'error', message: result.message })
+    setDeleteTarget(undefined)
+    setSaving(false)
   }
   return (
     <>
@@ -537,68 +798,114 @@ function ProxyPage({
           代理密码不进入 SQLite 或浏览器命令行，只通过受限的安全存储传递。
         </p>
       </section>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>已保存代理</CardTitle>
-            <CardDescription>{proxies.length} 个配置</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {proxies.length ? (
-              proxies.map((proxy) => (
-                <div key={proxy.proxyId} className="flex items-center gap-3 rounded-lg border p-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">
-                      {proxy.type.toUpperCase()} · {proxy.host}:{proxy.port}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {proxy.username ? `用户 ${proxy.username}` : '无认证'}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => edit(proxy)}>
-                    编辑
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="destructive"
-                    onClick={() => void remove(proxy.proxyId)}
-                    aria-label="删除代理"
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                暂无代理
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{editing ? '编辑代理' : '添加代理'}</CardTitle>
-            <CardDescription>HTTP、HTTPS 或 SOCKS5。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>已保存代理</CardTitle>
+          <CardDescription>{proxies.length} 个配置</CardDescription>
+          <CardAction>
+            <Button size="sm" onClick={add}>
+              <PlusIcon />
+              新建代理
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {proxies.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>类型</TableHead>
+                  <TableHead>地址</TableHead>
+                  <TableHead>认证</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {proxies.map((proxy) => (
+                  <TableRow key={proxy.proxyId}>
+                    <TableCell>
+                      <Badge variant="outline">{proxy.type.toUpperCase()}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {proxy.host}:{proxy.port}
+                    </TableCell>
+                    <TableCell>{proxy.username ? `用户 ${proxy.username}` : '无认证'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => edit(proxy)}
+                          aria-label={`编辑${proxy.host}`}
+                        >
+                          <PencilIcon />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(proxy)}
+                          aria-label={`删除${proxy.host}`}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <Empty className="min-h-48 border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SlidersHorizontalIcon />
+                </EmptyMedia>
+                <EmptyTitle>暂无代理</EmptyTitle>
+                <EmptyDescription>添加代理后，可以在环境创建或编辑时绑定。</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </CardContent>
+      </Card>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open)
+          if (!open) setEditing(undefined)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? '编辑代理' : '添加代理'}</DialogTitle>
+            <DialogDescription>
+              HTTP、HTTPS 或 SOCKS5。密码仅保存在系统安全存储中。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               <Label>类型</Label>
-              <NativeSelect
-                className="w-full"
+              <Select
                 value={type}
-                onChange={(event) => setType(event.target.value as ProxyType)}
+                onValueChange={(value) => setType((value ?? 'http') as ProxyType)}
               >
-                <NativeSelectOption value="http">HTTP</NativeSelectOption>
-                <NativeSelectOption value="https">HTTPS</NativeSelectOption>
-                <NativeSelectOption value="socks5">SOCKS5</NativeSelectOption>
-              </NativeSelect>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="http">HTTP</SelectItem>
+                    <SelectItem value="https">HTTPS</SelectItem>
+                    <SelectItem value="socks5">SOCKS5</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-[1fr_110px] gap-2">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>主机</Label>
                 <Input value={host} onChange={(event) => setHost(event.target.value)} />
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>端口</Label>
                 <Input
                   type="number"
@@ -609,11 +916,11 @@ function ProxyPage({
                 />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>用户名（可选）</Label>
               <Input value={username} onChange={(event) => setUsername(event.target.value)} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>密码（可选）</Label>
               <Input
                 type="password"
@@ -622,19 +929,44 @@ function ProxyPage({
                 placeholder={editing ? '留空表示保持原密码' : ''}
               />
             </div>
-          </CardContent>
-          <CardFooter className="gap-2">
-            <Button className="flex-1" onClick={() => void save()}>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => void save()} disabled={!host.trim() || !port || saving}>
+              {saving && <Spinner />}
               保存代理
             </Button>
-            {editing && (
-              <Button variant="outline" onClick={() => setEditing(undefined)}>
-                取消
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(undefined)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              删除代理“{deleteTarget?.host}:{deleteTarget?.port}”？
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              如果仍有环境绑定此代理，删除会被拒绝。删除后不会影响已保留的环境目录。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => deleteTarget && void remove(deleteTarget.proxyId)}
+              disabled={saving}
+            >
+              {saving && <Spinner />}
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
@@ -880,6 +1212,46 @@ function SettingsPage({
   )
 }
 
+function AboutPage({
+  appInfo,
+}: {
+  appInfo?: {
+    name: string
+    version: string
+    platform: string
+    arch: string
+    secureStorageAvailable: boolean
+  }
+}) {
+  return (
+    <>
+      <section className="flex flex-col gap-1">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">关于 ContextWeave</h1>
+        <p className="text-sm text-muted-foreground">个人本地浏览环境工作台。</p>
+      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>{appInfo?.name ?? 'ContextWeave'}</CardTitle>
+          <CardDescription>面向授权场景的多内核浏览器环境管理工具。</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">版本</span>
+            <span>{appInfo?.version ?? '开发版本'}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">平台</span>
+            <span>{appInfo ? `${appInfo.platform}/${appInfo.arch}` : '本地桌面端'}</span>
+          </div>
+          <p className="pt-2 text-xs text-muted-foreground">
+            v0.1 仅提供个人本地环境、代理、内核和运行验证能力。
+          </p>
+        </CardContent>
+      </Card>
+    </>
+  )
+}
+
 function ThemeSelect({
   label,
   value,
@@ -892,19 +1264,22 @@ function ThemeSelect({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <Label>{label}</Label>
-      <NativeSelect
-        className="w-full"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map(([optionValue, optionLabel]) => (
-          <NativeSelectOption key={optionValue} value={optionValue}>
-            {optionLabel}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+      <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {options.map(([optionValue, optionLabel]) => (
+              <SelectItem key={optionValue} value={optionValue}>
+                {optionLabel}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
     </div>
   )
 }

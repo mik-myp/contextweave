@@ -48,6 +48,13 @@ import {
 } from '@contextweave/storage'
 import { workerTaskSchema, type WorkerResult } from '@contextweave/worker-protocol'
 
+import {
+  assertProxyMutable,
+  removeEnvironment,
+  resolveEnvironmentProxy,
+  updateEnvironment,
+} from './environment-management'
+
 log.initialize()
 
 const APP_ROOT = resolve(__dirname, '..')
@@ -160,6 +167,7 @@ function toSummary(record: EnvironmentRecord): EnvironmentSummary {
     status: record.status,
     kernelId: record.kernelId,
     kernelVersion: record.kernelVersion,
+    proxyId: record.proxyId ?? undefined,
     platform: record.platform,
     arch: record.arch,
     updatedAt: record.updatedAt,
@@ -565,8 +573,10 @@ async function saveProxy(input: unknown): Promise<IpcResult<ProxyRecord>> {
   const repository = databaseOrThrow()
   const proxyId = parsed.data.proxyId ?? `proxy-${randomUUID()}`
   const previous = parsed.data.proxyId ? repository.getProxy(proxyId) : undefined
+  if (parsed.data.proxyId && !previous) return fail('NOT_FOUND', '代理已不存在，请刷新列表。')
   let credentialRef = previous?.credentialRef
   try {
+    if (previous) assertProxyMutable(repository, proxyId, false)
     if (parsed.data.password) {
       credentialRef = `proxy:${proxyId}:password`
       saveCredential(credentialRef, parsed.data.password)
@@ -588,9 +598,14 @@ function deleteProxy(proxyId: string): IpcResult<boolean> {
   const repository = databaseOrThrow()
   const record = repository.getProxy(proxyId)
   if (!record) return fail('NOT_FOUND', 'Proxy was not found')
-  repository.deleteProxy(proxyId)
-  deleteCredential(record.credentialRef)
-  return ok(true)
+  try {
+    assertProxyMutable(repository, proxyId, true)
+    deleteCredential(record.credentialRef)
+    repository.deleteProxy(proxyId)
+    return ok(true)
+  } catch (error) {
+    return fail('PROXY_DELETE_FAILED', error instanceof Error ? error.message : '代理删除失败')
+  }
 }
 
 async function startEnvironment(environmentId: string): Promise<IpcResult<EnvironmentSummary>> {
@@ -601,7 +616,10 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
     return fail('ALREADY_RUNNING', 'This environment is already running')
   let config: EnvironmentConfig
   try {
-    config = environmentConfigSchema.parse(JSON.parse(record.configJson))
+    config = resolveEnvironmentProxy(
+      repository,
+      environmentConfigSchema.parse(JSON.parse(record.configJson)),
+    )
   } catch (error) {
     return fail(
       'INVALID_CONFIG',
@@ -635,6 +653,7 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
   let persistedSession = false
   try {
     const plan = buildLaunchPlan(record, config, port)
+    repository.updateConfig(config)
     repository.updateStatus(environmentId, 'starting')
     const child = spawn(plan.executablePath, plan.args, { stdio: 'ignore', windowsHide: true })
     if (!child.pid) throw new Error('Browser process did not provide a PID')
@@ -844,6 +863,27 @@ function registerIpcHandlers(): void {
   ipcMain.handle('proxy:delete', (_event, proxyId: string) => deleteProxy(proxyId))
   ipcMain.handle('environment:list', () => ok(databaseOrThrow().list().map(toSummary)))
   ipcMain.handle('environment:create', (_event, input: unknown) => createEnvironment(input))
+  ipcMain.handle('environment:update', (_event, input: unknown) => {
+    try {
+      return ok(toSummary(updateEnvironment(databaseOrThrow(), input)))
+    } catch (error) {
+      return fail(
+        'ENVIRONMENT_UPDATE_FAILED',
+        error instanceof Error ? error.message : '环境更新失败',
+      )
+    }
+  })
+  ipcMain.handle('environment:delete', (_event, id: unknown) => {
+    try {
+      removeEnvironment(databaseOrThrow(), id)
+      return ok(true)
+    } catch (error) {
+      return fail(
+        'ENVIRONMENT_DELETE_FAILED',
+        error instanceof Error ? error.message : '环境删除失败',
+      )
+    }
+  })
   ipcMain.handle('environment:start', (_event, environmentId: string) =>
     startEnvironment(environmentId),
   )

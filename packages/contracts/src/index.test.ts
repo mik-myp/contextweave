@@ -3,6 +3,7 @@ import {
   commonEnvironmentConfigSchema,
   createEnvironmentInputSchema,
   environmentConfigSchema,
+  updateEnvironmentInputSchema,
   proxyConfigSchema,
   defaultThemeConfig,
   themeConfigSchema,
@@ -51,5 +52,24 @@ describe('contracts', () => {
   it('keeps theme preferences versioned and validates supported axes', () => {
     expect(themeConfigSchema.parse(defaultThemeConfig)).toEqual(defaultThemeConfig)
     expect(themeConfigSchema.safeParse({ ...defaultThemeConfig, radius: 'rounder' }).success).toBe(false)
+  })
+
+  it('requires an explicit version and nullable proxy when editing an environment', () => {
+    expect(updateEnvironmentInputSchema.parse({
+      version: 1,
+      environmentId: 'env-test',
+      name: '新的名称',
+      proxyId: null,
+    })).toEqual({
+      version: 1,
+      environmentId: 'env-test',
+      name: '新的名称',
+      proxyId: null,
+    })
+    expect(updateEnvironmentInputSchema.safeParse({
+      environmentId: 'env-test',
+      name: '新的名称',
+      proxyId: null,
+    }).success).toBe(false)
   })
 })

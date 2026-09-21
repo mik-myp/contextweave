@@ -196,6 +196,8 @@ export class EnvironmentRepository {
   private readonly listStatement: StatementSync
   private readonly getStatement: StatementSync
   private readonly insertStatement: StatementSync
+  private readonly updateConfigStatement: StatementSync
+  private readonly deleteEnvironmentStatement: StatementSync
   private readonly updateStatusStatement: StatementSync
   private readonly listRuntimeSessionsStatement: StatementSync
   private readonly getRuntimeSessionStatement: StatementSync
@@ -222,6 +224,8 @@ export class EnvironmentRepository {
       ) VALUES (@environmentId, @name, @status, @kernelId, @kernelVersion, @proxyId,
         @configJson, @dataDir, @platform, @arch, @createdAt, @updatedAt)
     `)
+    this.updateConfigStatement = sqlite.prepare('UPDATE environments SET name = ?, proxy_id = ?, config_json = ?, updated_at = ? WHERE environment_id = ?')
+    this.deleteEnvironmentStatement = sqlite.prepare('DELETE FROM environments WHERE environment_id = ?')
     this.updateStatusStatement = sqlite.prepare('UPDATE environments SET status = ?, updated_at = ? WHERE environment_id = ?')
     this.listRuntimeSessionsStatement = sqlite.prepare('SELECT * FROM runtime_sessions ORDER BY started_at DESC')
     this.getRuntimeSessionStatement = sqlite.prepare('SELECT * FROM runtime_sessions WHERE session_id = ?')
@@ -312,6 +316,22 @@ export class EnvironmentRepository {
     const updatedAt = new Date().toISOString()
     this.updateStatusStatement.run(status, updatedAt, environmentId)
     return this.get(environmentId)
+  }
+
+  updateConfig(config: EnvironmentConfig): EnvironmentRecord | undefined {
+    this.updateConfigStatement.run(
+      config.name,
+      config.proxyId ?? null,
+      JSON.stringify(config),
+      new Date().toISOString(),
+      config.environmentId,
+    )
+    return this.get(config.environmentId)
+  }
+
+  // Remove metadata only. The profile and runtime history remain available for manual recovery.
+  deleteEnvironment(environmentId: string): void {
+    this.deleteEnvironmentStatement.run(environmentId)
   }
 
   listRuntimeSessions(): RuntimeSessionRecord[] {

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   CreateEnvironmentInput,
+  UpdateEnvironmentInput,
   IpcResult,
   EnvironmentSummary,
   SaveProxyInput,
@@ -107,6 +108,10 @@ const api = {
       ipcRenderer.invoke('proxy:delete', proxyId) as Promise<IpcResult<boolean>>,
   },
   environment: {
+    update: (input: UpdateEnvironmentInput) =>
+      ipcRenderer.invoke('environment:update', input) as Promise<IpcResult<EnvironmentSummary>>,
+    delete: (id: string) =>
+      ipcRenderer.invoke('environment:delete', id) as Promise<IpcResult<boolean>>,
     list: () => ipcRenderer.invoke('environment:list') as Promise<IpcResult<EnvironmentSummary[]>>,
     create: (input: CreateEnvironmentInput) =>
       ipcRenderer.invoke('environment:create', input) as Promise<IpcResult<EnvironmentSummary>>,

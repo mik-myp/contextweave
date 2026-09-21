@@ -63,6 +63,26 @@ describe('local SQLite storage', () => {
     }).state).toBe('installed')
     repository.setSetting('theme', { ...defaultThemeConfig, mode: 'dark' })
     expect(repository.getSetting<typeof defaultThemeConfig>('theme')?.mode).toBe('dark')
+    const updated = repository.updateConfig({
+      environmentId: 'env-test',
+      name: '重命名环境',
+      kernelId: 'standard-chromium',
+      kernelVersion: 'local',
+      proxyId: 'proxy-test',
+      proxy: {
+        type: 'http',
+        host: '127.0.0.1',
+        port: 8080,
+      },
+      commonConfig: defaultCommonEnvironmentConfig,
+      kernelConfig: {},
+      configVersion: 1,
+    })
+    expect(updated?.name).toBe('重命名环境')
+    expect(updated?.proxyId).toBe('proxy-test')
+    expect(JSON.parse(updated?.configJson ?? '{}').name).toBe('重命名环境')
+    repository.deleteEnvironment('env-test')
+    expect(repository.get('env-test')).toBeUndefined()
     database.close()
   })
 

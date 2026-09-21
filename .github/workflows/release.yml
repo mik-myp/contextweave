@@ -63,7 +63,7 @@ jobs:
           Get-ChildItem -LiteralPath $stagingRoot -File |
             Where-Object Name -ne 'SHA256SUMS-windows-x64.txt' |
             Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLowerInvariant(), $_.Name } |
+            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLowerInvariant(), (Split-Path -Leaf $_.Path) } |
             Set-Content -LiteralPath (Join-Path $stagingRoot 'SHA256SUMS-windows-x64.txt') -Encoding utf8
 
       - name: Generate SHA-256 files on macOS

@@ -1,7 +1,7 @@
 {
   "name": "@contextweave/desktop",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.4",
   "description": "ContextWeave personal browser workspace desktop client.",
   "author": "mik-myp",
   "type": "module",

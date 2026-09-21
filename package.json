@@ -1,6 +1,6 @@
 {
   "name": "contextweave",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.4",
   "private": true,
   "description": "An open-source multi-kernel browser workspace for personal and team operations.",
   "engines": {

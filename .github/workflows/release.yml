@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -34,7 +34,7 @@ jobs:
           version: 10.26.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22.15.0
           cache: pnpm
@@ -81,7 +81,7 @@ jobs:
             xargs shasum -a 256 > "release-artifacts/${{ matrix.name }}/SHA256SUMS-${{ matrix.name }}.txt"
 
       - name: Upload build result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-${{ matrix.name }}
           path: release-artifacts/${{ matrix.name }}/**
@@ -92,18 +92,31 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout source for SBOM
+        uses: actions/checkout@v5
+
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: release-*
           path: artifacts
           merge-multiple: false
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: contextweave.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -d '' files < <(find artifacts -type f -print0)
+          files+=("contextweave.spdx.json")
           gh release create "${GITHUB_REF_NAME}" "${files[@]}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "ContextWeave ${GITHUB_REF_NAME}" \

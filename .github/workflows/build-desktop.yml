@@ -1,0 +1,85 @@
+name: Build desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: macos-x64
+            os: macos-13
+          - name: macos-arm64
+            os: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop package
+        run: pnpm --filter @contextweave/desktop build
+
+      - name: Generate SHA-256 files on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseRoot = Join-Path $PWD 'apps/desktop/release'
+          $versionRoot = Get-ChildItem -LiteralPath $releaseRoot -Directory | Select-Object -First 1
+          $stagingRoot = Join-Path $PWD 'release-artifacts/windows-x64'
+          New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
+          Get-ChildItem -LiteralPath $versionRoot.FullName -File |
+            Where-Object { $_.Extension -in @('.exe', '.blockmap') -or $_.Name -like 'latest*.yml' } |
+            Copy-Item -Destination $stagingRoot
+          Get-ChildItem -LiteralPath $stagingRoot -File |
+            Where-Object Name -ne 'SHA256SUMS-windows-x64.txt' |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLowerInvariant(), $_.Name } |
+            Set-Content -LiteralPath (Join-Path $stagingRoot 'SHA256SUMS-windows-x64.txt') -Encoding utf8
+
+      - name: Generate SHA-256 files on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version_root="$(find apps/desktop/release -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          mkdir -p "release-artifacts/${{ matrix.name }}"
+          find "$version_root" -maxdepth 1 -type f \
+            \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' -o -name 'latest*.yml' \) \
+            -exec cp {} "release-artifacts/${{ matrix.name }}/" \;
+          find "release-artifacts/${{ matrix.name }}" -maxdepth 1 -type f ! -name "SHA256SUMS-${{ matrix.name }}.txt" -print |
+            sort |
+            xargs shasum -a 256 > "release-artifacts/${{ matrix.name }}/SHA256SUMS-${{ matrix.name }}.txt"
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contextweave-${{ matrix.name }}
+          path: release-artifacts/${{ matrix.name }}/**
+          if-no-files-found: error

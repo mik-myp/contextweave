@@ -1,0 +1,19 @@
+{
+  "name": "contextweave",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "An open-source multi-kernel browser workspace for personal and team operations.",
+  "engines": {
+    "node": ">=22.15.0 <23"
+  },
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "dev": "pnpm --filter @contextweave/desktop dev",
+    "build": "pnpm --filter @contextweave/desktop build",
+    "build:dir": "pnpm --filter @contextweave/desktop build:dir",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  }
+}

@@ -1,8 +1,11 @@
 # ContextWeave 项目总体规划与技术方案
 
-**文档日期：2026-09-21**  
+**文档日期：2026-09-22**
 **项目名称：ContextWeave（织境）**  
-**项目定位：开源、可自托管、面向个人与团队的多内核浏览器工作台**  
+**项目定位：目标为开源、可自托管、面向个人与团队的多内核浏览器工作台**
+**文档性质：** ContextWeave 的总体产品、版本路线和架构规范
+**维护规则：** 后续版本开发必须按本文件确定的路线推进；需求、范围或架构变化时，先更新本文件并记录原因、影响和迁移方式
+**最近审查：** 2026-09-22；依据 Electron、Node.js、TanStack Router、GitHub 仓库和 SLSA 官方资料复核
 
 配套文档：[技术栈与长期库选型](technology-stack.md)
 
@@ -23,9 +26,11 @@
 - LangChain、LangGraph、RAG 和 AI Agent
 - 自托管团队服务和可选远程执行节点
 
-项目通过 GitHub Releases 分发，暂不把代码签名作为发布前提。团队服务由使用者自行部署，客户端通过 API 连接服务端。
+项目通过 GitHub Releases 分发，当前预览阶段暂不把代码签名作为发布前提。团队服务属于后续阶段，由使用者自行部署；v0.1 客户端不连接团队 API。
 
-第一阶段优先把个人和团队环境管理做稳定，再增加工作流和业务自动化。
+第一阶段先把个人本地环境管理和独立浏览器进程闭环做稳定，再增加团队服务、工作流和业务自动化。
+
+本文件覆盖当前实现和后续版本路线。路线会随着产品验证持续更新；任何版本开始开发前，必须以本文件的最新内容为范围、数据、权限、依赖、许可证和验收基线。
 
 ---
 
@@ -48,7 +53,7 @@
 注意事项：
 
 - README 明确推荐外部 [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium) 内核。
-- README 当前说明仓库没有独立 LICENSE，不能默认认为代码可以直接商用或闭源复用。
+- GitHub 仓库元数据当前没有声明许可证，不能默认认为代码可以直接商用或闭源复用；任何复用必须重新核查仓库、依赖和资产许可证。
 - 管理端有配置项，不代表内核一定实现了相应的指纹行为，需要逐项验证。
 
 ### 2.2 Simprint
@@ -101,9 +106,9 @@ v0.2.32 已移除旧的独立服务端，业务请求主要转向本地数据库
 
 注意事项：
 
-- 项目 README 说明当前版本二进制优先发布，源码补丁可能延迟到下一版本。
+- 项目 README 说明当前版本二进制优先发布，源码补丁可能延迟到下一版本；ContextWeave 不把该项目的 GitHub Release 直接视为经过本项目供应链验证的下载源。
 - 内核版本需要持续跟进 Chromium 安全更新。
-- 内核授权、源码可获得性、构建流程和补丁完整性必须单独核查。
+- 内核授权、源码可获得性、构建流程、补丁完整性、下载哈希和安全更新责任必须单独核查；未完成核查前只能保留 Adapter 和 manifest 设计，不得进入正式 Release。
 
 ### 2.5 Camoufox、BrowserForge、CreepJS
 
@@ -111,7 +116,7 @@ v0.2.32 已移除旧的独立服务端，业务请求主要转向本地数据库
 - [BrowserForge](https://github.com/daijro/browserforge)：研究基于真实市场分布生成相互关联的浏览器配置。
 - [CreepJS](https://github.com/abrahamjuliot/creepjs)：用于检查指纹泄漏和环境不一致。
 
-这些项目适合作为内核研究、配置生成和回归检测参考，不能直接等同于完整的桌面浏览器产品。
+这些项目只作为内核研究、配置生成和回归检测参考，不能直接等同于完整的桌面浏览器产品，也不能把检测工具结果当作“完整指纹隐身”证明。
 
 ---
 
@@ -155,7 +160,9 @@ v0.2.32 已移除旧的独立服务端，业务请求主要转向本地数据库
 
 不能只修改 User-Agent，也不能只靠 JavaScript 注入实现完整的指纹浏览器。
 
-### 3.4 环境租约是团队接力的核心
+### 3.4 环境租约是团队接力的核心（后续阶段）
+
+环境租约、心跳和 fencing token 不属于 v0.1。它们只在团队服务启动后作为服务端并发控制方案评估，不能提前进入个人客户端的数据模型或 UI。
 
 团队成员接力使用同一个环境时，必须保证：
 
@@ -182,55 +189,39 @@ v0.2.32 已移除旧的独立服务端，业务请求主要转向本地数据库
 
 ## 4. 总体技术架构
 
-推荐技术基线：
+### 4.1 当前 v0.1 架构
 
-- **桌面客户端：Electron**
-- **界面：React + TypeScript**
-- **桌面本地服务：Electron Main + TypeScript/Node.js 本地服务**
-- **工作流和自动化执行器：Node.js + TypeScript**
-- **可选数据与 AI 服务：Python**
-- **本地数据库：SQLite**
-- **团队服务端：NestJS + Fastify adapter + TypeScript**
-- **团队数据库：PostgreSQL**
-- **对象存储：本地目录起步，支持 S3 兼容存储**
-- **浏览器控制：CDP、内核专用协议或适配器**
-- **桌面流程编辑器：React Flow 或同类方案**
+v0.1 只实现本地纵向闭环：
 
-建议结构：
+```text
+Electron 管理客户端
+├── Renderer：React/TypeScript + TanStack Router
+├── Preload：类型化白名单 API
+├── Main：窗口、IPC、SQLite、目录和进程协调
+├── Worker：受限的 Playwright/CDP smoke task
+└── Kernel Registry/Adapter：独立浏览器进程接入
+```
 
-    Electron 客户端
-    ├── React/TypeScript 管理界面
-    ├── Electron Main + 本地环境服务
-    │   ├── 浏览器进程管理
-    │   ├── 环境目录和运行锁
-    │   ├── 代理与本机网络
-    │   ├── 快照、下载和同步
-    │   └── Preload 暴露的有限本地能力接口
-    └── 独立 TypeScript Worker
-        ├── 自动化执行
-        ├── CDP/Playwright 适配
-        ├── 数据处理
-        ├── LangChain.js
-        └── LangGraph.js
+当前代码以 `apps/desktop` 和 `packages/` 中的 contracts、storage、kernel 和 worker-protocol 为实现边界。目录规划不代表需要一次性创建未来的服务端、WebUI 或 AI Worker。
 
-    用户自建服务端
-    ├── API 服务
-    ├── 身份认证和权限
-    ├── 环境租约和版本
-    ├── PostgreSQL
-    ├── 对象存储
-    ├── 调度服务
-    └── 可选远程执行节点
+### 4.2 后续团队架构
 
-关键边界：
+团队服务启动后再评估以下组件：
 
-- React 页面不直接管理长任务。
-- Electron Main 只负责本地协调；长任务交给独立 Worker 或本地环境服务。
+- NestJS + Fastify adapter + TypeScript API。
+- PostgreSQL 保存成员、权限、环境版本、租约和审计元数据。
+- S3 兼容对象存储保存大型快照和产物。
+- 独立 Worker、队列和可选远程执行节点。
+
+这些组件必须通过版本化 contracts 接入；客户端不能直接连接 PostgreSQL，也不能因为规划存在就提前创建服务端 schema 或部署文件。
+
+### 4.3 长期边界
+
+- React 页面不直接管理长任务；长任务交给 Worker 或服务端任务系统。
+- Electron Main 只负责本地协调和受控能力，不承担工作流或 AI 的长时间业务逻辑。
 - Worker 不依赖 React、Electron Renderer 或窗口对象。
-- 工作流定义、执行器协议和业务模型独立于桌面框架。
-- 客户端不直接连接 PostgreSQL。
-- PostgreSQL 只由服务端访问。
-- 大型环境快照、截图、报表和文件不放进前端状态。
+- 工作流定义、执行器协议、团队资源和 AI Tool Schema 独立于桌面框架。
+- 大型环境快照、截图、报表和文件不放进前端状态或普通关系字段。
 
 ---
 
@@ -250,11 +241,12 @@ Electron 自带的 Chromium 只渲染管理界面，不能作为指纹浏览器�
 Electron 需要遵守以下边界：
 
 - 开启 `contextIsolation` 和 Renderer sandbox。
-- 远程内容禁止 Node.js 集成。
+- 远程内容禁止 Node.js 集成，只加载 HTTPS 内容，并使用限制性的 CSP。
 - 只通过 Preload 暴露有限的类型化 API。
-- 严格校验 IPC 调用来源和参数。
+- 严格校验 IPC 调用来源、窗口身份、参数和返回值。
+- 限制导航、窗口创建、弹窗、权限请求和外部链接；不对不可信内容调用 `shell.openExternal`。
 - 管理界面与网站页面分离，不能让不可信网页获得本地能力。
-- Electron、Chromium 和 Node.js 依赖持续更新。
+- Electron、Chromium 和 Node.js 依赖持续更新；Electron 官方只支持最新三个稳定大版本，发布前必须核查当前版本是否仍在支持窗口内。
 
 Electron 的优点：
 
@@ -274,7 +266,7 @@ Ant Browser 已经验证了“管理端单独运行、浏览器内核外部下�
 
 - fingerprint-chromium
 - 标准 Chromium
-- Chrome 或 Edge 测试内核
+- 用户已有且有权使用的 Chrome 或 Edge 本地可执行文件；不默认下载或分发厂商专有二进制
 - Camoufox 等 Firefox 系列内核
 - 后续自行维护的 Chromium fork
 - 其他满足适配协议的内核
@@ -396,7 +388,7 @@ interface BrowserKernelAdapter {
 
 参考：[shadcn/ui sidebar-07](https://ui.shadcn.com/blocks/sidebar#sidebar-07)
 
-前期保持简单，只保留日常业务入口。备份、同步和其他维护功能放进设置，不单独占用侧边栏菜单。
+以下是长期布局方向。v0.1 只显示个人空间、环境、代理、内核、运行记录、设置和关于；团队切换、同步、备份和成员管理在对应版本实现前不得出现在当前 UI。
 
 ### 6.1 顶部：工作空间切换
 
@@ -475,7 +467,7 @@ interface BrowserKernelAdapter {
 
 ## 7. 个人模式与团队模式
 
-不需要准备两套主要前端。采用：
+长期不需要准备两套主要前端，采用：
 
 - 一套 Electron 桌面客户端
 - 一个可自托管团队服务端
@@ -483,6 +475,7 @@ interface BrowserKernelAdapter {
 
 ### 7.1 个人模式
 
+- v0.1 当前模式。
 - 不需要服务器。
 - 使用本地 SQLite 和环境目录。
 - 本地管理浏览器环境、代理、内核和备份。
@@ -490,6 +483,7 @@ interface BrowserKernelAdapter {
 
 ### 7.2 团队模式
 
+- 规划中的团队模式，按本文件的阶段路线进入实现。
 - 客户端连接用户自建服务端。
 - 服务端负责身份、权限、环境元数据、租约、版本和审计。
 - 客户端负责本机浏览器、环境文件、快照和实际运行。
@@ -855,37 +849,31 @@ AI 相关组件建议放在独立 Worker：
 ### v0.1：架构与内核验证
 
 - Electron 客户端启动
-- 独立浏览器环境
-- 创建、启动、停止环境
-- 代理和最小指纹配置
-- 至少两个内核的注册、下载、启动和能力检查
-- 独立 Worker 执行简单任务
-- GitHub Actions 构建 Release
-- 测量启动速度、内存和响应
+- 个人环境、代理、设置和运行状态管理
+- 独立浏览器用户目录、运行锁和生命周期状态
+- Kernel Registry、manifest 校验和标准 Chromium 本机探测/启动 smoke
+- fingerprint-chromium Adapter 和配置 schema；在来源、许可证、URL、SHA-256 和安全更新责任确认前不分发二进制
+- 独立 Worker 执行最小 CDP/Playwright smoke task
+- Windows x64、macOS x64、macOS arm64 的 GitHub Actions 构建和 SHA-256
 
-验收：普通用户无需开发工具即可运行；异常不会拖垮客户端。
+验收：普通用户无需开发工具即可启动客户端；环境不会互相串用；失败、取消、重复启动、崩溃和未校验内核都有可解释结果。
 
 ### v0.2：个人环境管理
 
-- 环境创建、编辑、复制、删除
-- 分组、标签、搜索
-- 代理管理和连通性检查
-- 内核下载、校验、版本绑定和专属参数表单
-- 扩展配置
-- 启动页面和窗口标识
-- 本地凭据和运行锁
+- 本地备份、恢复和导入导出
+- 环境配置版本和迁移
+- 更完整的内核 manifest、下载和升级闭环
+- 磁盘空间、诊断导出和数据目录维护
+- 代理连通性和跨内核兼容性矩阵
 
-验收：环境互不串用，重复启动和代理失败有明确反馈。
+验收：环境升级和恢复不会静默覆盖有效数据，旧版本数据可以得到明确处理。
 
 ### v0.3：个人数据可靠性
 
-- 本地备份和恢复
-- 环境导入导出
-- 配置版本
-- 异常退出处理
-- 内核升级前备份
-- 指纹、代理泄漏和跨上下文一致性回归
-- 磁盘空间和诊断信息
+- 跨平台和长时间运行回归
+- 内核、代理/DNS、跨 iframe/Worker 和用户目录兼容测试
+- 可验证的诊断包和隐私审查
+- 发布升级、回滚和迁移演练
 
 验收：在支持的系统和内核组合下可恢复。
 
@@ -1102,40 +1090,28 @@ v1.0 只承诺核心能力：
     → 保存环境
     → 再次启动并恢复状态
 
-随后验证团队闭环：
-
-    部署自托管服务
-    → 创建团队
-    → 邀请成员
-    → 分配环境
-    → 成员 A 获取租约
-    → A 使用并提交版本
-    → 成员 B 下载并接手
-    → 模拟断网和上传失败
-    → 恢复并审计
-
-只有这两条链路稳定后，再开始工作流和业务自动化；同时，v0.1 至少验证两个内核的注册、下载、启动、专属参数表单和能力检查。
+团队闭环进入开发前，必须在本文件中明确服务端、身份、租约、快照、权限、审计和恢复设计，并同步更新技术栈和验收边界。只有个人闭环和数据恢复稳定后，才按路线开始团队服务、工作流和业务自动化；当前个人阶段不以未配置的第三方内核二进制或完整指纹能力作为验收条件。
 
 ---
 
 ## 15. 总体结论
 
-最终推荐方案：
+长期推荐方案：
 
 > **Electron + electron-vite + React/TypeScript + Electron Main/Preload + 独立 TypeScript Worker + 多内核 Kernel Registry/Adapter/Runtime + NestJS/Fastify 自托管服务端 + PostgreSQL + 对象存储。**
 
-产品前期专注：
+当前 v0.1 专注：
 
 - 个人环境管理
-- 团队空间
-- 成员权限
-- 环境租约
-- 同一环境接力
-- 备份、同步和恢复
+- 代理、内核引用和本地设置
+- 独立浏览器进程、用户目录和 Worker
 - 稳定的客户端布局和设置体系
+- 构建、校验、失败恢复和发布证据
 
-产品后期扩展：
+后续版本扩展：
 
+- 团队空间、成员权限和环境租约
+- 备份、同步和恢复
 - Simprint 风格可视化工作流
 - 商品巡检
 - 订单报表整理
@@ -1158,3 +1134,19 @@ v1.0 只承诺核心能力：
 
 在这套架构下，未来增加工作流、RAG、AI Agent、电商连接器、Python 数据处理或新的浏览器内核，不需要更换 Electron 客户端。桌面框架可以更换，但 Kernel Registry/Adapter/Runtime、工作流协议、团队服务端和 AI Worker 才是长期稳定边界。
 
+---
+
+## 16. 资料核查与维护
+
+2026-09-22 对以下资料进行了网络核查：
+
+- [Electron Security](https://www.electronjs.org/docs/latest/tutorial/security)：补充 context isolation、sandbox、CSP、权限请求、导航和 IPC sender 校验要求。
+- [Electron Release Timeline](https://www.electronjs.org/docs/latest/tutorial/electron-timelines)：Electron 官方支持最新三个稳定大版本，发布前必须检查当前 major 是否仍在支持窗口。
+- [Node.js SQLite API](https://nodejs.org/api/sqlite.html)：`DatabaseSync` 从 Node 22.5.0 起提供，当前项目使用 Node 22.15.x 的内置 SQLite。
+- [TanStack Router File-based Routing](https://tanstack.com/router/latest/docs/framework/react/guide/file-based-routing)：确认 Vite plugin 生成文件路由树的当前实现路径。
+- [Ant Browser](https://github.com/black-ant/Ant-Browser)：GitHub 元数据当前未声明许可证，不能默认复用其代码或资产。
+- [Simprint](https://github.com/Simprint/simprint/releases/tag/v0.2.32)：当前最新 Release 仍为 v0.2.32；只借鉴交互和架构思路，不把其实现当作 ContextWeave 依赖。
+- [Donut Browser](https://github.com/zhom/donutbrowser)：仓库声明 AGPL-3.0，任何代码借鉴都必须单独完成许可证审查。
+- [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)：仓库声明 BSD-3-Clause，但二进制、补丁源码和安全更新仍须由 ContextWeave 单独验证。
+
+外部资料只用于形成规划判断。依赖、内核和产品范围发生变化时重新核查，不把本节的日期或版本号当作永久事实。

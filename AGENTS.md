@@ -1,168 +1,126 @@
-# ContextWeave Agent Development Rules
+# ContextWeave 项目开发规范
 
-**适用仓库：** `mik-myp/contextweave`  
-**当前阶段：** v0.1 开发中  
-**当前状态：** v0.1 执行文档 r6 已确认，允许开始正式实现
+**适用范围：** 本仓库的源代码、配置、测试、文档、自动化和协作变更
+**文档职责：** 只规定工程开发方式；产品路线和技术选型分别以 [`docs/project-plan.md`](docs/project-plan.md) 与 [`docs/technology-stack.md`](docs/technology-stack.md) 为准
+**规范状态：** 生效；规范变更必须通过 Pull Request 审查
 
-本文档是仓库级开发约束。任何设备、任何对话、任何自动化代理或协作者在修改本仓库前，都必须先读取本文件，以及当前版本对应的执行文档和项目规范。聊天记录不能替代仓库中的文档决定。
+本文档适用于所有开发者、协作者、自动化任务和 AI 代理。它规定代码如何组织、实现、测试和审查，不记录产品路线、发布阶段的功能范围或临时计划。
 
-## 1. 规则优先级和当前基线
+## 1. 开发依据和变更原则
 
-1. 用户在当前会话中的明确要求优先于本文件。
-2. 已确认的版本执行文档优先于未确认的规划建议。
-3. 本文件、`docs/development-process.md`、`docs/project-plan.md`、`docs/technology-stack.md` 和当前版本文档共同构成仓库开发基线。
-4. 所有重要决定、问题答案、范围变化和例外都必须写回仓库文档，不能只保留在对话中。
-5. 当前只推进 v0.1；不得提前实现 v0.2 及以后功能。
+- 用户和维护者的明确决定优先于仓库中的一般约定。
+- 产品目标、阶段路线和架构边界以 `docs/project-plan.md` 为准。
+- 技术栈、库选型和替换条件以 `docs/technology-stack.md` 为准；实现不得在未记录原因的情况下偏离该路线。
+- 代码、配置、依赖、目录和文档必须在同一个 Pull Request 中保持一致。
+- 发现需求、数据模型、权限、协议或架构边界发生变化时，先更新相应的规划或技术文档，再修改受影响的实现。
+- 不提交临时验证代码、调试输出、本地路径、生成物或与任务无关的格式化变更。
 
-## 2. 版本开发闸门
+## 2. 仓库目录和依赖方向
 
-每个版本必须按以下顺序推进：
+当前目录按职责组织：
 
 ```text
-版本分析
-→ 列出并确认问题
-→ 编写执行文档
-→ 用户确认执行文档及修订号
-→ 实现
-→ 测试与验收
-→ 用户最终验收
-→ 提交、tag、GitHub Actions 构建和 Release
+apps/
+└── desktop/                 # Electron 应用
+    ├── electron/            # Main、Preload、Worker 和构建入口
+    └── src/                 # Renderer、路由、页面和共享 UI
+
+packages/
+├── contracts/               # 跨进程、跨包的数据模型和运行时 schema
+├── storage/                 # 本地数据库和 repository
+├── kernel-core/             # 内核注册、manifest 和通用适配器接口
+├── kernel-*/                # 各浏览器内核的独立适配器
+└── worker-protocol/         # Worker 消息和任务协议
 ```
 
-在用户确认当前版本执行文档之前：
+- `apps` 组合应用；`packages` 提供可复用能力和稳定边界。新目录必须有清晰职责，不能按临时文件类型堆放代码。
+- 依赖方向保持单向：页面依赖 features，features 依赖领域服务和 contracts；底层 packages 不反向依赖 Renderer 或具体页面。
+- 共享包通过公开入口导出；禁止跨包引用内部文件路径，禁止为了复用少量代码建立循环依赖。
+- `contracts` 不能依赖 Electron、React、数据库驱动或具体浏览器内核；它只描述数据、协议和校验。
+- 领域代码放在对应 feature 或 package 中，禁止把业务逻辑堆进 `src/shared`、`main.ts` 或通用 UI 组件。
+- 新增应用、package 或顶层配置前，先说明它与现有边界的关系，并同步更新项目规划和目录说明。
 
-- 不创建正式应用代码、服务端代码、数据库 schema、依赖 lockfile 或构建配置。
-- 不开始 v0.2 及以后功能的实现。
-- 只允许创建或修改分析文档、执行文档、进度记录和本仓库规范文件。
-- 不把“顺手实现”“临时验证代码”混入正式发布分支。
+## 3. Electron 进程和模块边界
 
-如果实现过程中发现需求范围、数据模型、权限、兼容性、协议或验收标准发生实质变化，必须暂停受影响的实现，更新执行文档修订号并重新请求用户确认。
+### 3.1 Renderer
 
-## 3. 当前 v0.1 状态
+- Renderer 只负责页面展示、用户交互和短生命周期的界面状态。
+- Renderer 不直接访问 Node.js、文件系统、数据库、外部网站、shell、任意 IPC 或 CDP 端口。
+- 页面通过类型化 hooks、feature service 和 Preload API 获取数据；不能在组件内拼接底层 SQL、启动进程或决定权限。
+- 路由文件只负责路由元数据、参数和页面组合；复杂数据加载和提交逻辑放到 feature 层。
 
-- 当前阶段：`v0.1` 开发中。
-- 当前分析文档：`docs/versions/v0.1-analysis.md`。
-- 当前执行文档：`docs/versions/v0.1-execution-r6.md`，已由用户确认。
-- 当前允许修改：v0.1 执行文档范围内的正式代码、依赖、构建配置、CI 和文档。
-- 当前禁止修改：团队 API、PostgreSQL、WebUI、工作流、AI/RAG、远程执行和其他 v0.2 以后功能。
+### 3.2 Preload 和 Main
 
-## 4. 文档读取顺序和文档目录
+- Preload 只暴露最小的白名单 API，不暴露完整 `ipcRenderer`、`fs`、`child_process` 或任意命令执行接口。
+- IPC 请求和响应必须共享 contracts，并在边界执行运行时 schema 校验。
+- Main 负责窗口、受控文件操作、本地数据库和外部进程协调；不承载 React 页面状态。
+- 长任务交给独立 Worker 或任务服务，通过明确的任务 ID、进度、取消和结果协议通信。
+- 浏览器内核通过 Kernel Registry、manifest、Adapter 和 Browser Runtime 接入；内核专属参数不能散落在页面或通用业务代码中。
 
-任何新设备、新对话或新协作者开始工作时，必须按以下顺序读取：
+### 3.3 Worker 和外部浏览器
 
-1. `AGENTS.md`：仓库级强制规则、当前版本闸门和文档目录。
-2. `docs/development-process.md`：版本分析、执行文档、测试、提交和发布流程。
-3. `docs/project-plan.md`：产品目标、阶段路线、架构边界和 v0.1-v1.0 规划。
-4. `docs/technology-stack.md`：技术栈、库、协议、数据、安全和长期替换边界。
-5. `docs/simprint-review-and-product-plan.md`：Simprint 审阅结论和后期工作流/业务规划。
-6. `docs/research/ui-crud-settings-patterns.md`：B 端 CRUD、指纹环境管理和设置页 GitHub 源码研究。
-7. `docs/versions/v0.1-analysis.md`：当前版本分析和已确认的 v0.1 决策。
-8. `docs/versions/v0.1-execution-r6.md`：当前版本执行基线；用户未确认前只能审阅和维护文档。
-9. `docs/progress/v0.1.md`：当前版本状态、证据和阻塞项。
-10. `docs/adr/0001-local-sqlite-runtime.md`：v0.1 SQLite 运行时实现决策。
-11. `docs/adr/0002-proxy-auth-transport.md`：v0.1 代理认证凭据传输边界。
-12. `docs/compatibility-matrix.md`：v0.1 平台、运行时和内核支持矩阵。
-13. `docs/risk-register.md`：v0.1 风险登记和复查条件。
-14. `docs/README.md`：文档索引、状态和维护说明。
+- Worker 使用最小权限和明确的消息协议，不拥有任意文件系统根目录、数据库超级权限或任意 shell 权限。
+- 实际网站访问使用独立浏览器进程和独立用户目录；管理界面与网站页面不得共享本地能力或用户数据目录。
+- CDP 和调试端口只绑定 loopback，并使用随机端口和一次性凭据。
+- 任务必须能处理成功、失败、取消、超时、重复执行和进程异常退出；不得只依赖 UI 组件生命周期。
 
-当前仓库文档清单：
+## 4. React 和组件设计
 
-| 文件 | 用途 | 当前状态 |
-|---|---|---|
-| [`AGENTS.md`](AGENTS.md) | 所有设备、对话和协作者必须遵守的仓库规则 | 生效 |
-| [`README.md`](README.md) | 项目入口和公开说明 | 维护中 |
-| [`docs/development-process.md`](docs/development-process.md) | 版本开发、测试和发布流程 | 生效 |
-| [`docs/project-plan.md`](docs/project-plan.md) | 产品总体规划和架构方案 | 生效 |
-| [`docs/technology-stack.md`](docs/technology-stack.md) | 技术栈与长期库选型 | 生效 |
-| [`docs/simprint-review-and-product-plan.md`](docs/simprint-review-and-product-plan.md) | Simprint 审阅和后期产品规划 | 生效 |
-| [`docs/research/ui-crud-settings-patterns.md`](docs/research/ui-crud-settings-patterns.md) | B 端 CRUD、指纹环境管理和设置页 GitHub 源码研究 | 分析中 |
-| [`docs/versions/v0.1-analysis.md`](docs/versions/v0.1-analysis.md) | v0.1 分析、问题和决策 | 已完成，执行文档 r6 已确认 |
-| [`docs/versions/v0.1-execution-r6.md`](docs/versions/v0.1-execution-r6.md) | v0.1 实施范围、任务、测试和验收 | 已确认，开发中 |
-| [`docs/versions/v0.1-execution-r5.md`](docs/versions/v0.1-execution-r5.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r6 |
-| [`docs/versions/v0.1-execution-r4.md`](docs/versions/v0.1-execution-r4.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r5 |
-| [`docs/versions/v0.1-execution-r3.md`](docs/versions/v0.1-execution-r3.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r4 |
-| [`docs/versions/v0.1-execution-r2.md`](docs/versions/v0.1-execution-r2.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r3 |
-| [`docs/progress/v0.1.md`](docs/progress/v0.1.md) | v0.1 进度和可复核证据 | 开发中 |
-| [`docs/adr/0001-local-sqlite-runtime.md`](docs/adr/0001-local-sqlite-runtime.md) | v0.1 SQLite 运行时实现和替换条件 | 生效 |
-| [`docs/adr/0002-proxy-auth-transport.md`](docs/adr/0002-proxy-auth-transport.md) | v0.1 代理认证凭据传输边界 | 生效 |
-| [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md) | 平台、运行时和内核兼容状态 | 生效 |
-| [`docs/risk-register.md`](docs/risk-register.md) | v0.1 风险、措施和复查条件 | 生效 |
-| [`docs/README.md`](docs/README.md) | 文档索引和文档维护规范 | 生效 |
+- 按领域和用户任务拆分 feature，例如环境、代理、内核、设置；不要按“所有按钮”“所有表格”建立没有业务边界的目录。
+- 页面组件负责布局和组合；可复用组件负责单一视觉或交互职责；数据访问、状态转换和副作用放在 hooks、service 或 repository 中。
+- 组件出现多个独立状态机、同时处理数据请求与复杂布局、或在两个无关页面重复使用时，应拆分为更小的组件和明确的容器层。
+- 表单校验、提交状态、错误展示和成功反馈必须是可测试的 feature 行为，不能隐藏在通用输入组件中。
+- UI 状态、服务端状态、任务状态和持久化状态分开管理；不能用一个全局 store 保存所有数据。
+- 组件通过 props 或明确的 context 通信；避免深层组件直接修改上层隐式状态和依赖全局可变对象。
+- 通用组件不得包含产品领域名称、数据库字段、IPC channel 或内核参数；领域组件也不要伪装成通用组件。
+- 交互必须覆盖空态、加载、错误、取消、重复提交、危险操作确认、键盘操作和基本无障碍语义。
 
-### 文档新增和维护规则
+## 5. TypeScript、编码和错误处理
 
-- 新建文档前先判断是否已有权威文档，禁止为同一主题创建两个互相独立的“最终版本”。
-- 每个文档必须在文件头写明标题、修订号或版本、状态、日期和适用范围；长期文档还要写明关联文档。
-- 新文档必须登记到本节、`docs/README.md` 和相关入口文档；删除或移动文档时同步更新所有链接。
-- 文档状态使用：`草案`、`分析中`、`待确认`、`生效`、`已废弃`、`已归档`。只有用户确认的执行文档才能标记为生效。
-- 执行文档按 `docs/versions/vX.Y-execution-rN.md` 命名；版本进度按 `docs/progress/vX.Y.md` 命名；架构决策按 `docs/adr/NNNN-title.md` 命名。
-- 文档的实质变化必须增加修订号，并在变更记录中写明原因；用户确认过的执行文档发生范围、数据、权限、兼容性或验收变化时必须重新确认。
-- 规划文档描述方向，分析文档描述问题和决策，执行文档描述当前版本可执行范围；同一版本发生冲突时，以用户已确认的执行文档为准。
-- 被替代的文档不能直接删除，改为标记 `已废弃` 或 `已归档`，并链接到替代文档。
-- 文档不得包含真实密钥、Cookie、登录会话、代理密码、生产连接串或真实业务数据。
-- 新对话或新设备发现文档缺失、链接失效、状态冲突或修订号不明确时，必须暂停代码修改，先修正文档并记录原因。
+- 使用仓库统一的 TypeScript strict 配置；禁止无理由的 `any`、类型断言和 `@ts-ignore`。例外必须在代码旁说明原因。
+- 为跨边界数据定义显式类型和运行时 schema；不要把 `JSON.parse` 的结果直接当作可信对象使用。
+- 命名表达领域含义：组件使用 PascalCase，hooks 使用 `useXxx`，事件处理使用动词，布尔值使用 `is/has/can/should` 前缀。
+- 函数保持单一职责；纯计算与副作用分离；避免通过隐式全局变量、模块级可变状态或未声明的单例传递数据。
+- 错误使用可识别的类型或错误码，向用户展示可理解的信息，向日志写入脱敏的上下文；不能吞掉异常或只记录 `console.log`。
+- 文本文件使用 UTF-8、统一换行和仓库格式化配置；禁止提交密钥、Cookie、登录会话、代理密码、生产连接串或真实业务数据。
 
-## 5. 文件和编码
+## 6. 数据、凭据和安全边界
 
-- 所有新建和修改的文本文件必须使用 UTF-8 编码。
-- 读写已有文件时必须显式指定 UTF-8，并保持已有中文文本内容和编码不被无意改变。
-- 默认使用 UTF-8 无 BOM，除非某个工具或平台明确要求 BOM。
-- 修改前先读取文件；修改后检查 UTF-8 有效性、意外控制字符、换行和敏感信息。
-- 不把真实 Cookie、登录会话、代理密码、模型密钥、生产连接串或真实业务数据写入仓库。
+- 数据库访问集中在 storage/repository 层；schema 变化必须有可重复执行的 migration、失败恢复策略和测试。
+- 大型用户目录、截图、下载物和报告作为文件资源管理，不塞进 Renderer 状态或普通数据库字段。
+- 凭据使用操作系统安全存储或项目技术路线指定的安全方案；不得放入命令行参数、URL、普通配置、日志或诊断包。
+- 所有拥有本地能力的 Electron 窗口开启 `contextIsolation`、sandbox 和 `nodeIntegration: false`，并配置限制性的 CSP、导航、窗口和权限策略。
+- 对 IPC 验证发送方、窗口身份、参数和返回值；不要信任 Renderer 传入的路径、端口、文件名或资源 ID。
+- 外部内核下载必须经过 manifest、来源、平台/架构和 SHA-256 校验；校验失败、来源不明或许可证未确认时不得执行。
+- 自动化和数据采集只用于用户授权场景；代码和文档不得承诺绕过验证码、风控、访问控制或平台限制。
 
-## 6. ContextWeave 架构边界
+## 7. 测试和质量门禁
 
-- Electron 只负责管理界面和本地协调；Electron 自带 Chromium 不是指纹浏览器内核。
-- 实际网站访问使用独立浏览器进程和独立用户目录。
-- 内核通过 `Kernel Registry`、`Kernel Manifest`、`Kernel Adapter` 和 `Browser Runtime` 接入；不能把内核专属参数散落在 React 页面或业务代码中。
-- Renderer 不直接访问文件系统、数据库、任意 IPC 或外部网站控制端口；通过受限、类型化、运行时校验的 Preload API。
-- React 页面不持有长任务状态；长任务交给独立 TypeScript Worker 或本地服务。
-- 客户端不直接连接 PostgreSQL；PostgreSQL 只由自托管团队服务访问。
-- 工作流、LangChain、LangGraph 和 AI Worker 必须通过版本化的 contracts/tool schema 接入，不能绕过权限、审计、租约和幂等控制。
+- 每次变更执行与影响范围匹配的检查；默认至少运行仓库的格式、lint、类型检查和测试命令。
+- 共享 contracts、IPC、repository、内核 Adapter 和 Worker 协议必须有单元或契约测试；关键用户路径需要集成或手动验收记录。
+- 测试覆盖正常流程以及失败、取消、超时、断网、权限拒绝、低磁盘、重复操作和异常退出。
+- 测试不得依赖开发者个人目录、真实账户、真实网站会话或未声明的网络服务；测试数据应可重复创建和清理。
+- 修复缺陷时优先添加能复现问题的回归测试；不要用只重复实现细节的测试替代行为验证。
+- CI 失败、Flaky Test、已知限制和许可证问题必须在 Pull Request 中说明，不能用“本地通过”代替证据。
 
-## 7. v0.1 范围控制
+## 8. 依赖和配置管理
 
-v0.1 只在执行文档明确的范围内实现。默认候选方向是个人本地环境和多内核启动验证；团队服务、PostgreSQL、环境接力、备份恢复、可视化工作流、电商业务和 AI/RAG 必须在执行文档中明确是否属于本版本。
+- 新依赖必须记录用途、许可、原生模块、网络行为、数据收集和替换成本，并同步锁文件。
+- 依赖升级前检查兼容性、漏洞、许可证和构建产物；未经评审不得同时引入多个解决同一问题的库。
+- 配置按环境和职责拆分；敏感配置从安全存储或受控环境注入，不能写入仓库和默认日志。
+- 共享 ESLint、TypeScript、Vitest 和构建配置优先复用；局部例外必须限定在最小目录并说明原因。
 
-每个新增功能必须说明：
+## 9. Git、提交和 Pull Request
 
-- 用户价值和所属版本。
-- 数据、IPC、协议、内核和权限影响。
-- 测试方式和验收标准。
-- 是否会增加后续迁移或替换成本。
+- 功能使用短期分支和 Pull Request；共享分支保持可构建、可测试和可审查，禁止强制推送和重写已发布提交。
+- 提交使用 Conventional Commits，一个提交表达一个逻辑变化；不要把无关格式化、依赖升级和功能修改混在一起。
+- Pull Request 必须说明背景、范围、影响的包和边界、测试命令与结果、已知限制以及文档变化。
+- 涉及安全、凭据、数据库 migration、IPC、内核下载、权限或公共 contracts 的变更，需要熟悉该边界的维护者审查。
+- 审查意见解决、CI 通过、文档和链接同步后才能合并；发现范围或架构变化时，应先更新规划文档再继续实现。
 
-## 8. 测试、验收和证据
+## 10. 文档和规范维护
 
-- 实现完成不等于版本完成；必须通过执行文档中的自动化检查、关键路径手动验收、异常恢复验证和目标平台构建。
-- 测试必须记录命令、平台、架构、内核版本、测试数据和结果。
-- 失败、取消、重复启动、异常退出、断网、低磁盘和下载校验失败等行为必须有明确结果。
-- CI 失败、Flaky Test、许可证问题和已知限制必须写入进度文档，不能用“构建成功”掩盖。
-
-## 9. Git 和发布
-
-- `main` 保持可构建；功能使用短期分支或 Pull Request。
-- 不强制推送、不覆盖已发布 tag、不把未确认范围直接合并到主分支。
-- 使用 Conventional Commits；一个提交表达一个逻辑变化。
-- 只有用户验收通过并满足 Definition of Done 后，才能推送提交、创建 SemVer tag 和 GitHub Release。
-- Release 构建 Windows 和 macOS 产物，前期不签名，但必须生成 SHA-256；以后再单独接入签名和公证。
-- 发布流程必须从 tag 对应提交构建，并记录产物、哈希、构建环境、已知限制和回滚方式。
-
-## 10. 依赖和安全
-
-- 新增依赖前记录用途、版本、许可证、原生模块、网络行为和替换成本。
-- 不在 Renderer、Main、服务端或 Worker 中执行没有权限边界的任意脚本。
-- 下载的浏览器内核必须经过 manifest、平台/架构和 SHA-256 校验后才能执行。
-- 代理凭据、Cookie、登录会话和模型密钥默认不上传团队服务；日志和诊断必须脱敏。
-- 指纹、自动化和数据采集功能只面向用户授权场景，不把绕过验证码、访问控制、风控或平台限制作为产品承诺。
-
-## 11. 对其他设备和对话的要求
-
-任何新的设备、对话或协作者开始工作时，必须先执行：
-
-1. 读取根目录 `AGENTS.md`。
-2. 读取 `docs/development-process.md`、`docs/project-plan.md`、`docs/technology-stack.md` 和当前版本文档。
-3. 查看 `git status`、当前分支、最近提交和远程状态。
-4. 确认当前版本闸门状态，不能假设聊天中的“准备开始”就是执行文档已确认。
-5. 将新的决定、问题答案和变更写回仓库文档。
-
-无法确认当前阶段、执行文档修订号或用户授权范围时，停止代码修改，先补充文档和问题确认。
+- `README.md` 面向项目访问者；`docs/project-plan.md` 维护产品与架构路线；`docs/technology-stack.md` 维护技术栈和库选型；本文件只维护开发规范。
+- 新增文档前先确认现有入口是否可以承载内容，避免为同一主题创建互相冲突的“最终版本”。
+- 删除、移动或重命名文件时同步清理链接、脚本、CI 和目录说明。
+- 规划路线、技术选型或开发规范发生实质变化时，在同一个 Pull Request 中写明原因、影响和迁移方式。

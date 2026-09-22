@@ -1,8 +1,10 @@
 import * as React from 'react'
 import {
   CheckCircle2Icon,
+  CpuIcon,
   CircleAlertIcon,
   GlobeIcon,
+  MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -28,17 +30,8 @@ import { defaultCommonEnvironmentConfig, protocolVersion } from '@contextweave/c
 import { AppSidebar } from '@/components/app-sidebar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -72,6 +65,14 @@ import {
 } from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -326,6 +327,8 @@ function EnvironmentPage({
   const [name, setName] = React.useState('我的浏览环境')
   const [kernelId, setKernelId] = React.useState('standard-chromium')
   const [proxyId, setProxyId] = React.useState('')
+  const [search, setSearch] = React.useState('')
+  const [statusFilter, setStatusFilter] = React.useState('all')
   const [createOpen, setCreateOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<EnvironmentSummary>()
   const [editName, setEditName] = React.useState('')
@@ -387,6 +390,19 @@ function EnvironmentPage({
   }
   const canManage = (environment: EnvironmentSummary) =>
     !['starting', 'running', 'stopping', 'needs-recovery'].includes(environment.status)
+  const visibleEnvironments = React.useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+    return environments.filter((environment) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [environment.name, environment.kernelId, environment.proxyId ?? '']
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedSearch)
+      const matchesStatus = statusFilter === 'all' || environment.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [environments, search, statusFilter])
   const start = () =>
     selected && perform(() => window.contextweave.environment.start(selected.id), '环境已启动')
   const stop = () =>
@@ -413,140 +429,200 @@ function EnvironmentPage({
       })
   }
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">浏览环境</h1>
-        <p className="text-sm text-muted-foreground">
-          为每个工作流保留独立的浏览器用户目录、内核和代理配置。
-        </p>
-      </section>
-      <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>环境列表</CardTitle>
-            <CardDescription>
-              {environments.length
-                ? `${environments.length} 个本地环境`
-                : '还没有环境，先创建一个开始验证。'}
-            </CardDescription>
-            <CardAction>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
-                  <RefreshCwIcon />
-                  刷新
-                </Button>
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                  <PlusIcon />
-                  新建环境
-                </Button>
-              </div>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            {environments.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>环境</TableHead>
-                    <TableHead>内核</TableHead>
-                    <TableHead>代理</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {environments.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      data-state={selectedEnvironment === item.id ? 'selected' : undefined}
-                      className="cursor-pointer"
-                      onClick={() => onSelect(item.id)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-                            <GlobeIcon className="size-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{item.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {item.platform}/{item.arch}
-                            </div>
-                          </div>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 pb-3">
+        <Badge variant="secondary">{environments.length} 个环境</Badge>
+        {selected && (
+          <span className="text-xs text-muted-foreground">当前选择：{selected.name}</span>
+        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Input
+            className="h-8 w-44"
+            placeholder="搜索环境"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="搜索环境"
+          />
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? 'all')}>
+            <SelectTrigger className="h-8 w-28">
+              <SelectValue placeholder="状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="all">全部状态</SelectItem>
+                {Object.keys({
+                  created: true,
+                  ready: true,
+                  starting: true,
+                  running: true,
+                  stopping: true,
+                  stopped: true,
+                  error: true,
+                  'needs-recovery': true,
+                }).map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {statusLabel(status as EnvironmentSummary['status'])}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+            <RefreshCwIcon data-icon="inline-start" />
+            刷新
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <PlusIcon data-icon="inline-start" />
+            新建环境
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        {environments.length && visibleEnvironments.length ? (
+          <Table>
+            <TableHeader className="bg-muted/30 [&_tr]:border-0">
+              <TableRow className="border-0">
+                <TableHead>环境</TableHead>
+                <TableHead>内核</TableHead>
+                <TableHead>代理</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleEnvironments.map((item) => (
+                <TableRow
+                  key={item.id}
+                  data-state={selectedEnvironment === item.id ? 'selected' : undefined}
+                  className="cursor-pointer border-border/50"
+                  onClick={() => onSelect(item.id)}
+                >
+                  <TableCell>
+                    <div className="flex cursor-pointer items-center gap-2">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <GlobeIcon className="size-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{item.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.platform}/{item.arch}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {item.kernelId} · {item.kernelVersion}
-                      </TableCell>
-                      <TableCell>
-                        {item.proxyId
-                          ? (proxies.find((proxy) => proxy.proxyId === item.proxyId)?.host ??
-                            '已绑定')
-                          : '未使用'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(item.status)}>
-                          {statusLabel(item.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {item.kernelId} · {item.kernelVersion}
+                  </TableCell>
+                  <TableCell>
+                    {item.proxyId
+                      ? (proxies.find((proxy) => proxy.proxyId === item.proxyId)?.host ?? '已绑定')
+                      : '未使用'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
                           <Button
                             size="icon-sm"
                             variant="ghost"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={'打开' + item.name + '的操作菜单'}
+                          />
+                        }
+                      >
+                        <MoreHorizontalIcon />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
                             disabled={!canManage(item)}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              openEdit(item)
-                            }}
-                            aria-label={`编辑${item.name}`}
+                            onClick={() => openEdit(item)}
                           >
                             <PencilIcon />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
+                            编辑
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
                             disabled={!canManage(item)}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setDeleteTarget(item)
-                            }}
-                            aria-label={`删除${item.name}`}
+                            onClick={() => setDeleteTarget(item)}
                           >
                             <Trash2Icon />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Empty className="min-h-48 border">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <GlobeIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>没有环境记录</EmptyTitle>
-                  <EmptyDescription>创建一个独立的本地浏览环境开始验证。</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </CardContent>
-        </Card>
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : environments.length ? (
+          <Empty className="min-h-48 bg-muted/30">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <GlobeIcon />
+              </EmptyMedia>
+              <EmptyTitle>没有匹配的环境</EmptyTitle>
+              <EmptyDescription>调整搜索或状态筛选条件后重试。</EmptyDescription>
+            </EmptyHeader>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearch('')
+                setStatusFilter('all')
+              }}
+            >
+              重置筛选
+            </Button>
+          </Empty>
+        ) : (
+          <Empty className="min-h-48 bg-muted/30">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <GlobeIcon />
+              </EmptyMedia>
+              <EmptyTitle>暂无环境</EmptyTitle>
+              <EmptyDescription>创建一个本地环境后，它会出现在这里。</EmptyDescription>
+            </EmptyHeader>
+            <Button onClick={() => setCreateOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              新建环境
+            </Button>
+          </Empty>
+        )}
       </div>
+
       {selected && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{selected.name}</CardTitle>
-            <CardDescription>
-              {selected.id} · 最近更新 {new Date(selected.updatedAt).toLocaleString()}
-            </CardDescription>
-            <CardAction>
-              <Badge variant={statusVariant(selected.status)}>{statusLabel(selected.status)}</Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/60 pt-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <GlobeIcon />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="truncate font-medium">{selected.name}</div>
+                <Badge variant={statusVariant(selected.status)}>
+                  {statusLabel(selected.status)}
+                </Badge>
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {selected.kernelId} · {selected.kernelVersion} ·{' '}
+                {selected.proxyId
+                  ? (proxies.find((proxy) => proxy.proxyId === selected.proxyId)?.host ??
+                    '已绑定代理')
+                  : '未使用代理'}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => void start()}
               disabled={
@@ -555,7 +631,7 @@ function EnvironmentPage({
                 selected.status === 'stopping'
               }
             >
-              <RocketIcon />
+              <RocketIcon data-icon="inline-start" />
               启动
             </Button>
             <Button
@@ -563,7 +639,7 @@ function EnvironmentPage({
               onClick={() => void stop()}
               disabled={selected.status !== 'running' && selected.status !== 'starting'}
             >
-              <SquareIcon />
+              <SquareIcon data-icon="inline-start" />
               停止
             </Button>
             <Button
@@ -578,11 +654,11 @@ function EnvironmentPage({
               onClick={() => void smoke()}
               disabled={selected.status !== 'running'}
             >
-              <CheckCircle2Icon />
+              <CheckCircle2Icon data-icon="inline-start" />
               Worker Smoke
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
@@ -590,19 +666,19 @@ function EnvironmentPage({
             <DialogTitle>新建环境</DialogTitle>
             <DialogDescription>配置后将创建独立的本地用户目录。</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="environment-name">名称</Label>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="environment-name">名称</FieldLabel>
               <Input
                 id="environment-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>浏览器内核</Label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-kernel">浏览器内核</FieldLabel>
               <Select value={kernelId} onValueChange={(value) => setKernelId(value ?? '')}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="environment-kernel" className="w-full">
                   <SelectValue placeholder="选择内核" />
                 </SelectTrigger>
                 <SelectContent>
@@ -615,14 +691,14 @@ function EnvironmentPage({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>代理（可选）</Label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-proxy">代理（可选）</FieldLabel>
               <Select
                 value={proxyId || 'none'}
                 onValueChange={(value) => setProxyId(value === 'none' ? '' : (value ?? ''))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="environment-proxy" className="w-full">
                   <SelectValue placeholder="不使用代理" />
                 </SelectTrigger>
                 <SelectContent>
@@ -636,8 +712,8 @@ function EnvironmentPage({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               取消
@@ -655,22 +731,22 @@ function EnvironmentPage({
             <DialogTitle>编辑环境</DialogTitle>
             <DialogDescription>内核和用户目录属于环境身份，编辑时保持不变。</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-environment-name">名称</Label>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="edit-environment-name">名称</FieldLabel>
               <Input
                 id="edit-environment-name"
                 value={editName}
                 onChange={(event) => setEditName(event.target.value)}
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>代理（可选）</Label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-environment-proxy">代理（可选）</FieldLabel>
               <Select
                 value={editProxyId || 'none'}
                 onValueChange={(value) => setEditProxyId(value === 'none' ? '' : (value ?? ''))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="edit-environment-proxy" className="w-full">
                   <SelectValue placeholder="不使用代理" />
                 </SelectTrigger>
                 <SelectContent>
@@ -684,8 +760,8 @@ function EnvironmentPage({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(undefined)}>
               取消
@@ -721,7 +797,7 @@ function EnvironmentPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }
 
@@ -743,6 +819,7 @@ function ProxyPage({
   const [port, setPort] = React.useState('8080')
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [search, setSearch] = React.useState('')
   const save = async () => {
     if (saving) return
     setSaving(true)
@@ -790,83 +867,122 @@ function ProxyPage({
     setDeleteTarget(undefined)
     setSaving(false)
   }
+  const visibleProxies = React.useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+    if (!normalizedSearch) return proxies
+    return proxies.filter((proxy) =>
+      [proxy.type, proxy.host, proxy.port, proxy.username ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch),
+    )
+  }, [proxies, search])
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">代理管理</h1>
-        <p className="text-sm text-muted-foreground">
-          代理密码不进入 SQLite 或浏览器命令行，只通过受限的安全存储传递。
-        </p>
-      </section>
-      <Card>
-        <CardHeader>
-          <CardTitle>已保存代理</CardTitle>
-          <CardDescription>{proxies.length} 个配置</CardDescription>
-          <CardAction>
-            <Button size="sm" onClick={add}>
-              <PlusIcon />
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 pb-3">
+        <Badge variant="secondary">{proxies.length} 个代理</Badge>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Input
+            className="h-8 w-44"
+            placeholder="搜索代理"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="搜索代理"
+          />
+          <Button size="sm" onClick={add}>
+            <PlusIcon data-icon="inline-start" />
+            新建代理
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        {proxies.length && visibleProxies.length ? (
+          <Table>
+            <TableHeader className="bg-muted/30 [&_tr]:border-0">
+              <TableRow className="border-0">
+                <TableHead>类型</TableHead>
+                <TableHead>地址</TableHead>
+                <TableHead>认证</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleProxies.map((proxy) => (
+                <TableRow key={proxy.proxyId} className="border-border/50">
+                  <TableCell>
+                    <Badge variant="outline">{proxy.type.toUpperCase()}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {proxy.host}:{proxy.port}
+                  </TableCell>
+                  <TableCell>{proxy.username ? '用户 ' + proxy.username : '无认证'}</TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={'打开' + proxy.host + '的操作菜单'}
+                          />
+                        }
+                      >
+                        <MoreHorizontalIcon />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onClick={() => edit(proxy)}>
+                            <PencilIcon />
+                            编辑
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteTarget(proxy)}
+                          >
+                            <Trash2Icon />
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : proxies.length ? (
+          <Empty className="min-h-48 bg-muted/30">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <SlidersHorizontalIcon />
+              </EmptyMedia>
+              <EmptyTitle>没有匹配的代理</EmptyTitle>
+              <EmptyDescription>调整搜索条件后重试。</EmptyDescription>
+            </EmptyHeader>
+            <Button variant="outline" onClick={() => setSearch('')}>
+              清除搜索
+            </Button>
+          </Empty>
+        ) : (
+          <Empty className="min-h-48 bg-muted/30">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <SlidersHorizontalIcon />
+              </EmptyMedia>
+              <EmptyTitle>暂无代理</EmptyTitle>
+              <EmptyDescription>添加代理后，可以在环境创建或编辑时绑定。</EmptyDescription>
+            </EmptyHeader>
+            <Button onClick={add}>
+              <PlusIcon data-icon="inline-start" />
               新建代理
             </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          {proxies.length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>地址</TableHead>
-                  <TableHead>认证</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {proxies.map((proxy) => (
-                  <TableRow key={proxy.proxyId}>
-                    <TableCell>
-                      <Badge variant="outline">{proxy.type.toUpperCase()}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {proxy.host}:{proxy.port}
-                    </TableCell>
-                    <TableCell>{proxy.username ? `用户 ${proxy.username}` : '无认证'}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          onClick={() => edit(proxy)}
-                          aria-label={`编辑${proxy.host}`}
-                        >
-                          <PencilIcon />
-                        </Button>
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          onClick={() => setDeleteTarget(proxy)}
-                          aria-label={`删除${proxy.host}`}
-                        >
-                          <Trash2Icon />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <Empty className="min-h-48 border">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <SlidersHorizontalIcon />
-                </EmptyMedia>
-                <EmptyTitle>暂无代理</EmptyTitle>
-                <EmptyDescription>添加代理后，可以在环境创建或编辑时绑定。</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </CardContent>
-      </Card>
+          </Empty>
+        )}
+      </div>
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {
@@ -881,14 +997,14 @@ function ProxyPage({
               HTTP、HTTPS 或 SOCKS5。密码仅保存在系统安全存储中。
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2">
-              <Label>类型</Label>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="proxy-type">类型</FieldLabel>
               <Select
                 value={type}
                 onValueChange={(value) => setType((value ?? 'http') as ProxyType)}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="proxy-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -899,37 +1015,47 @@ function ProxyPage({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
             <div className="grid grid-cols-[1fr_110px] gap-2">
-              <div className="flex flex-col gap-2">
-                <Label>主机</Label>
-                <Input value={host} onChange={(event) => setHost(event.target.value)} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>端口</Label>
+              <Field>
+                <FieldLabel htmlFor="proxy-host">主机</FieldLabel>
                 <Input
+                  id="proxy-host"
+                  value={host}
+                  onChange={(event) => setHost(event.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="proxy-port">端口</FieldLabel>
+                <Input
+                  id="proxy-port"
                   type="number"
                   min="1"
                   max="65535"
                   value={port}
                   onChange={(event) => setPort(event.target.value)}
                 />
-              </div>
+              </Field>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>用户名（可选）</Label>
-              <Input value={username} onChange={(event) => setUsername(event.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>密码（可选）</Label>
+            <Field>
+              <FieldLabel htmlFor="proxy-username">用户名（可选）</FieldLabel>
               <Input
+                id="proxy-username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="proxy-password">密码（可选）</FieldLabel>
+              <Input
+                id="proxy-password"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder={editing ? '留空表示保持原密码' : ''}
               />
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
@@ -967,7 +1093,7 @@ function ProxyPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }
 
@@ -988,73 +1114,72 @@ function KernelPage({
     } else onNotice({ kind: 'error', message: result.message })
   }
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">内核目录</h1>
-        <p className="text-sm text-muted-foreground">
-          所有内核都通过 manifest、平台架构和 SHA-256 校验后才允许执行。
-        </p>
-      </section>
-      <div className="grid gap-4 md:grid-cols-2">
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3 border-b border-border/60 pb-3">
+        <Badge variant="secondary">{kernels.length} 个内核</Badge>
+        <span className="text-xs text-muted-foreground">本机可用与已配置内核</span>
+      </div>
+      <div className="divide-y divide-border/60">
         {kernels.map((kernel) => (
-          <Card key={kernel.id}>
-            <CardHeader>
-              <CardTitle>{kernel.label}</CardTitle>
-              <CardDescription>
-                {kernel.id} · {kernel.version} · {kernel.platform}/{kernel.arch}
-              </CardDescription>
-              <CardAction>
-                <Badge
-                  variant={
-                    kernel.status === 'available'
-                      ? 'default'
-                      : kernel.status === 'not-configured'
-                        ? 'destructive'
-                        : 'secondary'
-                  }
-                >
-                  {kernel.status === 'available'
-                    ? '可用'
-                    : kernel.status === 'installed'
-                      ? '已安装'
-                      : '未配置'}
-                </Badge>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                {Object.entries(kernel.capabilities).map(([key, value]) => (
-                  <div key={key} className="flex items-center gap-1">
-                    <CheckCircle2Icon
-                      className={value ? 'text-primary' : 'text-muted-foreground/40'}
-                    />
-                    {key}
-                  </div>
-                ))}
+          <div key={kernel.id} className="flex flex-wrap items-center gap-4 py-4">
+            <div className="flex min-w-56 flex-1 items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <CpuIcon />
               </div>
-              {kernel.executablePath && (
-                <div
-                  className="truncate text-xs text-muted-foreground"
-                  title={kernel.executablePath}
-                >
-                  {kernel.executablePath}
+              <div className="min-w-0">
+                <div className="truncate font-medium">{kernel.label}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {kernel.id} · {kernel.version} · {kernel.platform}/{kernel.arch}
                 </div>
-              )}
-            </CardContent>
-            <CardFooter>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant={
+                  kernel.status === 'available'
+                    ? 'default'
+                    : kernel.status === 'not-configured'
+                      ? 'destructive'
+                      : 'secondary'
+                }
+              >
+                {kernel.status === 'available'
+                  ? '可用'
+                  : kernel.status === 'installed'
+                    ? '已安装'
+                    : '未配置'}
+              </Badge>
               {kernel.packageAvailable ? (
-                <Button onClick={() => void install(kernel.id)}>
-                  <RocketIcon />
+                <Button size="sm" onClick={() => void install(kernel.id)}>
+                  <RocketIcon data-icon="inline-start" />
                   安装/更新
                 </Button>
               ) : (
-                <span className="text-xs text-muted-foreground">等待已确认的内核来源和哈希</span>
+                <span className="text-xs text-muted-foreground">来源和哈希待确认</span>
               )}
-            </CardFooter>
-          </Card>
+            </div>
+            <div className="flex w-full flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+              {Object.entries(kernel.capabilities).map(([key, value]) => (
+                <span key={key} className="flex items-center gap-1">
+                  <CheckCircle2Icon
+                    className={value ? 'text-primary' : 'text-muted-foreground/40'}
+                  />
+                  {key}
+                </span>
+              ))}
+            </div>
+            {kernel.executablePath && (
+              <div
+                className="w-full truncate text-xs text-muted-foreground"
+                title={kernel.executablePath}
+              >
+                {kernel.executablePath}
+              </div>
+            )}
+          </div>
         ))}
       </div>
-    </>
+    </div>
   )
 }
 
@@ -1081,134 +1206,133 @@ function SettingsPage({
   const update = <K extends keyof ThemeConfig>(key: K, value: ThemeConfig[K]) =>
     setTheme({ [key]: value } as Pick<ThemeConfig, K>)
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">设置</h1>
-        <p className="text-sm text-muted-foreground">
-          主题偏好会版本化存储在本地 SQLite，通过受限 Preload API 恢复。
-        </p>
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.45fr)]">
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">外观</div>
+            <div className="text-xs text-muted-foreground">调整颜色、密度和侧栏行为。</div>
+          </div>
+          <Button variant="outline" size="sm" onClick={resetTheme}>
+            恢复默认
+          </Button>
+        </div>
+        <div className="grid gap-x-6 gap-y-5 border-y border-border/60 py-5 sm:grid-cols-2">
+          <ThemeSelect
+            id="theme-mode"
+            label="模式"
+            value={theme.mode}
+            options={[
+              ['system', '跟随系统'],
+              ['light', '浅色'],
+              ['dark', '深色'],
+            ]}
+            onChange={(value) => update('mode', value as ThemeMode)}
+          />
+          <ThemeSelect
+            id="theme-preset"
+            label="颜色预设"
+            value={theme.preset}
+            options={[
+              ['signal-weave', '织境信号'],
+              ['graphite', '石墨'],
+              ['ocean', '深海'],
+              ['amber', '琥珀'],
+            ]}
+            onChange={(value) => update('preset', value as ThemePreset)}
+          />
+          <ThemeSelect
+            id="theme-radius"
+            label="圆角"
+            value={theme.radius}
+            options={[
+              ['none', '无圆角'],
+              ['sm', '小'],
+              ['md', '标准'],
+              ['lg', '大'],
+              ['xl', '特大'],
+            ]}
+            onChange={(value) => update('radius', value as ThemeRadius)}
+          />
+          <ThemeSelect
+            id="theme-density"
+            label="密度"
+            value={theme.density}
+            options={[
+              ['compact', '紧凑'],
+              ['comfortable', '舒适'],
+              ['spacious', '宽松'],
+            ]}
+            onChange={(value) => update('density', value as ThemeDensity)}
+          />
+          <ThemeSelect
+            id="theme-font"
+            label="字体"
+            value={theme.font}
+            options={[
+              ['geist', 'Geist'],
+              ['system', '系统无衬线'],
+              ['serif', '衬线'],
+              ['mono', '等宽'],
+            ]}
+            onChange={(value) => update('font', value as ThemeFont)}
+          />
+          <ThemeSelect
+            id="theme-sidebar-layout"
+            label="侧栏布局"
+            value={theme.sidebarLayout}
+            options={[
+              ['sidebar', '标准侧栏'],
+              ['inset', '内嵌'],
+              ['floating', '浮动'],
+              ['offcanvas', '抽屉'],
+            ]}
+            onChange={(value) => update('sidebarLayout', value as SidebarLayout)}
+          />
+        </div>
       </section>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>主题</CardTitle>
-            <CardDescription>预览会即时应用，重启后自动恢复。</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <ThemeSelect
-              label="模式"
-              value={theme.mode}
-              options={[
-                ['system', '跟随系统'],
-                ['light', '浅色'],
-                ['dark', '深色'],
-              ]}
-              onChange={(value) => update('mode', value as ThemeMode)}
-            />
-            <ThemeSelect
-              label="颜色预设"
-              value={theme.preset}
-              options={[
-                ['signal-weave', '织境信号'],
-                ['graphite', '石墨'],
-                ['ocean', '深海'],
-                ['amber', '琥珀'],
-              ]}
-              onChange={(value) => update('preset', value as ThemePreset)}
-            />
-            <ThemeSelect
-              label="圆角"
-              value={theme.radius}
-              options={[
-                ['none', '无圆角'],
-                ['sm', '小'],
-                ['md', '标准'],
-                ['lg', '大'],
-                ['xl', '特大'],
-              ]}
-              onChange={(value) => update('radius', value as ThemeRadius)}
-            />
-            <ThemeSelect
-              label="密度"
-              value={theme.density}
-              options={[
-                ['compact', '紧凑'],
-                ['comfortable', '舒适'],
-                ['spacious', '宽松'],
-              ]}
-              onChange={(value) => update('density', value as ThemeDensity)}
-            />
-            <ThemeSelect
-              label="字体"
-              value={theme.font}
-              options={[
-                ['geist', 'Geist'],
-                ['system', '系统无衬线'],
-                ['serif', '衬线'],
-                ['mono', '等宽'],
-              ]}
-              onChange={(value) => update('font', value as ThemeFont)}
-            />
-            <ThemeSelect
-              label="侧栏布局"
-              value={theme.sidebarLayout}
-              options={[
-                ['sidebar', '标准侧栏'],
-                ['inset', '内嵌'],
-                ['floating', '浮动'],
-                ['offcanvas', '抽屉'],
-              ]}
-              onChange={(value) => update('sidebarLayout', value as SidebarLayout)}
-            />
-          </CardContent>
-          <CardFooter className="justify-end">
-            <Button variant="outline" onClick={resetTheme}>
-              恢复默认主题
-            </Button>
-          </CardFooter>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>本地运行时</CardTitle>
-            <CardDescription>诊断信息用于确认 v0.1 环境边界。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {appInfo && (
-              <div className="grid grid-cols-2 gap-2">
-                <span className="text-muted-foreground">版本</span>
-                <span>{appInfo.version}</span>
-                <span className="text-muted-foreground">平台</span>
-                <span>
-                  {appInfo.platform}/{appInfo.arch}
-                </span>
-                <span className="text-muted-foreground">安全存储</span>
-                <span className="flex items-center gap-1">
-                  {appInfo.secureStorageAvailable ? (
-                    <CheckCircle2Icon className="text-primary" />
-                  ) : (
-                    <CircleAlertIcon className="text-destructive" />
-                  )}
-                  {appInfo.secureStorageAvailable ? '可用' : '不可用'}
-                </span>
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <div className="text-sm font-semibold">本地运行时</div>
+          <div className="text-xs text-muted-foreground">用于确认当前设备和安全存储边界。</div>
+        </div>
+        <div className="flex flex-col gap-3 border-y border-border/60 py-5 text-sm">
+          {appInfo && (
+            <div className="grid grid-cols-2 gap-2">
+              <span className="text-muted-foreground">版本</span>
+              <span>{appInfo.version}</span>
+              <span className="text-muted-foreground">平台</span>
+              <span>
+                {appInfo.platform}/{appInfo.arch}
+              </span>
+              <span className="text-muted-foreground">安全存储</span>
+              <span className="flex items-center gap-1">
+                {appInfo.secureStorageAvailable ? (
+                  <CheckCircle2Icon className="text-primary" />
+                ) : (
+                  <CircleAlertIcon className="text-destructive" />
+                )}
+                {appInfo.secureStorageAvailable ? '可用' : '不可用'}
+              </span>
+            </div>
+          )}
+          {paths && (
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+              <div className="truncate" title={paths.dataRoot}>
+                数据目录：{paths.dataRoot}
               </div>
-            )}
-            {paths && (
-              <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
-                <div className="truncate" title={paths.dataRoot}>
-                  数据目录：{paths.dataRoot}
-                </div>
-                <div className="truncate" title={paths.environmentRoot}>
-                  环境目录：{paths.environmentRoot}
-                </div>
-                <div className="truncate" title={paths.kernelRoot}>
-                  内核目录：{paths.kernelRoot}
-                </div>
+              <div className="truncate" title={paths.environmentRoot}>
+                环境目录：{paths.environmentRoot}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </>
+              <div className="truncate" title={paths.kernelRoot}>
+                内核目录：{paths.kernelRoot}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -1224,50 +1348,53 @@ function AboutPage({
   }
 }) {
   return (
-    <>
-      <section className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">关于 ContextWeave</h1>
-        <p className="text-sm text-muted-foreground">个人本地浏览环境工作台。</p>
-      </section>
-      <Card>
-        <CardHeader>
-          <CardTitle>{appInfo?.name ?? 'ContextWeave'}</CardTitle>
-          <CardDescription>面向授权场景的多内核浏览器环境管理工具。</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm">
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">版本</span>
-            <span>{appInfo?.version ?? '开发版本'}</span>
+    <div className="max-w-2xl">
+      <div className="flex flex-col gap-5 border-y border-border/60 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <GlobeIcon />
           </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">平台</span>
-            <span>{appInfo ? `${appInfo.platform}/${appInfo.arch}` : '本地桌面端'}</span>
+          <div className="min-w-0">
+            <div className="font-heading text-lg font-semibold">
+              {appInfo?.name ?? 'ContextWeave'}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              面向授权场景的多内核浏览器环境管理工具。
+            </div>
           </div>
-          <p className="pt-2 text-xs text-muted-foreground">
-            v0.1 仅提供个人本地环境、代理、内核和运行验证能力。
-          </p>
-        </CardContent>
-      </Card>
-    </>
+        </div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 border-y border-border/60 py-4 text-sm">
+          <span className="text-muted-foreground">版本</span>
+          <span>{appInfo?.version ?? '开发版本'}</span>
+          <span className="text-muted-foreground">平台</span>
+          <span>{appInfo ? appInfo.platform + '/' + appInfo.arch : '本地桌面端'}</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          v0.1 仅提供个人本地环境、代理、内核和运行验证能力。
+        </p>
+      </div>
+    </div>
   )
 }
 
 function ThemeSelect({
+  id,
   label,
   value,
   options,
   onChange,
 }: {
+  id: string
   label: string
   value: string
   options: [string, string][]
   onChange: (value: string) => void
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <Label>{label}</Label>
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger id={id} className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -1280,7 +1407,7 @@ function ThemeSelect({
           </SelectGroup>
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   )
 }
 
@@ -1292,56 +1419,45 @@ function ActivityPage({
   environments: EnvironmentSummary[]
 }) {
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">运行记录</h1>
-        <p className="text-sm text-muted-foreground">
-          Worker、启动和恢复事件会在后续版本接入完整审计视图。
-        </p>
-      </section>
-      <Card>
-        <CardHeader>
-          <CardTitle>最近一次 Worker Smoke</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {result ? (
-            <div className="rounded-lg bg-muted p-4 text-sm">{result}</div>
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              在环境页面启动一个环境并运行 Worker Smoke 后，这里会显示结果。
-            </div>
-          )}
-        </CardContent>
-        <CardFooter className="text-xs text-muted-foreground">
-          当前环境数量：{environments.length}
-        </CardFooter>
-      </Card>
-    </>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 pb-3">
+        <Badge variant="secondary">最近一次 Worker Smoke</Badge>
+        <span className="text-xs text-muted-foreground">当前环境数量：{environments.length}</span>
+      </div>
+      <div className="border-y border-border/60 py-5">
+        {result ? (
+          <div className="rounded-lg bg-muted p-4 text-sm">{result}</div>
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            在环境页面启动一个环境并运行 Worker Smoke 后，这里会显示结果。
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 function FingerprintPage() {
   return (
-    <>
-      <section className="space-y-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">指纹策略</h1>
-        <p className="text-sm text-muted-foreground">
-          v0.1 只提供经过 manifest 和 adapter 约束的最小环境配置。
-        </p>
-      </section>
-      <Card>
-        <CardHeader>
-          <CardTitle>策略边界</CardTitle>
-          <CardDescription>浏览器内核参数不会散落在页面代码中。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>每个环境记录语言、时区、窗口、WebRTC 和代理策略，并由 Kernel Adapter 在启动前校验。</p>
-          <p>
-            fingerprint-chromium 当前仅注册适配器和参数 schema，待确认可分发来源、许可证和 SHA-256
-            后再启用安装。
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3 border-b border-border/60 pb-3">
+        <Badge variant="secondary">策略边界</Badge>
+        <span className="text-xs text-muted-foreground">配置由 Kernel Adapter 在启动前校验</span>
+      </div>
+      <div className="divide-y divide-border/60 border-y border-border/60">
+        <div className="flex flex-col gap-1 py-4 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+          <div className="font-medium">环境配置</div>
+          <p className="max-w-xl text-muted-foreground">
+            每个环境记录语言、时区、窗口、WebRTC 和代理策略。
           </p>
-        </CardContent>
-      </Card>
-    </>
+        </div>
+        <div className="flex flex-col gap-1 py-4 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+          <div className="font-medium">fingerprint-chromium</div>
+          <p className="max-w-xl text-muted-foreground">
+            当前仅注册适配器和参数 schema，待确认可分发来源、许可证和 SHA-256 后再启用安装。
+          </p>
+        </div>
+      </div>
+    </div>
   )
 }
 

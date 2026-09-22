@@ -55,14 +55,15 @@
 3. `docs/project-plan.md`：产品目标、阶段路线、架构边界和 v0.1-v1.0 规划。
 4. `docs/technology-stack.md`：技术栈、库、协议、数据、安全和长期替换边界。
 5. `docs/simprint-review-and-product-plan.md`：Simprint 审阅结论和后期工作流/业务规划。
-6. `docs/versions/v0.1-analysis.md`：当前版本分析和已确认的 v0.1 决策。
-7. `docs/versions/v0.1-execution-r6.md`：当前版本执行基线；用户未确认前只能审阅和维护文档。
-8. `docs/progress/v0.1.md`：当前版本状态、证据和阻塞项。
-9. `docs/adr/0001-local-sqlite-runtime.md`：v0.1 SQLite 运行时实现决策。
-10. `docs/adr/0002-proxy-auth-transport.md`：v0.1 代理认证凭据传输边界。
-11. `docs/compatibility-matrix.md`：v0.1 平台、运行时和内核支持矩阵。
-12. `docs/risk-register.md`：v0.1 风险登记和复查条件。
-13. `docs/README.md`：文档索引、状态和维护说明。
+6. `docs/research/ui-crud-settings-patterns.md`：B 端 CRUD、指纹环境管理和设置页 GitHub 源码研究。
+7. `docs/versions/v0.1-analysis.md`：当前版本分析和已确认的 v0.1 决策。
+8. `docs/versions/v0.1-execution-r6.md`：当前版本执行基线；用户未确认前只能审阅和维护文档。
+9. `docs/progress/v0.1.md`：当前版本状态、证据和阻塞项。
+10. `docs/adr/0001-local-sqlite-runtime.md`：v0.1 SQLite 运行时实现决策。
+11. `docs/adr/0002-proxy-auth-transport.md`：v0.1 代理认证凭据传输边界。
+12. `docs/compatibility-matrix.md`：v0.1 平台、运行时和内核支持矩阵。
+13. `docs/risk-register.md`：v0.1 风险登记和复查条件。
+14. `docs/README.md`：文档索引、状态和维护说明。
 
 当前仓库文档清单：
 
@@ -74,6 +75,7 @@
 | [`docs/project-plan.md`](docs/project-plan.md) | 产品总体规划和架构方案 | 生效 |
 | [`docs/technology-stack.md`](docs/technology-stack.md) | 技术栈与长期库选型 | 生效 |
 | [`docs/simprint-review-and-product-plan.md`](docs/simprint-review-and-product-plan.md) | Simprint 审阅和后期产品规划 | 生效 |
+| [`docs/research/ui-crud-settings-patterns.md`](docs/research/ui-crud-settings-patterns.md) | B 端 CRUD、指纹环境管理和设置页 GitHub 源码研究 | 分析中 |
 | [`docs/versions/v0.1-analysis.md`](docs/versions/v0.1-analysis.md) | v0.1 分析、问题和决策 | 已完成，执行文档 r6 已确认 |
 | [`docs/versions/v0.1-execution-r6.md`](docs/versions/v0.1-execution-r6.md) | v0.1 实施范围、任务、测试和验收 | 已确认，开发中 |
 | [`docs/versions/v0.1-execution-r5.md`](docs/versions/v0.1-execution-r5.md) | v0.1 实施范围、任务、测试和验收（历史基线） | 已归档，替代文档为 r6 |

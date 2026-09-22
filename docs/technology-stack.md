@@ -144,7 +144,8 @@ v0.1 的正式 `pnpm check` 门禁为 Prettier（本次维护的 Renderer/Main/P
 推荐：
 
 - **React**：页面和组件。
-- **React Router (`react-router`)**：桌面端页面路由；当前官网声明式安装使用统一的 `react-router` 包，不把业务状态塞进 URL。
+- **TanStack React Router (`@tanstack/react-router`)**：桌面端文件路由、类型化 params/search、loader 和权限前置校验。
+- v0.1 当前使用 TanStack Router File-based Routing：通过 `@tanstack/router-plugin/vite` 生成 `src/routeTree.gen.ts`，Renderer 使用 `createRouter` + `RouterProvider`，Electron 打包页面使用 `createHashHistory`，避免 `file://` 路径回退问题。菜单只负责导航到 route，不再维护手工 `page` 状态。
 - **shadcn/ui + Base UI**：当前官网默认的可复制、可调整无障碍组件基线；Radix 作为兼容现有项目的可选基础，不作为 ContextWeave v0.1 的 UI primitive。
 - **shadcn CLI 当前 `cn` 工具**：组件源码使用 CLI 当前生成的 `cn` 依赖和 Tailwind class 合并方式；不要再单独维护一套旧的 `cn` 工具实现。
 - **Tailwind CSS**：布局和主题。

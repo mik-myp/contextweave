@@ -1,3 +1,5 @@
+import { Link, useRouterState } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,
@@ -14,20 +16,13 @@ import { ChevronRightIcon } from 'lucide-react'
 type NavItem = {
   title: string
   url: string
-  icon?: React.ReactNode
+  icon?: ReactNode
   isActive?: boolean
   items?: { title: string; url: string }[]
 }
 
-export function NavMain({
-  items,
-  activeItem,
-  onSelect,
-}: {
-  items: NavItem[]
-  activeItem?: string
-  onSelect?: (title: string) => void
-}) {
+export function NavMain({ items }: { items: NavItem[] }) {
+  const location = useRouterState({ select: (state) => state.location })
   const renderItem = (item: NavItem) =>
     item.items?.length ? (
       <Collapsible
@@ -38,11 +33,7 @@ export function NavMain({
       >
         <CollapsibleTrigger
           render={
-            <SidebarMenuButton
-              tooltip={item.title}
-              isActive={activeItem === item.title}
-              onClick={() => onSelect?.(item.title)}
-            />
+            <SidebarMenuButton tooltip={item.title} isActive={location.pathname === item.url} />
           }
         >
           {item.icon}
@@ -53,9 +44,7 @@ export function NavMain({
           <SidebarMenuSub>
             {item.items.map((subItem) => (
               <SidebarMenuSubItem key={subItem.title}>
-                <SidebarMenuSubButton
-                  render={<button type="button" onClick={() => onSelect?.(subItem.title)} />}
-                >
+                <SidebarMenuSubButton render={<Link to={subItem.url} />}>
                   <span>{subItem.title}</span>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
@@ -67,8 +56,8 @@ export function NavMain({
       <SidebarMenuItem key={item.title}>
         <SidebarMenuButton
           tooltip={item.title}
-          isActive={activeItem === item.title}
-          onClick={() => onSelect?.(item.title)}
+          isActive={location.pathname === item.url}
+          render={<Link to={item.url} />}
         >
           {item.icon}
           <span>{item.title}</span>

@@ -11,6 +11,7 @@ import {
 import type { SidebarLayout } from '@contextweave/contracts'
 import { NavMain } from '@/components/nav-main'
 import { NavUser } from '@/components/nav-user'
+import { appRoutes } from '@/shared/config/navigation'
 import {
   Sidebar,
   SidebarContent,
@@ -20,22 +21,16 @@ import {
 } from '@/components/ui/sidebar'
 
 const navItems = [
-  { title: '环境', url: '#environments', icon: <Globe2Icon /> },
-  { title: '代理', url: '#proxies', icon: <SlidersHorizontalIcon /> },
-  { title: '内核', url: '#kernels', icon: <BoxesIcon /> },
-  { title: '运行记录', url: '#activity', icon: <ActivityIcon /> },
+  { title: '环境', url: appRoutes.environments, icon: <Globe2Icon /> },
+  { title: '代理', url: appRoutes.proxies, icon: <SlidersHorizontalIcon /> },
+  { title: '内核', url: appRoutes.kernels, icon: <BoxesIcon /> },
+  { title: '运行记录', url: appRoutes.activity, icon: <ActivityIcon /> },
 ]
 
 export function AppSidebar({
-  activeItem,
-  onSelect,
   layout = 'sidebar',
   ...props
-}: Omit<React.ComponentProps<typeof Sidebar>, 'onSelect'> & {
-  activeItem: string
-  onSelect: (title: string) => void
-  layout?: SidebarLayout
-}) {
+}: React.ComponentProps<typeof Sidebar> & { layout?: SidebarLayout }) {
   const collapsible = layout === 'offcanvas' ? 'offcanvas' : 'icon'
   const variant = layout === 'offcanvas' ? 'sidebar' : layout
   return (
@@ -53,10 +48,10 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navItems} activeItem={activeItem} onSelect={onSelect} />
+        <NavMain items={navItems} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={{ name: '本地用户', email: '个人环境', avatar: '' }} onSelect={onSelect} />
+        <NavUser user={{ name: '本地用户', email: '个人环境', avatar: '' }} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

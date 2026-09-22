@@ -1,7 +1,7 @@
 # ContextWeave 文档索引
 
 **状态：** 生效  
-**修订号：** r7
+**修订号：** r15
 **日期：** 2026-09-22
 **维护规则：** 以根目录 [`AGENTS.md`](../AGENTS.md) 为准
 
@@ -64,3 +64,11 @@
 - `r5`：登记第一版主题预设、圆角、密度、字体和官方 Sidebar 布局变体范围。
 - `r6`：登记恢复 v0.1 UI 闭环、工程门禁和 GitHub Actions 发布验证范围。
 - `r7`：登记 B 端 CRUD、指纹环境管理和设置页 GitHub 源码研究文档，并明确其不自动扩大 v0.1 范围。
+- `r8`：补充企业级 Renderer 目录、单职责组件和 React Router Data Mode 目录规范。
+- `r9`：登记 GitHub CRUD 与设置页源码复核结果，研究文档更新至 r5。
+- `r10`：登记按 shadcn-admin/new-api 复核主体数据表面，研究文档更新至 r6。
+- `r11`：登记主体组件布局收敛为 WorkspacePage 的 toolbar/content/selectionBar 插槽结构。
+- `r12`：登记 Electron sandboxed Preload 的 CommonJS 输出修复和真实窗口验证结果。
+- `r13`：登记指定 B 端页面源码复核结果，研究文档更新至 r7。
+- `r14`：登记指定页面技术栈对照结果，研究文档更新至 r8。
+- `r15`：登记 TanStack Router 文件路由、官方 Base UI DataTable 和 shadcn 组件清理实现。

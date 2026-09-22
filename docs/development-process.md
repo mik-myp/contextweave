@@ -547,6 +547,69 @@ docs/progress/
 ```
 
 这些文件可以按阶段创建；不要求 v0.1 一次性实现所有未来能力，但应在执行文档中标明“本阶段建立规则”或“本阶段暂不实现”。
+
+### 14.15 项目目录与单职责开发规范
+
+项目采用按应用层、业务能力和进程边界拆分的目录结构。目录是架构边界的一部分，不得把所有页面、状态、路由和业务操作重新堆回单个入口文件。
+
+当前 Electron 客户端的目录基线如下：
+
+```text
+apps/desktop/
+├── electron/                         # Electron Main、Preload、Worker 进程
+│   ├── main.ts                        # 窗口、IPC 注册、本地运行时编排
+│   ├── preload.ts                     # 白名单、类型化 Renderer API
+│   ├── worker.ts                      # 独立浏览器控制 Worker
+│   └── *.test.ts                      # Main/本地业务边界测试
+├── src/
+│   ├── app/                           # 应用组装层，不承载具体业务页面
+│   │   ├── app.tsx                    # Renderer 根组件
+│   │   ├── app-shell.tsx              # Sidebar、顶部栏、Outlet 壳层
+│   │   ├── routes/                    # TanStack React Router 文件路由
+│   │   ├── app-data-provider.tsx      # 跨页面本地运行时数据 Provider
+│   │   ├── app-data-context.ts        # Provider 类型和 Context
+│   │   └── use-app-data.ts            # Provider 读取 Hook
+│   ├── features/                      # 按菜单和领域能力拆分
+│   │   └── <feature>/
+│   │       ├── pages/                  # 路由页面，每个文件一个页面组件
+│   │       ├── components/             # 领域组件，每个文件一个 React 组件
+│   │       ├── hooks/                  # 领域 Hook
+│   │       ├── services/               # Renderer 侧领域调用封装
+│   │       ├── schemas/                # 表单和输入校验
+│   │       └── types/                  # 领域类型
+│   ├── components/
+│   │   ├── ui/                         # shadcn/Base UI 生成的无业务 primitives
+│   │   ├── layout/                     # 跨页面布局组件，如 WorkspacePage
+│   │   └── data-table/                  # TanStack Table v9 的共享表格骨架
+│   ├── shared/                         # 无业务归属的共享代码
+│   │   ├── components/
+│   │   ├── config/                     # 路由、菜单等跨层配置契约
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   └── types/
+│   ├── theme.tsx                       # 全局主题 Provider
+│   └── main.tsx                        # Renderer 启动和主题恢复
+├── electron.vite.config.ts
+└── electron-builder.json5
+
+packages/
+├── contracts/                          # IPC、配置和跨进程 Zod 契约
+├── storage/                            # SQLite migration 与 repository
+├── kernel-core/                        # Kernel Registry、Adapter 抽象和安装器
+├── kernel-*/                           # 每个浏览器内核独立 manifest、adapter、测试
+└── worker-protocol/                    # Worker 消息和结果协议
+```
+
+目录和组件规则：
+
+- 业务 `.tsx` 文件只允许导出一个 React 组件；组件拆分后通过组合使用，禁止在页面文件中继续声明多个业务组件。`components/ui/` 的 shadcn/Base UI 生成文件可以保留官方 compound primitives 导出，但不得加入业务逻辑。
+- 页面组件只负责页面编排和用户流程；表格行、工具栏、表单、Dialog、空态和动作条等可复用或有独立状态的内容必须放入 `features/<feature>/components/`。
+- `app/` 只负责 Provider、路由和布局；不得把环境、代理或内核业务逻辑放入 `app.tsx`、`routes.tsx` 或 `app-shell.tsx`。
+- `components/ui/` 只保存生成的无业务 UI primitive；业务字段、IPC 调用和领域判断不得写入该目录。
+- Feature 之间禁止直接依赖对方的内部文件；跨领域共享内容放入 `shared/`，跨进程内容放入 `packages/contracts`。
+- 路由统一使用 TanStack React Router File-based Routing；菜单 URL、路由路径和页面标题必须保持一致，不通过手工 `page` 状态切换页面。生成的 `routeTree.gen.ts` 由构建插件维护，不手工编辑。
+- 测试默认与实现文件同目录；跨进程契约测试放在对应 workspace package，禁止只在页面中验证协议。
+- 每个文件保持单一职责。超过一个明确职责、出现重复状态或需要独立测试时，必须继续拆分，而不是通过匿名内联组件规避目录规范。
 ## 15. 文档规范和跨设备协作
 
 仓库根目录的 `AGENTS.md` 是所有设备、对话、自动化代理和协作者的第一入口。它记录当前版本闸门、必须读取的文档、文档目录和冲突处理方式。

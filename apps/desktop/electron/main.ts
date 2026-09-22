@@ -925,7 +925,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#f4f7fb',
     webPreferences: {
-      preload: join(__dirname, 'preload.mjs'),
+      preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,

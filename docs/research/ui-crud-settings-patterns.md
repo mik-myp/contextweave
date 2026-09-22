@@ -1,6 +1,6 @@
 # B 端 CRUD、指纹环境管理与设置页研究
 
-**修订号：** r4
+**修订号：** r8
 **状态：** 分析中
 **日期：** 2026-09-22
 **适用范围：** ContextWeave v0.1 个人版 UI 设计与后续环境管理
@@ -389,9 +389,147 @@
 
 该方案保留了 shadcn-admin/new-api 的工具栏和动作聚合、Simprint 的环境状态工作台方向，以及 CloakBrowser Manager 的桌面密度；复杂指纹配置仍应在后续版本用独立 Sheet/工作区实现。
 
+### 9.2 2026-09-22 源码复核后的统一抽象
+
+本轮重新读取了五个固定 commit 中的代表性源码，重点确认前一版研究结论是否真的落在组件状态和数据流上：
+
+| 参考项目 | 源码证据 | 可迁移的结构结论 |
+|---|---|---|
+| shadcn-admin | `UsersTable`、`DataTableToolbar` | 表格状态不是页面临时变量：排序、列可见性、选择、筛选和分页独立建模；筛选可同步 URL；工具栏统一搜索、faceted filter、重置和列视图；选中行后挂载批量动作。 |
+| new-api | `ChannelsTable`、通用 `SettingsPage` | 服务端列表把查询、筛选、分页、移动端页大小和敏感字段显示分开；列宽、列可见性、视图模式和筛选可持久化；设置页以 section 元数据和 Provider 组织，内容、操作区、标题状态和错误/重试边界分离。 |
+| Simprint | `EnvironmentHeader`、`EnvironmentTableRow`、`CreateWindowContent`、`SettingsDialog` | 指纹环境是带生命周期和关联资源的工作台：全部/已打开/回收站视图、快捷搜索、标签/导出/批量动作、行级资源菜单；编辑按基本信息、网络地域、指纹、屏幕硬件、浏览器行为分区，并提供配置摘要；设置使用大尺寸 Drawer 和分类导航。 |
+| CloakBrowser Manager | `ProfileList`、`SettingsPanel` | 桌面 Profile 列表优先显示运行数量、搜索和状态；有筛选时禁用拖拽排序；设置异步加载/保存、错误保留、凭据掩码和显式清除动作。 |
+| vue-vben-admin | 用户 `list.vue`、Form/Detail Drawer、Preferences Drawer | 复杂 B 端页面可把范围树与结果表并列；编辑和详情使用不同 Drawer；工具栏提供刷新、搜索、缩放；状态变更先确认再提交；偏好设置按可组合区块和恢复默认组织。 |
+
+从这些源码可以归纳出 ContextWeave 后续页面应遵守的六条规则：
+
+1. **列表先建状态模型，再画表格。** 搜索、筛选、排序、选择、分页、列布局和视图模式必须明确是本地状态、URL 状态还是持久化偏好，不能把它们混在一个页面 `useState` 中。
+2. **工具栏只放查询和资源动作。** 搜索/筛选/重置位于同一工具栏；创建、刷新、导出、视图切换与查询状态并列；批量动作只在有选中项时出现。
+3. **行菜单承载低频和危险动作。** 编辑、代理、标签、导出、恢复和删除进入行级菜单；删除位于分隔线之后，明确 destructive 语义，并在运行中、被引用或需要恢复时拒绝。
+4. **简单对象用 Dialog，复杂环境用 Sheet/Drawer。** 代理和少量元数据可以在 Dialog 内完成；指纹环境达到网络、指纹、屏幕和行为多个分区后，必须切换到独立工作区，并显示配置摘要和风险提示。
+5. **设置页按 section 组合，而不是无限增长单表单。** 外观、浏览器、网络、数据与诊断、关于分别建 section；每个 section 有自己的加载、保存、错误、恢复默认和未保存保护。
+6. **环境状态、业务状态和同步状态分离。** “运行中/需恢复”是资源生命周期状态；“任务成功/失败”是业务结果；“同步中/同步失败”是后续团队能力，不能用一个 Badge 混淆三种状态。
+
+这些结论只作为当前 UI 信息架构和后续版本设计依据，不复制被审阅项目的代码、组件实现、样式或资源；AGPL 项目仍需遵守许可证边界。
+
+本轮在 v0.1 Renderer 中落成统一组件关系：跨页面 `WorkspacePage` 提供 `toolbar`、`content` 和可选 `selectionBar` 插槽；环境、代理和内核页面分别把领域 Toolbar、Table/List 和选中动作作为插槽内容，表单与删除确认作为 overlay children。这样页面组件只负责状态和领域操作，主体布局由共享容器保持一致。
+
+### 9.3 指定页面源码结构复核
+
+本轮进一步复核以下四个具体页面族：new-api 的 `usage-logs/common`、shadcn-admin 的 `tasks` 和 `users`。重点不是页面颜色，而是组件之间的职责边界、数据表格状态和 overlay 的挂载关系。
+
+#### new-api：`usage-logs/common`
+
+页面入口是两层路由：无 section 时重定向到默认 `common`，带 section 的路由负责校验 section 和 URL search schema。`common` 专属的 `type` 筛选在切换到 drawing/task 时从 URL 清除，说明页面状态先由路由契约约束，再交给页面组件消费。
+
+组件树可以概括为：
+
+```text
+UsageLogs
+└── UsageLogsProvider
+    └── SectionPageLayout
+        ├── Title：Common Logs / Task Logs
+        ├── Actions：All / Only Mine（按权限显示）
+        └── Content
+            ├── Task section tabs（仅 drawing/task 且有多个可见 section 时）
+            └── UsageLogsTable
+                ├── CommonLogsFilterBar
+                │   ├── 统计徽标：Usage / RPM / TPM
+                │   ├── 敏感值显示切换
+                │   ├── 日期范围、模型、分组、类型
+                │   ├── Advanced filters：Token、User、Channel、Request ID
+                │   └── Search / Reset / mobile filter panel
+                ├── Desktop DataTable
+                ├── MobileCardList
+                ├── Loading / Empty / Fetching state
+                └── Footer pagination
+```
+
+`UsageLogsProvider` 只保存跨子组件状态：当前用户详情、敏感值显示、渠道亲和规则弹窗和 All/Self 视图范围；数据请求和表格状态留在 `UsageLogsTable`。表格使用 manual pagination/filter，查询条件来自 URL，React Query 的 key 同时包含 category、权限范围、分页和筛选；切换筛选后主动 invalidate logs/stats。`DataTablePage` 将 toolbar、桌面表格、移动卡片、空态、加载态、分页和批量动作作为可替换插槽，过滤栏通过 `toolbar` 覆盖默认工具栏。
+
+#### shadcn-admin：`tasks`
+
+任务页的页面组件只做组装：
+
+```text
+Tasks
+├── TasksProvider
+├── Header：Search / ThemeSwitch / ConfigDrawer / ProfileDropdown
+├── Main
+│   ├── PageHeading：标题 + 描述
+│   ├── TasksPrimaryButtons：Import / Create
+│   └── TasksTable
+│       ├── DataTableToolbar：搜索、Status、Priority、View options
+│       ├── bordered Table
+│       ├── DataTablePagination
+│       └── DataTableBulkActions（有选中项时出现）
+└── TasksDialogs
+    ├── TasksMutateDrawer：创建/编辑
+    ├── TasksImportDialog
+    └── ConfirmDialog：删除
+```
+
+`TasksTable` 把 row selection、sorting、column visibility 作为本地 UI 状态，把 global filter、column filters 和 pagination 通过 URL state 管理。表格用 TanStack Table 的 faceted row model 支持筛选选项和计数；行菜单负责编辑、禁用中的未来动作、标签子菜单和删除；批量动作独立于表格，通过状态、优先级、导出和删除按钮操作当前选中行。
+
+创建/编辑不是小 Dialog，而是右侧 Sheet：顶部标题和说明，中间可滚动表单，底部固定 Close/Save。删除是独立 ConfirmDialog。Provider 只维护打开的 overlay 类型和当前行，避免页面把每个弹窗的布尔状态散落在表格里。
+
+#### shadcn-admin：`users`
+
+用户页沿用相同页面骨架，但对象编辑策略不同：
+
+```text
+Users
+├── UsersProvider
+├── Header：Search / ThemeSwitch / ConfigDrawer / ProfileDropdown
+├── Main
+│   ├── PageHeading：User List + 描述
+│   ├── UsersPrimaryButtons：Invite User / Add User
+│   └── UsersTable
+│       ├── DataTableToolbar：username 搜索、Status、Role、View options
+│       ├── bordered Table
+│       ├── DataTablePagination
+│       └── Users bulk actions：Invite / Activate / Deactivate / Delete
+└── UsersDialogs
+    ├── UsersActionDialog：Add/Edit，宽 Dialog 内滚动表单
+    ├── UsersInviteDialog
+    └── UsersDeleteDialog
+```
+
+用户表与任务表同样把筛选、分页和列视图状态分层管理。用户编辑使用 `sm:max-w-lg` Dialog 而不是 Sheet，表单内部滚动，字段采用标签对齐的六列 grid；密码校验根据 add/edit 场景切换规则。也就是说，编辑容器由表单复杂度决定：任务表单适合 Sheet，用户表单适合宽 Dialog，二者都由页面外层 `UsersDialogs` 统一挂载。
+
+#### 对 ContextWeave 的直接启示
+
+1. 页面组件应只负责 `Provider → Header/Toolbar → DataSurface → Overlay` 的组装，不能同时实现表格状态、每个弹窗和每个领域字段。
+2. URL 可表达的列表状态（搜索、筛选、分页、视图）应与短暂 UI 状态（当前行、打开哪个 Dialog、敏感值显示）分开。
+3. 统计摘要和安全边界属于页面 header/action 区；过滤工具栏只承载查询条件和 Apply/Reset，不把所有说明文字塞进表格上方。
+4. 表格容器应统一提供 desktop table、mobile list、loading、empty、fetching、pagination 和可插入的 bulk actions；领域页面只提供 columns、toolbar 和 row renderer。
+5. overlay 由页面级 dialogs orchestrator 统一挂载；简单元数据使用 Dialog，复杂多段表单使用 Sheet/Drawer，危险操作使用独立确认组件。
+6. ContextWeave 当前个人版没有批量编辑、服务端分页或敏感数据查询，因此只吸收组件关系和状态分层，不把 new-api/shadcn-admin 的团队权限、URL 查询字段或批量业务动作直接加入 v0.1。
+
+### 9.4 两个项目的技术栈对照
+
+| 层次 | new-api `usage-logs/common` | shadcn-admin `tasks/users` |
+|---|---|---|
+| 应用 | React 19 + TypeScript，`@rsbuild/core`/Rsbuild 构建；项目整体后端是 Go，本次页面研究只涉及 `web/` | React 19 + TypeScript + Vite |
+| 路由 | `@tanstack/react-router` 文件路由；路由 loader/beforeLoad 校验 section，search schema 校验 URL 查询 | `@tanstack/react-router` 文件路由；页面通过 `getRouteApi` 读取 search 和 navigate |
+| 数据请求 | `@tanstack/react-query`；query key 包含日志类别、权限范围、分页和筛选，支持 placeholderData、fetching 状态和 invalidate | 页面示例主要使用本地 fixture；列表状态通过自定义 `useTableUrlState` 与 URL 同步，项目依赖中同时包含 TanStack Query |
+| 表格 | `@tanstack/react-table` + 自定义 `useDataTable` + `DataTablePage`；manual pagination/filter、移动卡片、固定高度、分页 footer、可插入 toolbar/bulk/mobile | `@tanstack/react-table` + 自定义 `DataTableToolbar`、`DataTablePagination`、bulk action；本地排序、筛选、选择、列可见性和分页 |
+| UI primitives | shadcn 风格组件，当前源码基线使用 `@base-ui/react`；Tailwind CSS 4、`class-variance-authority`、`clsx`、`tailwind-merge` | shadcn/ui + Radix UI primitives；Tailwind CSS 4、`class-variance-authority`、`clsx`、`tailwind-merge` |
+| 表单与校验 | `react-hook-form`、`@hookform/resolvers`、Zod；usage logs 过滤器主要是受控输入/Select 和 URL draft | `react-hook-form`、`@hookform/resolvers`、Zod；tasks 用 Sheet 表单，users 用宽 Dialog 表单 |
+| 状态 | UsageLogsProvider 保存当前用户、敏感值、权限视图和弹窗；React Query 保存服务端数据 | TasksProvider/UsersProvider 保存当前行和 overlay 类型；表格内部保存排序、列可见性、选择等 UI 状态 |
+| 国际化与反馈 | `i18next`、`react-i18next`、Sonner；日志错误由 server-error helper 转换 | 页面示例使用英文静态文案；Sonner 用于批量动作异步反馈 |
+| 响应式 | `useMediaQuery`，桌面 DataTable 与移动 MobileCardList 两套渲染 | 主要依赖 Tailwind 响应式布局；表格页面保留桌面表格结构 |
+| 测试与质量 | Vitest、Testing Library、`oxlint`/`oxfmt`、`tsgo` | Vitest Browser、Playwright、Testing Library、ESLint、Prettier |
+
+技术栈差异带来的实际行为差异是：new-api 把日志页当作服务端数据工作区，路由查询、权限范围、请求缓存、移动端列表和分页都是一等结构；shadcn-admin 把 tasks/users 当作可复用的前端 CRUD 模板，重点在 TanStack Table 状态、Provider 管理 overlay 和表单容器选择。两者都不是“一个页面组件里直接写完整表格”的模式。
+
 ## 10. 变更记录
 
 - `r1`：固定五个 GitHub 项目 commit，整理 CRUD、环境工作台、设置页模式和 ContextWeave 的 v0.1/后续版本边界。
 - `r2`：根据用户确认移除业务页面顶部的大标题和说明，保留 Sidebar、顶部面包屑和卡片内部必要说明。
 - `r3`：根据用户要求重新设计 v0.1 主体内容，统一工具栏、单一列表表面、资源行和轻量设置面板，减少边框和重复页面标题描述。
 - `r4`：根据用户进一步反馈移除主体内容的卡片背景、圆角和阴影，明确以单一内容流和必要分隔线作为 v0.1 视觉基线。
+- `r5`：复核五个固定 commit 的代表性源码，补充表格状态、设置 section、指纹环境工作台和后续目录拆分规则。
+- `r6`：按 shadcn-admin/new-api 的主体结构复核 v0.1 数据表面，统一工作区画布、单一表格表面、选中动作条和空态层级。
+- `r7`：指定复核 new-api `usage-logs/common`、shadcn-admin `tasks` 和 `users` 的页面组件树、数据表状态、过滤工具栏、批量动作和 overlay 容器。
+- `r8`：补充 new-api 与 shadcn-admin 的页面实际技术栈、数据请求、表格、UI primitives、表单和测试工具对照。

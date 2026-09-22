@@ -15,19 +15,20 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { ChevronsUpDownIcon, InfoIcon, Settings2Icon } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { appRoutes } from '@/shared/config/navigation'
 
 export function NavUser({
   user,
-  onSelect,
 }: {
   user: {
     name: string
     email: string
     avatar: string
   }
-  onSelect?: (title: string) => void
 }) {
   const { isMobile } = useSidebar()
+  const navigate = useNavigate()
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -67,11 +68,11 @@ export function NavUser({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => onSelect?.('设置')}>
+              <DropdownMenuItem onClick={() => void navigate({ to: appRoutes.settings })}>
                 <Settings2Icon />
                 设置
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onSelect?.('关于 ContextWeave')}>
+              <DropdownMenuItem onClick={() => void navigate({ to: appRoutes.about })}>
                 <InfoIcon />
                 关于 ContextWeave
               </DropdownMenuItem>

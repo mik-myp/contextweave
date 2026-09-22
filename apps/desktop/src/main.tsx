@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
+import { RouterProvider } from '@tanstack/react-router'
+import { router } from './router'
 import './index.css'
 import { ThemeProvider } from './theme'
 import { defaultThemeConfig, themeConfigSchema } from '@contextweave/contracts'
@@ -19,7 +20,7 @@ async function bootstrap(): Promise<void> {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <ThemeProvider initialTheme={initialTheme}>
-        <App />
+        <RouterProvider router={router} />
       </ThemeProvider>
     </StrictMode>,
   )

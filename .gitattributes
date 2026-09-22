@@ -1,0 +1,10 @@
+# Keep source and workflow files deterministic across Linux, macOS and Windows runners.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.dmg binary
+*.exe binary

@@ -15,4 +15,13 @@ module.exports = {
       { allowConstantExport: true },
     ],
   },
+  overrides: [
+    {
+      files: ['src/components/ui/**/*.tsx'],
+      rules: {
+        // shadcn component modules intentionally export primitives, variants, and helpers together.
+        'react-refresh/only-export-components': 'off',
+      },
+    },
+  ],
 }

@@ -112,18 +112,68 @@ export const createEnvironmentInputSchema = z.object({
 })
 export type CreateEnvironmentInput = z.infer<typeof createEnvironmentInputSchema>
 
+// Editing preserves the kernel and profile directory; switching kernels requires a new environment.
+export const updateEnvironmentInputSchema = z.object({
+  version: z.literal(1),
+  environmentId: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(80),
+  proxyId: z.string().trim().min(1).nullable(),
+}).strict()
+export type UpdateEnvironmentInput = z.infer<typeof updateEnvironmentInputSchema>
+
 export const saveProxyInputSchema = z.object({
   proxyId: z.string().trim().min(1).optional(),
   config: proxyConfigSchema,
   password: z.string().min(1).optional(),
 })
 export type SaveProxyInput = z.infer<typeof saveProxyInputSchema>
+
+export const themeModeSchema = z.enum(['light', 'dark', 'system'])
+export type ThemeMode = z.infer<typeof themeModeSchema>
+
+export const themePresetSchema = z.enum(['signal-weave', 'graphite', 'ocean', 'amber'])
+export type ThemePreset = z.infer<typeof themePresetSchema>
+
+export const themeRadiusSchema = z.enum(['none', 'sm', 'md', 'lg', 'xl'])
+export type ThemeRadius = z.infer<typeof themeRadiusSchema>
+
+export const themeDensitySchema = z.enum(['compact', 'comfortable', 'spacious'])
+export type ThemeDensity = z.infer<typeof themeDensitySchema>
+
+export const themeFontSchema = z.enum(['geist', 'system', 'serif', 'mono'])
+export type ThemeFont = z.infer<typeof themeFontSchema>
+
+export const sidebarLayoutSchema = z.enum(['sidebar', 'inset', 'floating', 'offcanvas'])
+export type SidebarLayout = z.infer<typeof sidebarLayoutSchema>
+
+export const themeConfigSchema = z.object({
+  version: z.literal(1),
+  mode: themeModeSchema,
+  preset: themePresetSchema,
+  radius: themeRadiusSchema,
+  density: themeDensitySchema,
+  font: themeFontSchema,
+  sidebarLayout: sidebarLayoutSchema,
+})
+export type ThemeConfig = z.infer<typeof themeConfigSchema>
+
+export const defaultThemeConfig: ThemeConfig = {
+  version: 1,
+  mode: 'system',
+  preset: 'signal-weave',
+  radius: 'md',
+  density: 'comfortable',
+  font: 'geist',
+  sidebarLayout: 'sidebar',
+}
+
 export const environmentSummarySchema = z.object({
   id: z.string().trim().min(1),
   name: z.string().trim().min(1),
   status: environmentStatusSchema,
   kernelId: z.string().trim().min(1),
   kernelVersion: z.string().trim().min(1),
+  proxyId: z.string().trim().min(1).optional(),
   platform: platformSchema,
   arch: architectureSchema,
   updatedAt: z.string().datetime(),

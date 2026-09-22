@@ -13,6 +13,8 @@
 
 当前项目处于 v0.1 个人本地客户端开发阶段，首个预览版本尚未发布。
 
+本地开发首次运行 `pnpm dev` 时，桌面端会通过 Electron 官方 `install-electron` 准备当前平台的 Electron 二进制；如果下载被中断，重新执行 `pnpm dev` 即可重试。
+
 开发本仓库前必须先阅读根目录的 [AGENTS.md](AGENTS.md)；版本开发还必须遵循 [开发与版本发布规范](docs/development-process.md) 和当前版本执行文档。
 
 ## 文档
@@ -23,7 +25,7 @@
 - [Simprint v0.2.32 审阅与产品规划](docs/simprint-review-and-product-plan.md)
 - [文档索引与维护规范](docs/README.md)
 - [v0.1 版本分析](docs/versions/v0.1-analysis.md)
-- [v0.1 执行文档（已确认，开发中）](docs/versions/v0.1-execution-r2.md)
+- [v0.1 执行文档（已确认，开发中）](docs/versions/v0.1-execution-r6.md)
 - [v0.1 开发进度](docs/progress/v0.1.md)
 
 ## 技术方向

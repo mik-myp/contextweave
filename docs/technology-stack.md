@@ -118,6 +118,8 @@ contextweave/
 - **Commitlint**：多人协作时使用 Conventional Commits。
 - **Vitest**：单元测试和契约测试。
 
+v0.1 的正式 `pnpm check` 门禁为 Prettier（本次维护的 Renderer/Main/Preload 文件）、ESLint、TypeScript 和 Vitest。Oxlint/Oxfmt 只在后续独立试运行中评估，不替换当前 Electron 根链路；Vite+ 仍不作为桌面应用根脚手架。
+
 格式化和 lint 不能替代代码审查。不要为了通过规则在 Renderer 中放宽 Electron 安全检查。
 
 ## 5. Electron 桌面客户端
@@ -142,17 +144,21 @@ contextweave/
 推荐：
 
 - **React**：页面和组件。
-- **React Router**：桌面端页面路由；不把业务状态塞进 URL。
-- **shadcn/ui + Radix UI**：可复制、可调整的无障碍组件。
+- **React Router (`react-router`)**：桌面端页面路由；当前官网声明式安装使用统一的 `react-router` 包，不把业务状态塞进 URL。
+- **shadcn/ui + Base UI**：当前官网默认的可复制、可调整无障碍组件基线；Radix 作为兼容现有项目的可选基础，不作为 ContextWeave v0.1 的 UI primitive。
+- **shadcn CLI 当前 `cn` 工具**：组件源码使用 CLI 当前生成的 `cn` 依赖和 Tailwind class 合并方式；不要再单独维护一套旧的 `cn` 工具实现。
 - **Tailwind CSS**：布局和主题。
+- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界；第一版支持主题模式、颜色预设、圆角、密度、字体和官方 Sidebar 布局变体，主题配置需要版本化并通过受限设置接口持久化，不在组件内散落颜色值。
 - **Lucide React**：图标。
 - **TanStack Query**：服务端状态、缓存、请求重试和失效。
 - **Zustand**：工作空间选择、侧边栏、弹窗等轻量 UI 状态。
 - **React Hook Form + Zod Resolver**：复杂表单和运行时校验。
 - **TanStack Table**：环境、成员、代理和审计表格。
 - **Sonner**：轻量通知。
-- **date-fns**：日期和时区显示。
+- **date-fns**：需要日期计算或复杂时区处理时按功能引入；当前 Base UI Calendar 组件使用原生 `Intl`，桌面端暂不保留未使用的直接依赖。
 - **i18next + react-i18next**：中文、英文和后续出海地区的界面国际化；业务数据和日志不依赖界面语言。
+
+本次官网核查（2026-09-21）记录：shadcn/ui 的 [Base UI 默认变更说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)说明新项目默认使用 Base UI，同时继续支持 Radix；[组件手册](https://ui.shadcn.com/docs/components/accordion)的 Base UI 版本使用 `@base-ui/react`。React Router 的[声明式安装文档](https://reactrouter.com/start/declarative/installation)当前使用 `react-router` 包，因此项目不保留未使用的 `react-router-dom` 声明。
 
 不建议同时使用 Redux、MobX、Zustand 和多个请求状态库。推荐 TanStack Query 管服务端状态，Zustand 管界面状态。
 
@@ -193,7 +199,7 @@ IPC 方法应接近领域操作，例如 `environment.start`、`kernel.install`�
 初始化顺序：
 
 1. 使用 `electron-vite` 的 React/TypeScript 模板创建 `apps/desktop`。
-2. 在 Renderer 中加入 React、React Router 和 React Hook Form。
+2. 在 Renderer 中加入 React、`react-router` 和 React Hook Form。
 3. 运行 shadcn CLI 初始化 Tailwind 和组件；初期组件放在桌面应用，WebUI 出现后再抽到 `packages/ui`。
 4. 将桌面应用接入 pnpm workspace 和 Turborepo。
 5. 创建 `packages/contracts`、`packages/kernel-protocol`、`packages/config` 和 `packages/ui` 的最小版本。
@@ -206,7 +212,7 @@ pnpm create electron-vite@latest
 # 选择 React / TypeScript 模板，项目目录使用 apps/desktop
 
 cd apps/desktop
-pnpm add react react-dom react-router-dom react-hook-form zod @hookform/resolvers
+pnpm add react react-dom react-router react-hook-form zod @hookform/resolvers
 pnpm dlx shadcn@latest init
 ```
 
@@ -689,7 +695,7 @@ Docker Compose 首期包含：
 ```text
 Electron
 ├── React + TypeScript + Vite
-├── shadcn/ui + Tailwind CSS + Radix UI
+├── shadcn/ui `base-nova` + Tailwind CSS + Base UI
 ├── TanStack Query + Zustand
 ├── React Hook Form + Zod
 ├── Electron Main/Preload

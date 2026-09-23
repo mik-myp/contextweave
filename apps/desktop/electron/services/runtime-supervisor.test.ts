@@ -115,6 +115,21 @@ describe('runtime supervisor', () => {
     expect(repository.get('env-a')?.status).toBe('stopped')
     expect(existsSync(runtimeLockPath(dir))).toBe(false)
   })
+  it('fails immediately when the browser exits before its control connection is ready', async () => {
+    const { runtime, driver, child, dir } = fixture()
+    driver.ready.mockImplementation(
+      (_port, signal) =>
+        new Promise<string>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('exited')), { once: true }),
+        ),
+    )
+    const start = runtime.start('env-a')
+    await vi.waitFor(() => expect(driver.ready).toHaveBeenCalled())
+    Object.defineProperty(child, 'exitCode', { value: 1, configurable: true })
+    child.emit('exit', 1, null)
+    expect(await start).toMatchObject({ ok: false, code: 'START_FAILED' })
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+  })
   it('does not launch when preflight fails', async () => {
     const { runtime, driver, preflight } = fixture()
     preflight.mockResolvedValue({

@@ -83,7 +83,8 @@ function freePort(): Promise<number> {
   })
 }
 export async function waitForCdp(port: number, signal: AbortSignal): Promise<string | undefined> {
-  const deadline = Date.now() + 8000
+  // A fresh profile can take longer on cold or busy machines. Cancellation stays immediate.
+  const deadline = Date.now() + 30000
   while (Date.now() < deadline) {
     signal.throwIfAborted()
     try {
@@ -221,6 +222,10 @@ export function createRuntimeSupervisor(options: {
         phase: 'launch',
       })
       child.once('exit', (code, signal) => {
+        if (starting.has(id) && !controller.signal.aborted) {
+          session.startFailed = true
+          controller.abort()
+        }
         session.closeSettings?.()
         if (sessions.get(id) === session) sessions.delete(id)
         const failed = session.startFailed || (code !== 0 && !session.stopRequested)

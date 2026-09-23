@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -31,6 +32,10 @@ export default defineConfig({
       emptyOutDir: false,
       rollupOptions: {
         input: resolve(__dirname, 'electron/preload.ts'),
+        output: {
+          entryFileNames: 'preload.cjs',
+          format: 'cjs',
+        },
       },
     },
     plugins: [externalizeDepsPlugin({ exclude: workspaceDependencies })],
@@ -48,6 +53,15 @@ export default defineConfig({
         '@': resolve(__dirname, 'src'),
       },
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      tanstackRouter({
+        target: 'react',
+        autoCodeSplitting: true,
+        routesDirectory: resolve(__dirname, 'src/routes'),
+        generatedRouteTree: resolve(__dirname, 'src/routeTree.gen.ts'),
+      }),
+      react(),
+      tailwindcss(),
+    ],
   },
 })

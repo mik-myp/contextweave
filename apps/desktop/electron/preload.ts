@@ -11,6 +11,7 @@ import type { WorkerResult, WorkerTask } from '@contextweave/worker-protocol'
 
 const api = {
   app: {
+    quit: () => ipcRenderer.invoke('app:quit') as Promise<IpcResult<boolean>>,
     getInfo: () =>
       ipcRenderer.invoke('app:get-info') as Promise<
         IpcResult<{

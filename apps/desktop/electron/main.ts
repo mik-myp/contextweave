@@ -15,7 +15,7 @@ import {
   type KernelManifest,
   type TargetArchitecture,
   type TargetPlatform,
-  defaultThemeConfig,
+  readThemeConfig,
   themeConfigSchema,
   type ThemeConfig,
 } from '@contextweave/contracts'
@@ -554,8 +554,7 @@ function proxySummary(record: ProxyRecord): ProxyRecord {
 
 function getThemeSettings(): ThemeConfig {
   const stored = databaseOrThrow().getSetting<unknown>('theme')
-  const parsed = themeConfigSchema.safeParse(stored)
-  return parsed.success ? parsed.data : defaultThemeConfig
+  return readThemeConfig(stored)
 }
 
 function setThemeSettings(input: unknown): IpcResult<ThemeConfig> {
@@ -912,6 +911,10 @@ function registerIpcHandlers(): void {
     void shell.openExternal(url)
     return ok(true)
   })
+  ipcMain.handle('app:quit', () => {
+    setImmediate(() => app.quit())
+    return ok(true)
+  })
   ipcMain.handle('settings:get-theme', () => ok(getThemeSettings()))
   ipcMain.handle('settings:set-theme', (_event, input: unknown) => setThemeSettings(input))
 }
@@ -925,7 +928,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#f4f7fb',
     webPreferences: {
-      preload: join(__dirname, 'preload.mjs'),
+      preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,

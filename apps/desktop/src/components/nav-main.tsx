@@ -1,3 +1,5 @@
+import { Link, useRouterState } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,
@@ -14,20 +16,19 @@ import { ChevronRightIcon } from 'lucide-react'
 type NavItem = {
   title: string
   url: string
-  icon?: React.ReactNode
+  icon?: ReactNode
   isActive?: boolean
   items?: { title: string; url: string }[]
 }
 
 export function NavMain({
   items,
-  activeItem,
-  onSelect,
+  groupLabel = 'Workspace',
 }: {
   items: NavItem[]
-  activeItem?: string
-  onSelect?: (title: string) => void
+  groupLabel?: string
 }) {
+  const location = useRouterState({ select: (state) => state.location })
   const renderItem = (item: NavItem) =>
     item.items?.length ? (
       <Collapsible
@@ -38,24 +39,18 @@ export function NavMain({
       >
         <CollapsibleTrigger
           render={
-            <SidebarMenuButton
-              tooltip={item.title}
-              isActive={activeItem === item.title}
-              onClick={() => onSelect?.(item.title)}
-            />
+            <SidebarMenuButton tooltip={item.title} isActive={location.pathname === item.url} />
           }
         >
           {item.icon}
           <span>{item.title}</span>
-          <ChevronRightIcon className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
+          <ChevronRightIcon className="ms-auto transition-transform duration-200 group-data-open/collapsible:rotate-90 rtl:rotate-180 rtl:group-data-open/collapsible:rotate-90" />
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarMenuSub>
             {item.items.map((subItem) => (
               <SidebarMenuSubItem key={subItem.title}>
-                <SidebarMenuSubButton
-                  render={<button type="button" onClick={() => onSelect?.(subItem.title)} />}
-                >
+                <SidebarMenuSubButton render={<Link to={subItem.url} />}>
                   <span>{subItem.title}</span>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
@@ -67,8 +62,8 @@ export function NavMain({
       <SidebarMenuItem key={item.title}>
         <SidebarMenuButton
           tooltip={item.title}
-          isActive={activeItem === item.title}
-          onClick={() => onSelect?.(item.title)}
+          isActive={location.pathname === item.url}
+          render={<Link to={item.url} />}
         >
           {item.icon}
           <span>{item.title}</span>
@@ -78,8 +73,8 @@ export function NavMain({
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>工作台</SidebarGroupLabel>
-      <SidebarMenu>{items.map(renderItem)}</SidebarMenu>
+      <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+      <SidebarMenu className="gap-1">{items.map(renderItem)}</SidebarMenu>
     </SidebarGroup>
   )
 }

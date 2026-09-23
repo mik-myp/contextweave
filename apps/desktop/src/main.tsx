@@ -1,8 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
+import { RouterProvider } from '@tanstack/react-router'
+import { router } from './router'
 import './index.css'
-import { ThemeProvider } from './theme'
+import { ThemeProvider } from './features/theme/theme-provider'
+import { I18nProvider } from './i18n'
 import { defaultThemeConfig, themeConfigSchema } from '@contextweave/contracts'
 
 async function bootstrap(): Promise<void> {
@@ -18,9 +20,11 @@ async function bootstrap(): Promise<void> {
   }
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <ThemeProvider initialTheme={initialTheme}>
-        <App />
-      </ThemeProvider>
+      <I18nProvider>
+        <ThemeProvider initialTheme={initialTheme}>
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </I18nProvider>
     </StrictMode>,
   )
 }

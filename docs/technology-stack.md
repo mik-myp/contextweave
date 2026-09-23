@@ -1,10 +1,30 @@
 # ContextWeave 技术栈与长期库选型
 
 **项目名称：ContextWeave（织境）**  
-**定位：开源、可自托管、面向个人与团队的多内核浏览器工作台**  
-**文档日期：2026-09-21**
+**定位：目标为开源、可自托管、面向个人与团队的多内核浏览器工作台**
+**文档日期：2026-09-22**
 
-本文档定义 ContextWeave 从个人环境管理到团队协作、浏览器自动化、数据处理和 AI/RAG 的长期技术边界。它不是要求第一天安装所有依赖，而是提前确定哪些接口必须稳定、哪些库在进入相应阶段时再加入。
+本文档定义 ContextWeave 从个人环境管理到团队协作、浏览器自动化、数据处理和 AI/RAG 的总体技术路线。它不要求第一天安装所有依赖，而是规定接口边界、阶段性技术栈以及后续版本应采用的库和替换条件。
+
+**审查日期：** 2026-09-22
+**维护规则：** 后续版本开发必须按本文件选择技术和库；新增、替换或延期使用依赖时，先更新本文件并记录原因、影响、许可证和迁移方式。
+**当前实现：** 以仓库实际依赖和代码为准；阶段路线是后续实现的默认技术基线，不是可在代码中静默绕开的建议。
+
+## 当前 v0.1 实际基线
+
+| 领域       | 当前实现                                                                                                              |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| 运行时     | Node.js `>=22.15.0 <23`、Electron `44.4.3`；发布前检查官方支持窗口                                                    |
+| 包管理     | pnpm `10.26.2`、pnpm workspace                                                                                        |
+| 构建       | electron-vite `5.x`、Vite `7.x`、electron-builder `26.x`                                                              |
+| UI         | React `19.x`、Base UI、Tailwind CSS、Zod、React Hook Form、Zustand                                                    |
+| 路由与表格 | `@tanstack/react-router` 文件路由、`@tanstack/react-table`                                                            |
+| 本地数据   | `node:sqlite` `DatabaseSync`（当前可能有实验性警告）；Drizzle ORM 仅用于 schema 定义，读写 repository 直接使用 SQLite |
+| 凭据       | Electron `safeStorage`                                                                                                |
+| 浏览器控制 | `playwright-core`、CDP、Kernel Registry/Adapter                                                                       |
+| 验证       | ESLint、Prettier、TypeScript、Vitest                                                                                  |
+
+团队 API、PostgreSQL、对象存储、工作流、AI/RAG、Web 管理端和远程执行节点都不属于当前 v0.1 实际基线。
 
 ## 1. 选型原则
 
@@ -20,7 +40,7 @@
 
 ### 1.2 首期少依赖，后期按功能加入
 
-首期只需要 Electron、React、TypeScript、SQLite、浏览器进程管理和基础团队 API。React Flow、Playwright、数据处理、队列、LangGraph 和向量库应在对应功能进入开发阶段时加入。
+首期只需要 Electron、React、TypeScript、SQLite、浏览器进程管理和基础本地任务能力。团队 API、React Flow、数据处理、队列、LangGraph 和向量库应在对应功能进入开发阶段时加入。
 
 ### 1.3 TypeScript 为主，Python 作为可选专用 Worker
 
@@ -68,24 +88,24 @@ contextweave/
 
 ## 3. 依赖分层
 
-| 层级 | 首选技术 | 进入阶段 | 主要边界 |
-|---|---|---:|---|
-| 包管理 | pnpm workspaces | v0.1 | 统一锁文件和脚本 |
-| 任务编排 | Turborepo | v0.1 多包后 | 只负责构建缓存，不承载业务逻辑 |
-| 语言 | TypeScript strict | v0.1 | 所有跨进程数据必须运行时校验 |
-| 桌面 | Electron | v0.1 | 管理界面、本地协调和受控 IPC |
-| UI | React + Vite + shadcn/ui | v0.1 | 只做展示和用户交互 |
-| 本地数据 | SQLite + Drizzle ORM | v0.2 | 环境元数据和本地设置 |
-| 浏览器控制 | 自有 Browser Control API + Playwright/CDP 适配 | v0.1/v1.1 | 不暴露具体内核参数给业务层 |
-| 团队 API | NestJS + Fastify adapter + Zod | v0.4 | 模块化单体、REST/OpenAPI、自托管和客户端兼容 |
-| 团队数据库 | PostgreSQL + Drizzle ORM | v0.4 | 租约、版本、权限和审计 |
-| 对象存储 | S3 API + MinIO 开发环境 | v0.4/v0.5 | 快照、附件、报表和日志产物 |
-| 队列 | PostgreSQL + pg-boss | v0.5/v1.4 | 初期不额外引入 Redis |
-| 工作流 | 自有 Workflow Schema + TypeScript Executor | v1.1 | 确定性执行、重试和审计 |
-| 流程画布 | React Flow（`@xyflow/react`） | v1.2 | 只负责编辑和布局 |
-| AI | LangChain.js + LangGraph.js | v1.6 | 通过 Tool Gateway 调用能力 |
-| RAG | PostgreSQL + pgvector | v1.6 | 先复用团队数据库，规模增加再拆分 |
-| 测试 | Vitest + Playwright Test + Testcontainers | v0.1 起分层加入 | 单元、浏览器、服务和桌面测试 |
+| 层级       | 首选技术                                            |        进入阶段 | 主要边界                                     |
+| ---------- | --------------------------------------------------- | --------------: | -------------------------------------------- |
+| 包管理     | pnpm workspaces                                     |            v0.1 | 统一锁文件和脚本                             |
+| 任务编排   | pnpm recursive scripts；Turborepo 后续评估          |     v0.1 多包后 | 只负责构建缓存，不承载业务逻辑               |
+| 语言       | TypeScript strict                                   |            v0.1 | 所有跨进程数据必须运行时校验                 |
+| 桌面       | Electron                                            |            v0.1 | 管理界面、本地协调和受控 IPC                 |
+| UI         | React + Vite + shadcn/ui                            |            v0.1 | 只做展示和用户交互                           |
+| 本地数据   | SQLite `node:sqlite`                                |            v0.1 | 环境元数据和本地设置                         |
+| 浏览器控制 | 自有 Browser Control API + Playwright/CDP 适配      |       v0.1/v1.1 | 不暴露具体内核参数给业务层                   |
+| 团队 API   | NestJS + Fastify adapter + Zod                      |            v0.4 | 模块化单体、REST/OpenAPI、自托管和客户端兼容 |
+| 团队数据库 | PostgreSQL + Drizzle ORM                            |            v0.4 | 租约、版本、权限和审计                       |
+| 对象存储   | S3 API + MinIO 开发环境                             |       v0.4/v0.5 | 快照、附件、报表和日志产物                   |
+| 队列       | PostgreSQL + pg-boss                                |       v0.5/v1.4 | 初期不额外引入 Redis                         |
+| 工作流     | 自有 Workflow Schema + TypeScript Executor          |            v1.1 | 确定性执行、重试和审计                       |
+| 流程画布   | React Flow（`@xyflow/react`）                       |            v1.2 | 只负责编辑和布局                             |
+| AI         | LangChain.js + LangGraph.js                         |            v1.6 | 通过 Tool Gateway 调用能力                   |
+| RAG        | PostgreSQL + pgvector                               |            v1.6 | 先复用团队数据库，规模增加再拆分             |
+| 测试       | Vitest 当前使用；Playwright/Testcontainers 后续加入 | v0.1 起分层加入 | 单元、浏览器、服务和桌面测试                 |
 
 ## 4. Monorepo 与开发工具
 
@@ -102,7 +122,7 @@ contextweave/
 
 ### 4.2 TypeScript 配置
 
-- 开启 `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`。
+- 当前启用 `strict`；`noUncheckedIndexedAccess` 和 `exactOptionalPropertyTypes` 为后续逐包收紧目标，启用前修复相应边界并独立验收。
 - 使用 project references 或统一的 `tsconfig.base.json`。
 - 跨进程消息、数据库 JSON 和 API 输入都必须经过 Zod 运行时校验。
 - 共享包只导出稳定的类型和函数，不直接依赖 Electron、NestJS/Fastify 或 React 具体实现。
@@ -134,31 +154,35 @@ v0.1 的正式 `pnpm check` 门禁为 Prettier（本次维护的 Renderer/Main/P
 - **React + `@vitejs/plugin-react`**：管理界面和 Fast Refresh。
 - **electron-builder**：Windows NSIS、macOS DMG、Linux AppImage/deb、`extraResources`、`asarUnpack` 和 GitHub Release 产物。
 - **electron-log**：本地日志滚动、日志目录和崩溃前诊断。
-- **@electron/rebuild**：better-sqlite3、keytar 等原生模块在 Electron 目标 ABI 下重建；每个操作系统和 Electron major 都要在 CI 验证。
+- **@electron/rebuild**：仅在引入 Electron 原生模块时使用；每个操作系统和 Electron major 都要在 CI 验证。
 - **electron-updater**：后期再加入；未签名发布阶段先使用 GitHub Release 手动下载。
 
-`Electron Forge + @electron-forge/plugin-vite` 是官方替代方案，适合更看重 make/publish 一体化的项目；其 Vite 插件和 Monorepo/native module 组合需要锁定版本并单独验证。ContextWeave 当前选择 `electron-vite + electron-builder`，因为外部内核资源、多入口 Worker、原生 SQLite 模块和自托管发布需要更细的打包控制。两套方案只选一套，不能同时维护两套发布链路。
+`Electron Forge + @electron-forge/plugin-vite` 是官方替代方案，适合更看重 make/publish 一体化的项目；其 Vite 插件和 Monorepo/native module 组合需要锁定版本并单独验证。ContextWeave 当前选择 `electron-vite + electron-builder`，因为外部内核资源、多入口 Worker、SQLite 持久化和自托管发布需要更细的打包控制。两套方案只选一套，不能同时维护两套发布链路。
 
 ### 5.2 Renderer 层
 
 推荐：
 
 - **React**：页面和组件。
-- **React Router (`react-router`)**：桌面端页面路由；当前官网声明式安装使用统一的 `react-router` 包，不把业务状态塞进 URL。
+- **TanStack React Router (`@tanstack/react-router`)**：桌面端文件路由、类型化 params/search、loader 和权限前置校验。
+- v0.1 当前使用 TanStack Router File-based Routing：通过 `@tanstack/router-plugin/vite` 生成 `src/routeTree.gen.ts`，Renderer 使用 `createRouter` + `RouterProvider`，Electron 打包页面使用 `createHashHistory`，避免 `file://` 路径回退问题。菜单只负责导航到 route，不再维护手工 `page` 状态。
 - **shadcn/ui + Base UI**：当前官网默认的可复制、可调整无障碍组件基线；Radix 作为兼容现有项目的可选基础，不作为 ContextWeave v0.1 的 UI primitive。
 - **shadcn CLI 当前 `cn` 工具**：组件源码使用 CLI 当前生成的 `cn` 依赖和 Tailwind class 合并方式；不要再单独维护一套旧的 `cn` 工具实现。
 - **Tailwind CSS**：布局和主题。
-- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界；第一版支持主题模式、颜色预设、圆角、密度、字体和官方 Sidebar 布局变体，主题配置需要版本化并通过受限设置接口持久化，不在组件内散落颜色值。
+- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界，按 `project-plan.md` §6.0.2 的主题版本路线交付。主题 v1.0 使用单个颜色种子派生浅/深色色板，颜色不影响字体、圆角等设置；Sidebar 形态与布局行为分离，提供缩放和减少动画。ThemeConfig schema v2 通过受限设置接口持久化并迁移旧配置。
+- **主题 Drawer**：使用现有 `@base-ui/react/drawer` 的 Drawer primitive（MIT），不使用 Sheet，不增加 Vaul/Radix 等第二套基础组件；沿用当前本地 UI 依赖，没有额外网络行为或遥测。
+- **界面字体**：Auto 使用 `@fontsource-variable/public-sans` 5.3.0（字体许可 OFL-1.1），替换 Geist 字体依赖；由 Fontsource 独立分发的 CSS/WOFF2 随应用本地打包，无原生模块、运行时网络请求或遥测。Sans/Serif 保留系统字体栈；CJK 使用本机字体回退。替换成本限于字体资源导入和共享字体映射，不引入远程字体服务或 New API 的字体资源。
+- **颜色计算**：使用 **culori**（MIT，纯 JavaScript，无原生模块、运行时网络或遥测）执行 HEX/OKLCH 转换、色域映射和 WCAG 对比度计算；只在主题纯函数模块内依赖它，替换成本限定于颜色适配层。`@types/culori` 只用于编译期。色板规则由 ContextWeave 自行实现，计算与界面预览分离；不引入运行时 AI。输入遵循 contracts 的不透明六位 HEX schema，所有角色（含状态色）统一映射到 sRGB 后评估对比度；通过有界明度搜索保护文本和必要图形，hover 使用独立实色，图表采用有序明度区间。回归测试覆盖全灰阶、RGB 采样、极端色和实际组件状态。
 - **Lucide React**：图标。
-- **TanStack Query**：服务端状态、缓存、请求重试和失效。
+- **TanStack Query**：团队 API 或 Web 管理端出现后再引入；当前桌面端不把它作为运行时依赖。
 - **Zustand**：工作空间选择、侧边栏、弹窗等轻量 UI 状态。
 - **React Hook Form + Zod Resolver**：复杂表单和运行时校验。
 - **TanStack Table**：环境、成员、代理和审计表格。
-- **Sonner**：轻量通知。
-- **date-fns**：需要日期计算或复杂时区处理时按功能引入；当前 Base UI Calendar 组件使用原生 `Intl`，桌面端暂不保留未使用的直接依赖。
-- **i18next + react-i18next**：中文、英文和后续出海地区的界面国际化；业务数据和日志不依赖界面语言。
+- **Base UI Toast**：当前桌面端通知基线；Sonner 不作为当前依赖。
+- **react-day-picker + date-fns**：已安装的 Calendar 使用 react-day-picker 10，配合其 date-fns 4 日期适配与 peer 依赖；使用内置 locale 和显式方向支持。均为 MIT、纯 JavaScript，无原生模块、运行时网络或遥测。业务层简单格式化仍优先使用 Intl；替换边界限定在 Calendar 与日期适配层。
+- **界面语言**：v0.1 使用 `apps/desktop/src/i18n/` 下按 `types`、`locales` 和 Provider 拆分的严格类型字典与受限本地持久化，支持简体中文与 English 的 Header、侧边栏和主题设置文案；业务数据、环境配置和日志不依赖界面语言。待语言数量、翻译资源和复数规则明显增长后，再评估 i18next + react-i18next，并保持现有 `Locale` 边界可迁移。
 
-本次官网核查（2026-09-21）记录：shadcn/ui 的 [Base UI 默认变更说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)说明新项目默认使用 Base UI，同时继续支持 Radix；[组件手册](https://ui.shadcn.com/docs/components/accordion)的 Base UI 版本使用 `@base-ui/react`。React Router 的[声明式安装文档](https://reactrouter.com/start/declarative/installation)当前使用 `react-router` 包，因此项目不保留未使用的 `react-router-dom` 声明。
+本次官网核查（2026-09-21）记录：shadcn/ui 的 [Base UI 默认变更说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)说明新项目默认使用 Base UI，同时继续支持 Radix；[组件手册](https://ui.shadcn.com/docs/components/accordion)的 Base UI 版本使用 `@base-ui/react`。当前桌面端使用 `@tanstack/react-router` 和 `@tanstack/router-plugin`，不保留未使用的 React Router 包。
 
 不建议同时使用 Redux、MobX、Zustand 和多个请求状态库。推荐 TanStack Query 管服务端状态，Zustand 管界面状态。
 
@@ -178,7 +202,7 @@ IPC 方法应接近领域操作，例如 `environment.start`、`kernel.install`�
 
 - **execa**：启动 Worker、内核安装器和诊断命令，统一 stdout、stderr、超时和退出码。
 - Node.js `child_process.spawn`：需要长期控制的浏览器进程使用原生 API，以便保存 PID、stdio 和取消信号。
-- **proper-lockfile** 或基于独占文件句柄的实现：本地环境运行锁。
+- 基于独占文件句柄的实现：本地环境运行锁；`proper-lockfile` 仅作为后续替代候选。
 - `AbortController`：取消启动、下载、同步和工作流任务。
 - **pino**：Worker 和服务端结构化日志；Electron 日志通过 electron-log 适配。
 
@@ -188,22 +212,22 @@ IPC 方法应接近领域操作，例如 `environment.start`、`kernel.install`�
 
 五种方案的定位不同：
 
-| 方案 | 评价 | 结论 |
-|---|---|---|
-| 先用裸 Vite，再手工接 Electron | 需要自己处理 Main、Preload、Renderer、HMR、打包、资源和原生模块 | 不推荐作为首个正式项目 |
-| `electron-vite` React/TypeScript 模板 | Main/Preload/Renderer 已分开，React 开发体验好，配合 electron-builder 可以精细处理 Worker、native module 和外部内核资源 | 当前推荐 |
-| Vite+ `vp create vite -- --template react-ts` 后手工接 Electron | 统一 Web 工具链和 Vite 8/Rolldown/Oxc/Vitest/Vite Task；目前是 Beta，没有 Electron 入口、IPC、原生模块重建或安装包发布集成 | 暂不作为桌面根脚手架 |
-| 先用 shadcn Vite 模板，再接 Electron | shadcn 只是组件和样式初始化工具，不是 Electron 架构脚手架 | 不推荐作为根项目生成器 |
-| Electron Forge Vite/TypeScript 模板 | 官方 Electron 流程，适合 make、publish 和 GitHub Release，但 Vite 插件与复杂 Monorepo 需要额外验证 | 官方备选 |
+| 方案                                                            | 评价                                                                                                                       | 结论                   |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| 先用裸 Vite，再手工接 Electron                                  | 需要自己处理 Main、Preload、Renderer、HMR、打包、资源和原生模块                                                            | 不推荐作为首个正式项目 |
+| `electron-vite` React/TypeScript 模板                           | Main/Preload/Renderer 已分开，React 开发体验好，配合 electron-builder 可以精细处理 Worker、native module 和外部内核资源    | 当前推荐               |
+| Vite+ `vp create vite -- --template react-ts` 后手工接 Electron | 统一 Web 工具链和 Vite 8/Rolldown/Oxc/Vitest/Vite Task；目前是 Beta，没有 Electron 入口、IPC、原生模块重建或安装包发布集成 | 暂不作为桌面根脚手架   |
+| 先用 shadcn Vite 模板，再接 Electron                            | shadcn 只是组件和样式初始化工具，不是 Electron 架构脚手架                                                                  | 不推荐作为根项目生成器 |
+| Electron Forge Vite/TypeScript 模板                             | 官方 Electron 流程，适合 make、publish 和 GitHub Release，但 Vite 插件与复杂 Monorepo 需要额外验证                         | 官方备选               |
 
 初始化顺序：
 
 1. 使用 `electron-vite` 的 React/TypeScript 模板创建 `apps/desktop`。
-2. 在 Renderer 中加入 React、`react-router` 和 React Hook Form。
+2. 在 Renderer 中加入 React、`@tanstack/react-router`、`@tanstack/router-plugin` 和 React Hook Form。
 3. 运行 shadcn CLI 初始化 Tailwind 和组件；初期组件放在桌面应用，WebUI 出现后再抽到 `packages/ui`。
-4. 将桌面应用接入 pnpm workspace 和 Turborepo。
-5. 创建 `packages/contracts`、`packages/kernel-protocol`、`packages/config` 和 `packages/ui` 的最小版本。
-6. 创建 `apps/api`，使用 NestJS + Fastify adapter；桌面端先通过 mock API 或本地 adapter 验证界面。
+4. 将桌面应用接入 pnpm workspace；多应用构建形成实际需求后再引入 Turborepo。
+5. 按现有边界维护 `packages/contracts`、`packages/storage`、`packages/kernel-core`、各 `packages/kernel-*` 适配器和 `packages/worker-protocol`；出现真实复用需求后再抽取共享 UI 或配置包。
+6. 团队服务进入对应版本后，再创建 `apps/api`，使用 NestJS + Fastify adapter；v0.1 只通过本地 adapter 验证桌面端。
 
 典型创建命令由当前 CLI 版本决定，建议使用交互式命令并选择 React + TypeScript 模板；如果 CLI 的包名或参数发生变化，以其当前帮助信息为准：
 
@@ -212,7 +236,8 @@ pnpm create electron-vite@latest
 # 选择 React / TypeScript 模板，项目目录使用 apps/desktop
 
 cd apps/desktop
-pnpm add react react-dom react-router react-hook-form zod @hookform/resolvers
+pnpm add react react-dom @tanstack/react-router react-hook-form zod @hookform/resolvers
+pnpm add -D @tanstack/router-plugin
 pnpm dlx shadcn@latest init
 ```
 
@@ -245,6 +270,13 @@ Vite+ 的 `vp create vite -- --template react-ts` 可以生成 Web React 项目�
 
 ### 5.7 本次核查资料
 
+- [Electron Security](https://www.electronjs.org/docs/latest/tutorial/security)
+- [Electron Release Timeline](https://www.electronjs.org/docs/latest/tutorial/electron-timelines)
+- [Node.js SQLite API](https://nodejs.org/api/sqlite.html)
+- [TanStack Router File-based Routing](https://tanstack.com/router/latest/docs/framework/react/guide/file-based-routing)
+- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+- [SLSA Build Track](https://slsa.dev/spec/v1.0/levels)
+- [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)
 - [Vite+ 官方首页](https://viteplus.dev/)
 - [Vite+ Creating a Project](https://viteplus.dev/guide/create)
 - [Vite+ Pack](https://viteplus.dev/guide/pack)
@@ -276,13 +308,13 @@ Vite+ 的 `vp create vite -- --template react-ts` 可以生成 Web React 项目�
 
 ```ts
 interface BrowserSession {
-  pages(): Promise<PageRef[]>;
-  openPage(url: string): Promise<PageRef>;
-  click(target: LocatorSpec, options?: ClickOptions): Promise<void>;
-  fill(target: LocatorSpec, value: string, options?: FillOptions): Promise<void>;
-  extract(spec: ExtractSpec): Promise<unknown>;
-  screenshot(options?: ScreenshotOptions): Promise<ArtifactRef>;
-  close(): Promise<void>;
+  pages(): Promise<PageRef[]>
+  openPage(url: string): Promise<PageRef>
+  click(target: LocatorSpec, options?: ClickOptions): Promise<void>
+  fill(target: LocatorSpec, value: string, options?: FillOptions): Promise<void>
+  extract(spec: ExtractSpec): Promise<unknown>
+  screenshot(options?: ScreenshotOptions): Promise<ArtifactRef>
+  close(): Promise<void>
 }
 ```
 
@@ -312,13 +344,13 @@ interface BrowserSession {
 推荐：
 
 - **SQLite**：个人模式的本地元数据。
-- **better-sqlite3**：同步调用简单、性能稳定；需要配合 Electron 原生模块重建。
+- **node:sqlite (`DatabaseSync`)**：v0.1 当前使用的 SQLite 运行时，减少额外 native module 的 ABI 兼容负担。
 - **Drizzle ORM**：类型安全、SQL 透明、迁移可控。
 - **drizzle-kit**：生成和执行 schema migration。
 
 数据库保存环境元数据、内核绑定、代理引用、任务状态、备份索引和本地设置。浏览器用户目录仍是独立文件资源，不能把整个用户目录塞进 SQLite。
 
-v0.1 的实际实现因 Windows 开发环境无法完成 `better-sqlite3` 的 Electron ABI rebuild，暂时使用 Electron/Node 内置 `node:sqlite` `DatabaseSync`；Drizzle schema 保留用于长期 schema 表达和后续替换评估。具体取舍和退出条件记录在 [ADR 0001](adr/0001-local-sqlite-runtime.md)。
+v0.1 使用 Electron/Node 内置 `node:sqlite` `DatabaseSync`；Drizzle schema 作为长期 schema 表达和后续替换评估的候选。
 
 ### 7.2 本地凭据
 
@@ -374,9 +406,9 @@ NestJS 只用于 `apps/api` 的服务端模块，不用于 Electron Main、浏�
 
 服务端所有租约、版本提交和权限变化必须在事务内完成。不能用一个内存 `running` 字段解决团队接力。
 
-### 8.3 认证、权限与审计
+### 8.3 认证、权限与审计（团队服务首个版本）
 
-首期：
+团队服务首个版本：
 
 - 账号、密码、刷新令牌或设备令牌。
 - Argon2id 密码哈希。
@@ -562,7 +594,7 @@ AI 生成的工作流只能先生成草稿。涉及修改价格、上传资料�
 - **OpenTelemetry**：API、队列、Worker 和数据库的 trace/span。
 - **Sentry** 可作为可选、明确告知并可关闭的崩溃采集；开源默认不上传页面内容和凭据。
 
-首期至少记录：浏览器启动耗时、内核下载失败、快照上传/下载耗时、租约冲突、工作流节点耗时、队列重试和磁盘空间。
+v0.1 至少记录：浏览器启动耗时、内核下载失败、Worker 任务结果、应用错误和磁盘空间。快照、租约、工作流节点和队列指标在对应服务进入开发后加入。
 
 ## 15. 安全与依赖治理
 
@@ -609,7 +641,7 @@ GitHub Actions 负责：
 
 ### 16.2 团队服务部署
 
-Docker Compose 首期包含：
+团队服务的首个部署版本再使用 Docker Compose，包含：
 
 - ContextWeave Server。
 - PostgreSQL。
@@ -637,9 +669,9 @@ Docker Compose 首期包含：
 加入：
 
 - Electron、Vite、React、TypeScript。
-- shadcn/ui、Tailwind、TanStack Query、Zustand、React Hook Form、Zod。
+- shadcn/ui、Tailwind、Zustand、React Hook Form、Zod。
 - pnpm、Vitest、ESLint、Prettier。
-- SQLite、better-sqlite3、Drizzle。
+- SQLite `node:sqlite`；保留 Drizzle schema 定义，repository 读写仍使用 `node:sqlite`。
 - execa、get-port、electron-log。
 - Kernel Registry、manifest、SHA-256、至少两个内核 Adapter。
 - Playwright Core 或 CDP client 的最小控制闭环。
@@ -651,6 +683,7 @@ Docker Compose 首期包含：
 加入：
 
 - NestJS、@nestjs/platform-fastify、Zod、OpenAPI。
+- TanStack Query（团队 API 或 Web 管理端的服务端状态）。
 - PostgreSQL、Drizzle migrations、jose、argon2。
 - S3 SDK、MinIO、预签名 URL。
 - pg-boss、服务端 pino、prom-client。
@@ -688,9 +721,9 @@ Docker Compose 首期包含：
 - 不在 Renderer、Main 或服务端执行没有权限边界的任意用户脚本。
 - 不通过修改 User-Agent 或注入 JavaScript 宣称完成指纹隔离。
 
-## 19. 最终推荐基线
+## 19. 总体技术基线
 
-首期最终技术栈为：
+ContextWeave 的总体技术基线为：
 
 ```text
 Electron
@@ -699,7 +732,7 @@ Electron
 ├── TanStack Query + Zustand
 ├── React Hook Form + Zod
 ├── Electron Main/Preload
-├── SQLite + better-sqlite3 + Drizzle ORM
+├── SQLite `node:sqlite` + Drizzle ORM
 ├── Kernel Registry + Kernel Adapter + Browser Runtime
 ├── Playwright Core/CDP adapter
 └── 独立 TypeScript Worker

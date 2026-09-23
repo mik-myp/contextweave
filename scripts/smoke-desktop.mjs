@@ -3,9 +3,10 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import assert from 'node:assert/strict'
-const appRoot = fileURLToPath(new URL('../apps/desktop/', import.meta.url))
+// A trailing Windows backslash escapes the launcher's closing argument quote.
+const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
 const { _electron } = require('playwright-core')
 const directory = await mkdtemp(join(tmpdir(), 'cw-desktop-smoke-'))

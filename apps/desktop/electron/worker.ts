@@ -23,28 +23,31 @@ async function run(): Promise<WorkerResult> {
   const task = workerTaskSchema.parse(payload.task)
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${payload.controlPort}`)
   try {
-    const context = browser.contexts()[0] ?? await browser.newContext()
-    const page = context.pages()[0] ?? await context.newPage()
+    const context = browser.contexts()[0] ?? (await browser.newContext())
+    const page = context.pages()[0] ?? (await context.newPage())
     let cdpSession: Awaited<ReturnType<typeof context.newCDPSession>> | undefined
     if (payload.proxyCredentials) {
       cdpSession = await context.newCDPSession(page)
       await cdpSession.send('Fetch.enable', { handleAuthRequests: true })
-      cdpSession.on('Fetch.authRequired', (event: {
-        requestId: string
-        authChallenge: { source?: string }
-      }) => {
-        if (event.authChallenge.source !== 'Proxy') return
-        void cdpSession?.send('Fetch.continueWithAuth', {
-          requestId: event.requestId,
-          authChallengeResponse: {
-            response: 'ProvideCredentials',
-            username: payload.proxyCredentials?.username,
-            password: payload.proxyCredentials?.password,
-          },
-        })
-      })
+      cdpSession.on(
+        'Fetch.authRequired',
+        (event: { requestId: string; authChallenge: { source?: string } }) => {
+          if (event.authChallenge.source !== 'Proxy') return
+          void cdpSession?.send('Fetch.continueWithAuth', {
+            requestId: event.requestId,
+            authChallengeResponse: {
+              response: 'ProvideCredentials',
+              username: payload.proxyCredentials?.username,
+              password: payload.proxyCredentials?.password,
+            },
+          })
+        },
+      )
     }
-    await page.goto(task.input.url, { waitUntil: 'domcontentloaded', timeout: task.input.timeoutMs })
+    await page.goto(task.input.url, {
+      waitUntil: 'domcontentloaded',
+      timeout: task.input.timeoutMs,
+    })
     const title = await page.title()
     const screenshotPath = task.input.screenshotPath ?? join(tmpdir(), `${task.taskId}.png`)
     await page.screenshot({ path: screenshotPath, fullPage: false })

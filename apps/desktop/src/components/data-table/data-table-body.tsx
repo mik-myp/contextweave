@@ -50,7 +50,7 @@ export function DataTableBody<TData extends RowData>({
                   <TableHead
                     key={header.id}
                     colSpan={header.colSpan}
-                    className={cn(header.column.columnDef.meta?.align === 'end' && 'text-right')}
+                    className={cn(header.column.columnDef.meta?.align === 'end' && 'text-end')}
                     aria-sort={
                       header.column.getCanSort()
                         ? sorted === 'asc'
@@ -103,7 +103,7 @@ export function DataTableBody<TData extends RowData>({
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
-                    className={cn(cell.column.columnDef.meta?.align === 'end' && 'text-right')}
+                    className={cn(cell.column.columnDef.meta?.align === 'end' && 'text-end')}
                   >
                     <table.FlexRender cell={cell} />
                   </TableCell>

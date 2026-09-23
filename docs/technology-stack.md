@@ -122,7 +122,7 @@ contextweave/
 
 ### 4.2 TypeScript 配置
 
-- 开启 `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`。
+- 当前启用 `strict`；`noUncheckedIndexedAccess` 和 `exactOptionalPropertyTypes` 为后续逐包收紧目标，启用前修复相应边界并独立验收。
 - 使用 project references 或统一的 `tsconfig.base.json`。
 - 跨进程消息、数据库 JSON 和 API 输入都必须经过 Zod 运行时校验。
 - 共享包只导出稳定的类型和函数，不直接依赖 Electron、NestJS/Fastify 或 React 具体实现。
@@ -169,15 +169,18 @@ v0.1 的正式 `pnpm check` 门禁为 Prettier（本次维护的 Renderer/Main/P
 - **shadcn/ui + Base UI**：当前官网默认的可复制、可调整无障碍组件基线；Radix 作为兼容现有项目的可选基础，不作为 ContextWeave v0.1 的 UI primitive。
 - **shadcn CLI 当前 `cn` 工具**：组件源码使用 CLI 当前生成的 `cn` 依赖和 Tailwind class 合并方式；不要再单独维护一套旧的 `cn` 工具实现。
 - **Tailwind CSS**：布局和主题。
-- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界；第一版支持主题模式、颜色预设、圆角、密度、字体和官方 Sidebar 布局变体，主题配置需要版本化并通过受限设置接口持久化，不在组件内散落颜色值。
+- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界，按 `project-plan.md` §6.0.2 的主题版本路线交付。主题 v1.0 使用单个颜色种子派生浅/深色色板，颜色不影响字体、圆角等设置；Sidebar 形态与布局行为分离，提供缩放和减少动画。ThemeConfig schema v2 通过受限设置接口持久化并迁移旧配置。
+- **主题 Drawer**：使用现有 `@base-ui/react/drawer` 的 Drawer primitive（MIT），不使用 Sheet，不增加 Vaul/Radix 等第二套基础组件；沿用当前本地 UI 依赖，没有额外网络行为或遥测。
+- **界面字体**：Auto 使用 `@fontsource-variable/public-sans` 5.3.0（字体许可 OFL-1.1），替换 Geist 字体依赖；由 Fontsource 独立分发的 CSS/WOFF2 随应用本地打包，无原生模块、运行时网络请求或遥测。Sans/Serif 保留系统字体栈；CJK 使用本机字体回退。替换成本限于字体资源导入和共享字体映射，不引入远程字体服务或 New API 的字体资源。
+- **颜色计算**：使用 **culori**（MIT，纯 JavaScript，无原生模块、运行时网络或遥测）执行 HEX/OKLCH 转换、色域映射和 WCAG 对比度计算；只在主题纯函数模块内依赖它，替换成本限定于颜色适配层。`@types/culori` 只用于编译期。色板规则由 ContextWeave 自行实现，计算与界面预览分离；不引入运行时 AI。输入遵循 contracts 的不透明六位 HEX schema，所有角色（含状态色）统一映射到 sRGB 后评估对比度；通过有界明度搜索保护文本和必要图形，hover 使用独立实色，图表采用有序明度区间。回归测试覆盖全灰阶、RGB 采样、极端色和实际组件状态。
 - **Lucide React**：图标。
 - **TanStack Query**：团队 API 或 Web 管理端出现后再引入；当前桌面端不把它作为运行时依赖。
 - **Zustand**：工作空间选择、侧边栏、弹窗等轻量 UI 状态。
 - **React Hook Form + Zod Resolver**：复杂表单和运行时校验。
 - **TanStack Table**：环境、成员、代理和审计表格。
 - **Base UI Toast**：当前桌面端通知基线；Sonner 不作为当前依赖。
-- **date-fns**：需要日期计算或复杂时区处理时按功能引入；当前 Base UI Calendar 组件使用原生 `Intl`，桌面端暂不保留未使用的直接依赖。
-- **i18next + react-i18next**：需要多语言版本时再引入；业务数据和日志不依赖界面语言。
+- **react-day-picker + date-fns**：已安装的 Calendar 使用 react-day-picker 10，配合其 date-fns 4 日期适配与 peer 依赖；使用内置 locale 和显式方向支持。均为 MIT、纯 JavaScript，无原生模块、运行时网络或遥测。业务层简单格式化仍优先使用 Intl；替换边界限定在 Calendar 与日期适配层。
+- **界面语言**：v0.1 使用 `apps/desktop/src/i18n/` 下按 `types`、`locales` 和 Provider 拆分的严格类型字典与受限本地持久化，支持简体中文与 English 的 Header、侧边栏和主题设置文案；业务数据、环境配置和日志不依赖界面语言。待语言数量、翻译资源和复数规则明显增长后，再评估 i18next + react-i18next，并保持现有 `Locale` 边界可迁移。
 
 本次官网核查（2026-09-21）记录：shadcn/ui 的 [Base UI 默认变更说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)说明新项目默认使用 Base UI，同时继续支持 Radix；[组件手册](https://ui.shadcn.com/docs/components/accordion)的 Base UI 版本使用 `@base-ui/react`。当前桌面端使用 `@tanstack/react-router` 和 `@tanstack/router-plugin`，不保留未使用的 React Router 包。
 
@@ -222,8 +225,8 @@ IPC 方法应接近领域操作，例如 `environment.start`、`kernel.install`�
 1. 使用 `electron-vite` 的 React/TypeScript 模板创建 `apps/desktop`。
 2. 在 Renderer 中加入 React、`@tanstack/react-router`、`@tanstack/router-plugin` 和 React Hook Form。
 3. 运行 shadcn CLI 初始化 Tailwind 和组件；初期组件放在桌面应用，WebUI 出现后再抽到 `packages/ui`。
-4. 将桌面应用接入 pnpm workspace 和 Turborepo。
-5. 创建 `packages/contracts`、`packages/kernel-protocol`、`packages/config` 和 `packages/ui` 的最小版本。
+4. 将桌面应用接入 pnpm workspace；多应用构建形成实际需求后再引入 Turborepo。
+5. 按现有边界维护 `packages/contracts`、`packages/storage`、`packages/kernel-core`、各 `packages/kernel-*` 适配器和 `packages/worker-protocol`；出现真实复用需求后再抽取共享 UI 或配置包。
 6. 团队服务进入对应版本后，再创建 `apps/api`，使用 NestJS + Fastify adapter；v0.1 只通过本地 adapter 验证桌面端。
 
 典型创建命令由当前 CLI 版本决定，建议使用交互式命令并选择 React + TypeScript 模板；如果 CLI 的包名或参数发生变化，以其当前帮助信息为准：
@@ -305,17 +308,13 @@ Vite+ 的 `vp create vite -- --template react-ts` 可以生成 Web React 项目�
 
 ```ts
 interface BrowserSession {
-  pages(): Promise<PageRef[]>;
-  openPage(url: string): Promise<PageRef>;
-  click(target: LocatorSpec, options?: ClickOptions): Promise<void>;
-  fill(
-    target: LocatorSpec,
-    value: string,
-    options?: FillOptions,
-  ): Promise<void>;
-  extract(spec: ExtractSpec): Promise<unknown>;
-  screenshot(options?: ScreenshotOptions): Promise<ArtifactRef>;
-  close(): Promise<void>;
+  pages(): Promise<PageRef[]>
+  openPage(url: string): Promise<PageRef>
+  click(target: LocatorSpec, options?: ClickOptions): Promise<void>
+  fill(target: LocatorSpec, value: string, options?: FillOptions): Promise<void>
+  extract(spec: ExtractSpec): Promise<unknown>
+  screenshot(options?: ScreenshotOptions): Promise<ArtifactRef>
+  close(): Promise<void>
 }
 ```
 

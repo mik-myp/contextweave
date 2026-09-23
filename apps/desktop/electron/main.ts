@@ -15,7 +15,7 @@ import {
   type KernelManifest,
   type TargetArchitecture,
   type TargetPlatform,
-  defaultThemeConfig,
+  readThemeConfig,
   themeConfigSchema,
   type ThemeConfig,
 } from '@contextweave/contracts'
@@ -554,8 +554,7 @@ function proxySummary(record: ProxyRecord): ProxyRecord {
 
 function getThemeSettings(): ThemeConfig {
   const stored = databaseOrThrow().getSetting<unknown>('theme')
-  const parsed = themeConfigSchema.safeParse(stored)
-  return parsed.success ? parsed.data : defaultThemeConfig
+  return readThemeConfig(stored)
 }
 
 function setThemeSettings(input: unknown): IpcResult<ThemeConfig> {
@@ -910,6 +909,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:open-external', (_event, url: string) => {
     if (!/^https?:\/\//i.test(url)) return fail('INVALID_URL', 'Only HTTP(S) URLs can be opened')
     void shell.openExternal(url)
+    return ok(true)
+  })
+  ipcMain.handle('app:quit', () => {
+    setImmediate(() => app.quit())
     return ok(true)
   })
   ipcMain.handle('settings:get-theme', () => ok(getThemeSettings()))

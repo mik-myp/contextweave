@@ -55,7 +55,7 @@ export function DataTableToolbar<TData extends RowData>({
       </div>
       <div
         data-slot="data-table-actions"
-        className="ml-auto flex shrink-0 flex-wrap items-center gap-2"
+        className="ms-auto flex shrink-0 flex-wrap items-center gap-2"
       >
         {actions}
         <DataTableViewOptions table={table} />

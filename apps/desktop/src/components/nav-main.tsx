@@ -21,7 +21,13 @@ type NavItem = {
   items?: { title: string; url: string }[]
 }
 
-export function NavMain({ items }: { items: NavItem[] }) {
+export function NavMain({
+  items,
+  groupLabel = 'Workspace',
+}: {
+  items: NavItem[]
+  groupLabel?: string
+}) {
   const location = useRouterState({ select: (state) => state.location })
   const renderItem = (item: NavItem) =>
     item.items?.length ? (
@@ -38,7 +44,7 @@ export function NavMain({ items }: { items: NavItem[] }) {
         >
           {item.icon}
           <span>{item.title}</span>
-          <ChevronRightIcon className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
+          <ChevronRightIcon className="ms-auto transition-transform duration-200 group-data-open/collapsible:rotate-90 rtl:rotate-180 rtl:group-data-open/collapsible:rotate-90" />
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarMenuSub>
@@ -67,8 +73,8 @@ export function NavMain({ items }: { items: NavItem[] }) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>工作台</SidebarGroupLabel>
-      <SidebarMenu>{items.map(renderItem)}</SidebarMenu>
+      <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
+      <SidebarMenu className="gap-1">{items.map(renderItem)}</SidebarMenu>
     </SidebarGroup>
   )
 }

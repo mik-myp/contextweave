@@ -75,7 +75,7 @@ export function DataTablePagination<TData extends RowData>({
             disabled={!table.getCanPreviousPage()}
             onClick={() => table.firstPage()}
           >
-            <ChevronsLeftIcon />
+            <ChevronsLeftIcon className="rtl:rotate-180" />
           </Button>
           <Button
             size="icon-sm"
@@ -84,7 +84,7 @@ export function DataTablePagination<TData extends RowData>({
             disabled={!table.getCanPreviousPage()}
             onClick={() => table.previousPage()}
           >
-            <ChevronLeftIcon />
+            <ChevronLeftIcon className="rtl:rotate-180" />
           </Button>
           <Button
             size="icon-sm"
@@ -93,7 +93,7 @@ export function DataTablePagination<TData extends RowData>({
             disabled={!table.getCanNextPage()}
             onClick={() => table.nextPage()}
           >
-            <ChevronRightIcon />
+            <ChevronRightIcon className="rtl:rotate-180" />
           </Button>
           <Button
             size="icon-sm"
@@ -102,7 +102,7 @@ export function DataTablePagination<TData extends RowData>({
             disabled={!table.getCanNextPage()}
             onClick={() => table.lastPage()}
           >
-            <ChevronsRightIcon />
+            <ChevronsRightIcon className="rtl:rotate-180" />
           </Button>
         </nav>
       </div>

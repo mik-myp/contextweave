@@ -1,6 +1,10 @@
+import type { adminMessages } from './locales/zh-CN-admin'
+import type { workspaceMessages } from './locales/zh-CN-workspace'
 export type Locale = 'zh-CN' | 'en-US'
 
 export type TranslationKey =
+  | keyof typeof adminMessages
+  | keyof typeof workspaceMessages
   | 'common.retry'
   | 'theme.saveErrorTitle'
   | 'theme.saveErrorDescription'
@@ -70,6 +74,8 @@ export type TranslationKey =
   | 'theme.motionSystemDescription'
   | 'theme.motionReducedDescription'
   | 'theme.customColor'
+  | 'theme.accentHelp'
+  | 'theme.densityHelp'
   | 'theme.auto'
   | 'theme.colorBlue'
   | 'theme.colorCyan'

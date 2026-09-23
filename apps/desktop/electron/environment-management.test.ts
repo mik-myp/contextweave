@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultCommonEnvironmentConfig } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
-import { assertProxyMutable, removeEnvironment, updateEnvironment } from './environment-management'
+import {
+  assertProxyMutable,
+  getEnvironmentDetails,
+  removeEnvironment,
+  updateEnvironment,
+} from './environment-management'
 
 const directories: string[] = []
 
@@ -34,8 +39,12 @@ describe('environment management boundaries', () => {
         kernelVersion: 'local',
         proxyId: 'proxy-test',
         proxy: { type: 'http', host: '127.0.0.1', port: 8080 },
-        commonConfig: defaultCommonEnvironmentConfig,
-        kernelConfig: {},
+        commonConfig: {
+          ...defaultCommonEnvironmentConfig,
+          userAgent: 'Retained agent',
+          platform: 'darwin',
+        },
+        kernelConfig: { privateOption: 'retained' },
         configVersion: 1,
       },
     })
@@ -45,9 +54,36 @@ describe('environment management boundaries', () => {
       environmentId: 'env-test',
       name: '新名称',
       proxyId: null,
+      browserSettings: {
+        language: 'en-US',
+        timezone: 'UTC',
+        window: { width: 1920, height: 1080 },
+      },
     })
     expect(updated.name).toBe('新名称')
     expect(updated.proxyId).toBeNull()
+    expect(updated.dataDir).toBe(join(directory, 'env-test'))
+    expect(JSON.parse(updated.configJson)).toMatchObject({
+      kernelId: 'standard-chromium',
+      kernelConfig: { privateOption: 'retained' },
+      commonConfig: {
+        userAgent: 'Retained agent',
+        platform: 'darwin',
+        language: 'en-US',
+        timezone: 'UTC',
+        window: { width: 1920, height: 1080 },
+      },
+    })
+    const detail = getEnvironmentDetails(repository, 'env-test')
+    expect(detail.browserSettings).toEqual({
+      language: 'en-US',
+      timezone: 'UTC',
+      window: { width: 1920, height: 1080 },
+    })
+    expect(detail).not.toHaveProperty('dataDir')
+    expect(detail).not.toHaveProperty('kernelConfig')
+    expect(detail).not.toHaveProperty('proxy')
+    expect(() => getEnvironmentDetails(repository, 'missing')).toThrow('已不存在')
 
     repository.updateStatus('env-test', 'running')
     expect(() =>
@@ -56,6 +92,11 @@ describe('environment management boundaries', () => {
         environmentId: 'env-test',
         name: '再次修改',
         proxyId: null,
+        browserSettings: {
+          language: 'en-US',
+          timezone: 'UTC',
+          window: { width: 1920, height: 1080 },
+        },
       }),
     ).toThrow('请先停止浏览器')
     database.close()
@@ -75,8 +116,12 @@ describe('environment management boundaries', () => {
         kernelVersion: 'local',
         proxyId: 'proxy-test',
         proxy: { type: 'http', host: '127.0.0.1', port: 8080 },
-        commonConfig: defaultCommonEnvironmentConfig,
-        kernelConfig: {},
+        commonConfig: {
+          ...defaultCommonEnvironmentConfig,
+          userAgent: 'Retained agent',
+          platform: 'darwin',
+        },
+        kernelConfig: { privateOption: 'retained' },
         configVersion: 1,
       },
     })

@@ -1,3 +1,5 @@
+// Adapted from shadcn-admin (MIT); see THIRD_PARTY_NOTICES.md.
+import { useI18n } from '@/i18n'
 import type { ReactNode } from 'react'
 import type { ReactTable, RowData } from '@tanstack/react-table'
 import { XIcon } from 'lucide-react'
@@ -17,18 +19,19 @@ export function DataTableToolbar<TData extends RowData>({
   filters?: ReactNode
   actions?: ReactNode
 }) {
+  const { t } = useI18n()
   const filtered = Boolean(table.state.globalFilter) || table.state.columnFilters.length > 0
   return (
     <div
       data-slot="data-table-toolbar"
-      className="flex flex-wrap items-start justify-between gap-3"
+      className="flex flex-wrap items-center justify-between gap-3"
     >
       <div
         data-slot="data-table-search"
         className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
       >
         <Input
-          className="h-8 w-full sm:w-60"
+          className="h-(--control-height-sm) w-37.5 lg:w-62.5"
           aria-label={searchPlaceholder}
           placeholder={searchPlaceholder}
           value={String(table.state.globalFilter ?? '')}
@@ -43,13 +46,13 @@ export function DataTableToolbar<TData extends RowData>({
             size="sm"
             variant="ghost"
             onClick={() => {
-              table.resetGlobalFilter()
-              table.resetColumnFilters()
+              table.setGlobalFilter('')
+              table.setColumnFilters([])
               table.setPageIndex(0)
             }}
           >
             <XIcon data-icon="inline-start" />
-            重置筛选
+            {t('table.reset')}
           </Button>
         )}
       </div>
@@ -57,8 +60,8 @@ export function DataTableToolbar<TData extends RowData>({
         data-slot="data-table-actions"
         className="ms-auto flex shrink-0 flex-wrap items-center gap-2"
       >
-        {actions}
         <DataTableViewOptions table={table} />
+        {actions}
       </div>
     </div>
   )

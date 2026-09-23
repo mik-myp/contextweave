@@ -1,3 +1,4 @@
+import { useI18n } from '@/i18n'
 import { useId } from 'react'
 import type { ReactTable, RowData } from '@tanstack/react-table'
 import {
@@ -8,6 +9,13 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationEllipsis,
+} from '@/components/ui/pagination'
+import { getPageItems } from './data-table-page-items'
+import {
   Select,
   SelectTrigger,
   SelectValue,
@@ -17,31 +25,38 @@ import {
 } from '@/components/ui/select'
 import type { DataTableFeatures } from './data-table-features'
 
-const pageSizes = [10, 20, 50].map((value) => ({ value, label: String(value) }))
+const pageSizes = [10, 20, 30, 40, 50].map((value) => ({ value, label: String(value) }))
 export function DataTablePagination<TData extends RowData>({
   table,
+  countLabel,
+  disabled = false,
 }: {
+  countLabel?: (count: number) => string
+  disabled?: boolean
   table: ReactTable<DataTableFeatures, TData>
 }) {
+  const { t } = useI18n()
   const id = useId()
   const { pageIndex, pageSize } = table.state.pagination
   const count = table.getFilteredRowModel().rows.length
   const pages = Math.max(1, table.getPageCount())
+  const currentPage = Math.min(pageIndex + 1, pages)
   return (
     <div
       data-slot="data-table-pagination"
-      className="flex flex-wrap items-center justify-between gap-4"
+      className="flex flex-wrap items-center justify-end gap-4"
     >
       <span className="text-sm text-muted-foreground" role="status">
-        共 {count} 条
+        {countLabel ? countLabel(count) : t('table.total').replace('{count}', String(count))}
       </span>
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6">
         <div className="flex items-center gap-2">
           <label htmlFor={id} className="text-sm">
-            每页条数
+            {t('table.pageSize')}
           </label>
           <Select
             items={pageSizes}
+            disabled={disabled}
             value={pageSize}
             onValueChange={(value) => {
               if (value) {
@@ -50,10 +65,10 @@ export function DataTablePagination<TData extends RowData>({
               }
             }}
           >
-            <SelectTrigger id={id} className="h-8 w-18">
+            <SelectTrigger id={id} size="sm" className="w-18">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent aria-label={t('table.pageSize')}>
               <SelectGroup>
                 {pageSizes.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
@@ -65,46 +80,75 @@ export function DataTablePagination<TData extends RowData>({
           </Select>
         </div>
         <span className="text-sm tabular-nums">
-          第 {Math.min(pageIndex + 1, pages)} / {pages} 页
+          {t('table.page').replace('{page}', String(currentPage)).replace('{pages}', String(pages))}
         </span>
-        <nav aria-label="表格分页" className="flex items-center gap-1">
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="首页"
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.firstPage()}
-          >
-            <ChevronsLeftIcon className="rtl:rotate-180" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="上一页"
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
-          >
-            <ChevronLeftIcon className="rtl:rotate-180" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="下一页"
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
-          >
-            <ChevronRightIcon className="rtl:rotate-180" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="末页"
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.lastPage()}
-          >
-            <ChevronsRightIcon className="rtl:rotate-180" />
-          </Button>
-        </nav>
+        <Pagination aria-label={t('table.pagination')} className="mx-0 w-auto justify-end">
+          <PaginationContent className="flex-wrap justify-end gap-1">
+            <PaginationItem className="hidden sm:block">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label={t('table.first')}
+                disabled={disabled || !table.getCanPreviousPage()}
+                onClick={() => table.firstPage()}
+              >
+                <ChevronsLeftIcon className="rtl:rotate-180" />
+              </Button>
+            </PaginationItem>
+            <PaginationItem>
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label={t('table.previous')}
+                disabled={disabled || !table.getCanPreviousPage()}
+                onClick={() => table.previousPage()}
+              >
+                <ChevronLeftIcon className="rtl:rotate-180" />
+              </Button>
+            </PaginationItem>
+            {getPageItems(currentPage, pages).map((item) => (
+              <PaginationItem key={item}>
+                {typeof item === 'number' ? (
+                  <Button
+                    size="sm"
+                    variant={item === currentPage ? 'outline' : 'ghost'}
+                    className="min-w-(--control-height-sm) px-2"
+                    aria-label={t('table.goToPage').replace('{page}', String(item))}
+                    aria-current={item === currentPage ? 'page' : undefined}
+                    disabled={disabled || count === 0}
+                    onClick={() => table.setPageIndex(item - 1)}
+                  >
+                    {item}
+                  </Button>
+                ) : (
+                  <PaginationEllipsis className="size-(--control-height-sm)" />
+                )}
+              </PaginationItem>
+            ))}
+            <PaginationItem>
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label={t('table.next')}
+                disabled={disabled || !table.getCanNextPage()}
+                onClick={() => table.nextPage()}
+              >
+                <ChevronRightIcon className="rtl:rotate-180" />
+              </Button>
+            </PaginationItem>
+            <PaginationItem className="hidden sm:block">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label={t('table.last')}
+                disabled={disabled || !table.getCanNextPage()}
+                onClick={() => table.lastPage()}
+              >
+                <ChevronsRightIcon className="rtl:rotate-180" />
+              </Button>
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
       </div>
     </div>
   )

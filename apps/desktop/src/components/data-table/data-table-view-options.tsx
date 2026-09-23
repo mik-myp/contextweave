@@ -1,3 +1,5 @@
+// Adapted from shadcn-admin (MIT); see THIRD_PARTY_NOTICES.md.
+import { useI18n } from '@/i18n'
 import type { ReactTable, RowData } from '@tanstack/react-table'
 import { Columns3Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -7,6 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu'
 import type { DataTableFeatures } from './data-table-features'
@@ -16,15 +19,17 @@ export function DataTableViewOptions<TData extends RowData>({
 }: {
   table: ReactTable<DataTableFeatures, TData>
 }) {
+  const { t } = useI18n()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
         <Columns3Icon data-icon="inline-start" />
-        列显示
+        {t('table.columns')}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>显示列</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('table.visibleColumns')}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
           {table
             .getAllLeafColumns()
             .filter((column) => column.getCanHide())

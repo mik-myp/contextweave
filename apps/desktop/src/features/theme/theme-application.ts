@@ -2,13 +2,7 @@ import type { ThemeConfig, ThemeMode } from '@contextweave/contracts'
 import { deriveThemeTokens } from './theme-colors'
 import { themeFontFamilies } from './theme-fonts'
 import { themeRadiusValues } from './theme-radius'
-
-const densityValues: Record<ThemeConfig['density'], string> = {
-  compact: '0.85',
-  default: '1',
-  comfortable: '1.08',
-  spacious: '1.18',
-}
+import { deriveDensityTokens } from './theme-density'
 
 export function resolvedMode(mode: ThemeMode): 'light' | 'dark' {
   if (mode !== 'system') return mode
@@ -33,8 +27,11 @@ export function applyTheme(config: ThemeConfig): void {
   root.dataset.scale = String(config.scale)
   root.dir = config.direction
   root.style.setProperty('--radius', themeRadiusValues[config.radius])
-  root.style.setProperty('--density-scale', densityValues[config.density])
-  root.style.setProperty('--spacing', 'calc(0.25rem * ' + densityValues[config.density] + ')')
+  root.style.removeProperty('--density-scale')
+  root.style.removeProperty('--spacing')
+  for (const [name, value] of Object.entries(deriveDensityTokens(config.density))) {
+    root.style.setProperty('--' + name, value)
+  }
   root.style.setProperty('--theme-font', themeFontFamilies[config.font])
   root.style.setProperty('--theme-scale', String(config.scale / 100))
   for (const [name, value] of Object.entries(deriveThemeTokens(config.color, mode))) {

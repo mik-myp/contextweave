@@ -35,7 +35,17 @@ export function HeaderSearch() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const returnFocus = React.useRef<HTMLElement | null>(null)
-  const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+  const shortcutLabel = isMac ? '⌘ + K' : 'Ctrl + K'
+  const shortcut = isMac ? (
+    <>
+      <span className="text-xs">⌘</span> + K
+    </>
+  ) : (
+    <>
+      <span className="text-xs">Ctrl</span> + K
+    </>
+  )
   const items = React.useMemo<SearchItem[]>(
     () => [
       {
@@ -110,16 +120,17 @@ export function HeaderSearch() {
       <Button
         variant="outline"
         aria-keyshortcuts="Meta+K Control+K"
-        aria-label={t('header.search') + ' (' + shortcut + ')'}
-        title={t('header.search') + ' (' + shortcut + ')'}
+        aria-label={t('header.search') + ' (' + shortcutLabel + ')'}
+        title={t('header.search') + ' (' + shortcutLabel + ')'}
         onClick={openSearch}
         className="group relative hidden h-8 min-w-0 justify-start rounded-md bg-muted/25 px-2.5 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:flex sm:w-40 sm:pe-16 md:w-52 lg:w-64"
       >
         <SearchIcon className="shrink-0" />
         <span className="truncate">{t('header.search')}</span>
         <kbd
+          aria-hidden="true"
           dir="ltr"
-          className="pointer-events-none absolute end-1 top-1 flex h-6 items-center rounded border bg-muted px-1.5 font-mono text-[10px] font-medium select-none group-hover:bg-accent"
+          className="bg-muted group-hover:bg-accent pointer-events-none absolute end-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border px-1.5 font-mono text-[10px] font-medium opacity-100 select-none sm:flex"
         >
           {shortcut}
         </kbd>
@@ -179,7 +190,13 @@ export function HeaderSearch() {
         </Command>
         <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <span>{t('common.search')}</span>
-          <kbd dir="ltr">{shortcut}</kbd>
+          <kbd
+            aria-hidden="true"
+            dir="ltr"
+            className="pointer-events-none h-5 items-center gap-1 px-1.5 font-mono text-[10px] font-medium opacity-100 select-none sm:flex"
+          >
+            {shortcut}
+          </kbd>
         </div>
       </CommandDialog>
     </>

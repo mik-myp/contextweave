@@ -1,3 +1,4 @@
+import { EnvironmentDraftNotice } from '@/features/environments/components/environment-draft-notice'
 import { Outlet } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -13,7 +14,7 @@ import { useThemeSidebar } from '@/features/theme/use-theme-sidebar'
 import { ThemeSaveNotice } from '@/features/theme/components/theme-save-notice'
 import { useI18n } from '@/i18n'
 import { useAppData } from './use-app-data'
-import { cn } from 'cn'
+import { cn } from '@/lib/utils'
 
 export function AppShell() {
   const { theme } = useTheme()
@@ -34,7 +35,11 @@ export function AppShell() {
 
   return (
     <TooltipProvider>
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <SidebarProvider
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        className="h-svh overflow-hidden"
+      >
         <Toaster closeLabel={t('common.close')} />
         <ThemeSaveNotice />
         <AppSidebar
@@ -42,8 +47,8 @@ export function AppShell() {
           layout={theme.layout}
           side={theme.direction === 'rtl' ? 'right' : 'left'}
         />
-        <SidebarInset>
-          <header className="flex justify-between h-12 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+          <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-background px-4 md:px-6">
             <SidebarTrigger className="-ms-1" aria-label={t('header.toggleSidebar')} />
             <div className="flex items-center gap-1 sm:gap-2">
               <HeaderSearch />
@@ -52,16 +57,20 @@ export function AppShell() {
               <HeaderProfile />
             </div>
           </header>
-          <main className="flex min-h-0 flex-1 flex-col overflow-auto bg-muted/20 p-4 md:p-6">
+          <div
+            data-scroll-restoration
+            className="flex min-h-0 flex-1 flex-col overflow-auto bg-background p-4 md:p-(--page-padding)"
+          >
             <div
               className={cn(
-                'mx-auto flex w-full flex-1 flex-col gap-6',
-                theme.contentWidth === 'centered' ? 'max-w-[92.5rem]' : 'max-w-none',
+                'mx-auto flex w-full min-w-0 flex-1 flex-col gap-6',
+                theme.contentWidth === 'centered' ? 'max-w-5xl' : 'max-w-none',
               )}
             >
+              <EnvironmentDraftNotice />
               <Outlet />
             </div>
-          </main>
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

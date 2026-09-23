@@ -378,7 +378,7 @@ export class EnvironmentRepository {
       createdAt: this.getProxy(proxyId)?.createdAt ?? now,
       updatedAt: now,
     }
-    this.insertProxyStatement.run(record)
+    this.insertProxyStatement.run({ ...record, username: record.username ?? null, credentialRef: record.credentialRef ?? null })
     return record
   }
 

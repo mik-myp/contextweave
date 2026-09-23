@@ -6,6 +6,19 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --control-height: 2.25rem;
+  --control-height-sm: 2rem;
+  --control-height-xs: 1.75rem;
+  --control-height-lg: 2.5rem;
+  --control-padding: 1rem;
+  --control-padding-sm: 0.75rem;
+  --input-padding: 0.75rem;
+  --menu-item-height: 2rem;
+  --panel-padding: 1.5rem;
+  --form-field-gap: 1.75rem;
+  --section-gap: 2rem;
+  --page-padding: 1.5rem;
+  --table-cell-py: 0.625rem;
   --theme-font: 'Public Sans Variable', sans-serif;
   --destructive-foreground: #ffffff;
   --warning: oklch(0.49676513671875 0.104765625 75);
@@ -77,6 +90,9 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning-muted: var(--warning-muted);
+  --color-info-muted: var(--info-muted);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-info: var(--info);

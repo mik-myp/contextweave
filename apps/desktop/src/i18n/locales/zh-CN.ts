@@ -1,6 +1,10 @@
+import { adminMessages } from './zh-CN-admin'
+import { workspaceMessages } from './zh-CN-workspace'
 import type { TranslationKey } from '../types'
 
 export const zhCNMessages: Record<TranslationKey, string> = {
+  ...workspaceMessages,
+  ...adminMessages,
   'common.retry': '重试',
   'theme.saveErrorTitle': '主题尚未保存',
   'theme.saveErrorDescription': '当前预览仍然有效，重启后可能丢失。请重试保存最新设置。',
@@ -23,7 +27,7 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   'header.themeDescription': '调整界面外观和侧边栏布局。',
   'header.appearance': '外观',
   'header.mode': '模式',
-  'header.palette': '配色',
+  'header.palette': '强调色',
   'header.font': '字体',
   'header.radius': '圆角',
   'header.density': '密度',
@@ -52,7 +56,7 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   'nav.activity': '运行记录',
   'nav.settings': '系统设置',
   'nav.about': '关于',
-  'nav.fingerprints': '指纹策略',
+  'nav.fingerprints': '指纹能力',
   'theme.system': '跟随系统',
   'theme.light': '浅色',
   'theme.dark': '深色',
@@ -70,6 +74,8 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   'theme.motionDescription': '减少界面中的动画与过渡效果。',
   'theme.motionSystemDescription': '当前跟随系统：系统要求减少动态效果时自动生效。',
   'theme.motionReducedDescription': '已开启：始终减少动态效果。',
+  'theme.accentHelp': '用于主操作、选中状态、焦点和图表，界面底色保持中性。',
+  'theme.densityHelp': '调整控件与内容间距；文字大小由界面缩放控制。',
   'theme.customColor': '自定义颜色',
   'theme.auto': '自动',
   'theme.colorBlue': '蓝色',

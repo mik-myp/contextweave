@@ -9,6 +9,7 @@ const toOklch = converter('oklch')
 // Leave room for serialization and display rounding above the 4.5 / 3 minimums.
 const TEXT_CONTRAST = 4.6
 const GRAPHIC_CONTRAST = 3.1
+const neutral: Oklch = { mode: 'oklch', l: 0.5, c: 0, h: 0 }
 
 function seedColor(value: string): Oklch {
   const input = themeColorSchema.safeParse(value)
@@ -87,10 +88,8 @@ function statusColors(mode: Mode): ThemeTokens {
     )
     tokens[name] = color
     tokens[name + '-foreground'] = readableForeground(color)
-    if (name === 'destructive') {
-      tokens['destructive-muted'] = tone(seed, mode === 'light' ? 0.96 : 0.27, chroma * 0.15)
-      tokens['destructive-muted-hover'] = tone(seed, mode === 'light' ? 0.92 : 0.32, chroma * 0.24)
-    }
+    tokens[name + '-muted'] = tone(seed, mode === 'light' ? 0.96 : 0.27, chroma * 0.15)
+    tokens[name + '-muted-hover'] = tone(seed, mode === 'light' ? 0.92 : 0.32, chroma * 0.24)
   }
   return tokens
 }
@@ -99,12 +98,12 @@ export function deriveThemeTokens(hex: string, mode: Mode): ThemeTokens {
   const seed = seedColor(hex)
   const chroma = seed.c
   const isLight = mode === 'light'
-  const accent = tone(seed, isLight ? 0.94 : 0.29, chroma * (isLight ? 0.35 : 0.6))
-  const background = tone(seed, isLight ? 0.985 : 0.16, chroma * (isLight ? 0.08 : 0.16))
-  const foreground = tone(seed, isLight ? 0.2 : 0.96, chroma * (isLight ? 0.22 : 0.1))
-  const card = tone(seed, isLight ? 0.998 : 0.215, chroma * (isLight ? 0.04 : 0.2))
-  const muted = tone(seed, isLight ? 0.95 : 0.28, chroma * (isLight ? 0.14 : 0.23))
-  const sidebar = tone(seed, isLight ? 0.965 : 0.19, chroma * (isLight ? 0.1 : 0.18))
+  const accent = tone(seed, isLight ? 0.95 : 0.28, chroma * (isLight ? 0.14 : 0.24))
+  const background = tone(neutral, isLight ? 1 : 0.145)
+  const foreground = tone(neutral, isLight ? 0.205 : 0.97)
+  const card = tone(neutral, isLight ? 1 : 0.205)
+  const muted = tone(neutral, isLight ? 0.965 : 0.269)
+  const sidebar = tone(neutral, isLight ? 0.985 : 0.18)
   const surfaces = [background, card, muted, accent, sidebar]
   const primaryChroma = chroma * (isLight ? 1 : 0.82)
   const primary = contrastingTone(
@@ -116,15 +115,9 @@ export function deriveThemeTokens(hex: string, mode: Mode): ThemeTokens {
     mode,
   )
   const primaryHover = tone(seed, toOklch(primary)!.l + (isLight ? -0.04 : 0.04), primaryChroma)
-  const input = contrastingTone(
-    seed,
-    isLight ? 0.7 : 0.5,
-    chroma * 0.28,
-    surfaces,
-    GRAPHIC_CONTRAST,
-    mode,
-  )
-  const border = tone(seed, isLight ? 0.88 : 0.36, chroma * 0.24)
+  // Quiet structural borders match the admin surfaces; focus retains a contrast-safe ring.
+  const border = tone(neutral, isLight ? 0.91 : 0.33)
+  const input = border
   const primaryForeground = readableForeground(primary)
   const accentForeground = readableForeground(accent)
 
@@ -157,7 +150,7 @@ export function deriveThemeTokens(hex: string, mode: Mode): ThemeTokens {
     secondary: muted,
     'secondary-foreground': foreground,
     muted,
-    'muted-foreground': tone(seed, isLight ? 0.48 : 0.72, chroma * (isLight ? 0.2 : 0.18)),
+    'muted-foreground': tone(neutral, isLight ? 0.49 : 0.73),
     accent,
     'accent-foreground': accentForeground,
     ...statusColors(mode),

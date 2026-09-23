@@ -52,6 +52,10 @@ jobs:
           pnpm --filter @contextweave/desktop exec electron-vite build
           pnpm test:desktop
 
+      - name: Verify official fingerprint browser lifecycle
+        if: matrix.name != 'macos-x64'
+        run: pnpm test:fingerprint --require-provider
+
       - name: Build desktop package
         run: pnpm --filter @contextweave/desktop build
 
@@ -65,7 +69,7 @@ jobs:
           $stagingRoot = Join-Path $PWD 'release-artifacts/windows-x64'
           New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
           Get-ChildItem -LiteralPath $versionRoot.FullName -File |
-            Where-Object { $_.Extension -in @('.exe', '.blockmap') -or $_.Name -like 'latest*.yml' } |
+            Where-Object { $_.Extension -eq '.exe' } |
             Copy-Item -Destination $stagingRoot
           Get-ChildItem -LiteralPath $stagingRoot -File |
             Where-Object Name -ne 'SHA256SUMS-windows-x64.txt' |
@@ -81,11 +85,10 @@ jobs:
           test -n "$version_root"
           mkdir -p "release-artifacts/${{ matrix.name }}"
           find "$version_root" -maxdepth 1 -type f \
-            \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' -o -name 'latest*.yml' \) \
+            \( -name '*.dmg' -o -name '*.zip' \) \
             -exec cp {} "release-artifacts/${{ matrix.name }}/" \;
-          find "release-artifacts/${{ matrix.name }}" -maxdepth 1 -type f ! -name "SHA256SUMS-${{ matrix.name }}.txt" -print |
-            sort |
-            xargs shasum -a 256 > "release-artifacts/${{ matrix.name }}/SHA256SUMS-${{ matrix.name }}.txt"
+          cd "release-artifacts/${{ matrix.name }}"
+          shasum -a 256 *.dmg *.zip > "SHA256SUMS-${{ matrix.name }}.txt"
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v5

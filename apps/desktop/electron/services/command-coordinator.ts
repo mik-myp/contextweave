@@ -36,14 +36,19 @@ export function createCommandCoordinator(repository: EnvironmentRepository, chan
             error instanceof Error && /^[A-Z][A-Z_]+$/.test(error.message)
               ? error.message
               : 'COMMAND_FAILED'
-          repository.updateOperation(operationId, 'failed', 'failed', code)
+          repository.updateOperation(
+            operationId,
+            'failed',
+            code === 'CANCELLED' ? 'cancelled' : 'failed',
+            code,
+          )
           return fail(code)
         } finally {
-          if (id) pending.delete(id)
+          pending.delete(id ?? operationId)
           changed()
         }
       })
-      if (id) pending.set(id, operation)
+      pending.set(id ?? operationId, operation)
       changed()
       return operation
     },

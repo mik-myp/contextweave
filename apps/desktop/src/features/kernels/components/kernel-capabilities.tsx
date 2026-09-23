@@ -27,7 +27,7 @@ export function KernelCapabilities({ report }: { report: Record<string, Capabili
                     ? 'success'
                     : value.state === 'failed'
                       ? 'destructive'
-                      : 'outline'
+                      : 'secondary'
                 }
               >
                 {t(`life.cap.${value.state}`)}

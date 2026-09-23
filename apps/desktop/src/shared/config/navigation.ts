@@ -5,7 +5,7 @@ export const appRoutes = {
   activity: '/activity',
   settings: '/settings',
   fingerprints: '/fingerprints',
-  about: '/about',
+  about: '/settings/about',
 } as const
 
 export const pageLabels: Record<string, string> = {

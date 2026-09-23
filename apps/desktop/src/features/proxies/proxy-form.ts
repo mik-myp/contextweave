@@ -5,6 +5,7 @@ import type { I18nContextValue } from '@/i18n'
 export function proxyFormSchema(t: I18nContextValue['t']) {
   return z
     .object({
+      name: z.string().trim().max(80),
       type: proxyTypeSchema,
       host: z
         .string()
@@ -23,12 +24,6 @@ export function proxyFormSchema(t: I18nContextValue['t']) {
     .superRefine((values, ctx) => {
       if (values.password && !values.username)
         ctx.addIssue({ code: 'custom', path: ['username'], message: t('proxy.usernameRequired') })
-      if (values.type === 'socks5' && (values.username || values.password))
-        ctx.addIssue({
-          code: 'custom',
-          path: ['username'],
-          message: t('proxy.socksAuthUnsupported'),
-        })
     })
 }
 export type ProxyFormValues = z.infer<ReturnType<typeof proxyFormSchema>>
@@ -36,6 +31,7 @@ export function toSaveProxyInput(values: ProxyFormValues, proxyId?: string): Sav
   return {
     proxyId,
     config: {
+      name: values.name.trim(),
       type: values.type,
       host: values.host.trim(),
       port: Number(values.port),

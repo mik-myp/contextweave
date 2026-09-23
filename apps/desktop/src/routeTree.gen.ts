@@ -20,6 +20,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as EnvironmentsIndexRouteImport } from './routes/environments.index'
 import { Route as EnvironmentsNewRouteImport } from './routes/environments.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAboutRouteImport } from './routes/settings.about'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
 import { Route as EnvironmentsEnvironmentIdEditRouteImport } from './routes/environments.$environmentId.edit'
 
@@ -78,6 +79,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsAboutRoute = SettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsStorageRoute = SettingsStorageRouteImport.update({
   id: '/storage',
   path: '/storage',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/proxies': typeof ProxiesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/environments/new': typeof EnvironmentsNewRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/environments/': typeof EnvironmentsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/kernels': typeof KernelsRoute
   '/proxies': typeof ProxiesRoute
   '/environments/new': typeof EnvironmentsNewRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/environments': typeof EnvironmentsIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/proxies': typeof ProxiesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/environments/new': typeof EnvironmentsNewRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/environments/': typeof EnvironmentsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/proxies'
     | '/settings'
     | '/environments/new'
+    | '/settings/about'
     | '/settings/storage'
     | '/environments/'
     | '/settings/'
@@ -159,6 +169,7 @@ export interface FileRouteTypes {
     | '/kernels'
     | '/proxies'
     | '/environments/new'
+    | '/settings/about'
     | '/settings/storage'
     | '/environments'
     | '/settings'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/proxies'
     | '/settings'
     | '/environments/new'
+    | '/settings/about'
     | '/settings/storage'
     | '/environments/'
     | '/settings/'
@@ -270,6 +282,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/about': {
+      id: '/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof SettingsAboutRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/storage': {
       id: '/settings/storage'
       path: '/storage'
@@ -304,11 +323,13 @@ const EnvironmentsRouteWithChildren = EnvironmentsRoute._addFileChildren(
 )
 
 interface SettingsRouteChildren {
+  SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAboutRoute: SettingsAboutRoute,
   SettingsStorageRoute: SettingsStorageRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

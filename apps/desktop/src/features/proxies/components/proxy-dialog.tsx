@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { proxyTypeSchema } from '@contextweave/contracts'
+import { proxyTypeSchema, type ProxyTestResult as TestResult } from '@contextweave/contracts'
 import type { ProxySummary } from '@/shared/types/app'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -31,15 +31,21 @@ import { Spinner } from '@/components/ui/spinner'
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
 import { proxyFormSchema, toSaveProxyInput, type ProxyFormValues } from '../proxy-form'
 
+import { ProxyTestResult } from './proxy-test-result'
+
 const protocols = proxyTypeSchema.options.map((value) => ({ value, label: value.toUpperCase() }))
 export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose: () => void }) {
   const { t } = useI18n()
   const { refresh, setNotice, appInfo } = useAppData(['proxies', 'app'])
   const [error, setError] = useState<string>()
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult>()
+  const testRevision = useRef(0)
   const [discard, setDiscard] = useState(false)
   const form = useForm<ProxyFormValues>({
     resolver: zodResolver(proxyFormSchema(t)),
     defaultValues: {
+      name: proxy?.name ?? '',
       type: proxy?.type ?? 'http',
       host: proxy?.host ?? '',
       port: String(proxy?.port ?? 8080),
@@ -47,6 +53,34 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
       password: '',
       clearPassword: false,
     },
+  })
+  useEffect(() => {
+    const subscription = form.watch(() => {
+      testRevision.current += 1
+      setTestResult(undefined)
+    })
+    return () => {
+      subscription.unsubscribe()
+      testRevision.current += 1
+    }
+  }, [form])
+  const test = form.handleSubmit(async (values) => {
+    if (testing) return
+    const revision = testRevision.current
+    setTesting(true)
+    setError(undefined)
+    setTestResult(undefined)
+    try {
+      const result = await unwrapIpc(
+        window.contextweave.proxy.test(toSaveProxyInput(values, proxy?.proxyId)),
+      )
+      if (revision === testRevision.current) setTestResult(result)
+    } catch (cause) {
+      if (revision === testRevision.current)
+        setError(cause instanceof Error ? cause.message : t('admin.operationError'))
+    } finally {
+      setTesting(false)
+    }
   })
   const { errors, isDirty, isSubmitting } = form.formState
   const requestClose = () => {
@@ -86,6 +120,18 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
               </Alert>
             )}
             <FieldGroup>
+              <Field data-invalid={!!errors.name}>
+                <FieldLabel htmlFor="proxy-name">{t('proxy.name')}</FieldLabel>
+                <Input
+                  id="proxy-name"
+                  maxLength={80}
+                  autoComplete="off"
+                  disabled={isSubmitting}
+                  placeholder={t('proxy.namePlaceholder')}
+                  {...form.register('name')}
+                />
+                <FieldError errors={[errors.name]} />
+              </Field>
               <Field>
                 <FieldLabel htmlFor="proxy-type">{t('proxy.type')}</FieldLabel>
                 <Controller
@@ -198,7 +244,18 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
               )}
             </FieldGroup>
           </form>
+          <ProxyTestResult result={testResult} />
+          <p className="text-xs text-muted-foreground">{t('proxy.testDescription')}</p>
           <DialogFooter>
+            <Button
+              variant="outline"
+              className="sm:me-auto"
+              disabled={testing || isSubmitting}
+              onClick={() => void test()}
+            >
+              {testing && <Spinner />}
+              {t(testing ? 'proxy.testing' : 'proxy.test')}
+            </Button>
             <Button variant="outline" disabled={isSubmitting} onClick={requestClose}>
               {t('common.cancel')}
             </Button>

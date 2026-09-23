@@ -1,4 +1,5 @@
 import { EnvironmentPreflight } from './environment-preflight'
+import { FormSection } from '@/components/form-section'
 import { FormProvider } from 'react-hook-form'
 import { ArrowLeftIcon } from 'lucide-react'
 import type { EnvironmentDetails } from '@contextweave/contracts'
@@ -24,7 +25,7 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
       <form
         noValidate
         onSubmit={editor.submit}
-        className="mx-auto flex w-full max-w-3xl flex-col gap-(--section-gap) pb-8"
+        className="mx-auto flex w-full min-w-0 flex-col gap-(--section-gap) pb-8"
         aria-label={t(detail ? 'env.editTitle' : 'env.newTitle')}
       >
         <div className="sticky -top-4 z-10 -mt-4 flex flex-col gap-4 bg-background pt-4 md:-top-(--page-padding) md:-mt-(--page-padding) md:pt-(--page-padding)">
@@ -118,6 +119,26 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
           onManage={() => void editor.manage('/proxies')}
         />
         <Separator />
+        {form.watch('kernelId').startsWith('fingerprint-chromium') && (
+          <FormSection title={t('env.fingerprintIdentity')} description={t('env.fingerprintHelp')}>
+            {detail?.fingerprint && (
+              <dl className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-sm text-muted-foreground">{t('env.fingerprintSeed')}</dt>
+                  <dd className="mt-1 font-mono">{detail.fingerprint.seed}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">{t('kernel.platform')}</dt>
+                  <dd className="mt-1">{detail.fingerprint.platform}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">{t('kernel.version')}</dt>
+                  <dd className="mt-1 font-mono">{detail.kernelVersion}</dd>
+                </div>
+              </dl>
+            )}
+          </FormSection>
+        )}
         <EnvironmentBrowserFields
           disabled={editor.disabled}
           expanded={editor.expanded}

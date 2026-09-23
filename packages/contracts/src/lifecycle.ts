@@ -29,7 +29,16 @@ export const kernelSummarySchema = z.object({
   packageAvailable: z.boolean(),
   capabilities: z.record(z.string(), z.boolean()),
   capabilityReport: z.record(z.string(), capabilityEvidenceSchema),
-  providerStatus: z.enum(['native', 'unconfigured', 'candidate']),
+  providerStatus: z.enum(['native', 'unconfigured', 'candidate', 'verified']),
+  source: z.string().url().optional(),
+  license: z.string().optional(),
+  unsupportedReason: z.string().optional(),
+  installation: z.object({
+    phase: z.enum(['downloading', 'verifying', 'extracting', 'complete', 'failed', 'cancelled']),
+    receivedBytes: z.number().nonnegative(),
+    totalBytes: z.number().nonnegative(),
+    errorCode: z.string().optional(),
+  }).optional(),
 })
 export type KernelSummary = z.infer<typeof kernelSummarySchema>
 export type CapabilityEvidence = z.infer<typeof capabilityEvidenceSchema>
@@ -45,6 +54,7 @@ export const preflightIssueSchema = z.object({
     'RECOVERY_REQUIRED',
     'PROXY_MISSING',
     'PROXY_UNREACHABLE',
+    'PROXY_TEST_FAILED',
     'CREDENTIAL_UNAVAILABLE',
     'DIRECTORY_UNWRITABLE',
     'LOW_DISK',
@@ -103,3 +113,26 @@ export const orphanDirectorySchema = z.object({
   modifiedAt: z.string().datetime(),
 })
 export type OrphanDirectory = z.infer<typeof orphanDirectorySchema>
+
+export const kernelReleaseSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  sourceType: z.enum(['official', 'custom']).optional(),
+  version: z.string(),
+  platform: z.string(),
+  arch: z.string(),
+  publishedAt: z.string().optional(),
+  source: z.string().url(),
+  sizeBytes: z.number().optional(),
+  sha256: z.string().optional(),
+  installable: z.boolean(),
+  installed: z.boolean(),
+  reason: z.enum(['PLATFORM_UNSUPPORTED', 'ADAPTER_UNSUPPORTED', 'CHECKSUM_UNAVAILABLE']).optional(),
+  installation: kernelSummarySchema.shape.installation,
+})
+export type KernelRelease = z.infer<typeof kernelReleaseSchema>
+export const kernelCatalogSchema = z.object({
+  sourceStatus: z.enum(['live', 'cached', 'bundled']),
+  releases: z.array(kernelReleaseSchema),
+})
+export type KernelCatalog = z.infer<typeof kernelCatalogSchema>

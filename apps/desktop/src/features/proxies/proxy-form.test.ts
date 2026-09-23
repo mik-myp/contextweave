@@ -4,6 +4,7 @@ import { zhCNMessages } from '../../i18n/locales/zh-CN'
 import { proxyFormSchema, toSaveProxyInput } from './proxy-form'
 const schema = proxyFormSchema((key) => zhCNMessages[key])
 const values = {
+  name: 'Test proxy',
   type: 'http' as const,
   host: 'proxy.example.com',
   port: '8080',
@@ -45,7 +46,7 @@ describe('proxy editor', () => {
         config: { type: 'socks5', host: 'localhost', port: 1080, username: 'name' },
         password: 'secret',
       }).success,
-    ).toBe(false)
+    ).toBe(true)
   })
   it('never includes process identifiers or control ports in the activity response', () => {
     const result = activitySummarySchema.parse({

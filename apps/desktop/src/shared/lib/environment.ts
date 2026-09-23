@@ -23,5 +23,5 @@ export function statusVariant(
   if (status === 'needs-recovery') return 'warning'
   if (status === 'error') return 'destructive'
   if (status === 'created' || status === 'stopped') return 'secondary'
-  return 'outline'
+  return 'info'
 }

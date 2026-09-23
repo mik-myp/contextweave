@@ -127,6 +127,7 @@ function mapRuntimeSession(row: Row): RuntimeSessionRecord {
 function mapProxy(row: Row): ProxyRecord {
   return {
     proxyId: stringValue(row, 'proxy_id'),
+    name: stringValue(row, 'name'),
     type: stringValue(row, 'type') as ProxyConfig['type'],
     host: stringValue(row, 'host'),
     port: Number(row.port),
@@ -213,9 +214,10 @@ export class EnvironmentRepository {
     this.getProxyStatement = sqlite.prepare('SELECT * FROM proxies WHERE proxy_id = ?')
     this.insertProxyStatement = sqlite.prepare(`
       INSERT INTO proxies (
-        proxy_id, type, host, port, username, credential_ref, created_at, updated_at
-      ) VALUES (@proxyId, @type, @host, @port, @username, @credentialRef, @createdAt, @updatedAt)
+        proxy_id, name, type, host, port, username, credential_ref, created_at, updated_at
+      ) VALUES (@proxyId, @name, @type, @host, @port, @username, @credentialRef, @createdAt, @updatedAt)
       ON CONFLICT(proxy_id) DO UPDATE SET
+        name = excluded.name,
         type = excluded.type,
         host = excluded.host,
         port = excluded.port,
@@ -487,6 +489,7 @@ export class EnvironmentRepository {
     const record: ProxyRecord = {
       proxyId,
       ...config,
+      name: config.name?.trim() || `${config.host}:${config.port}`,
       createdAt: this.getProxy(proxyId)?.createdAt ?? now,
       updatedAt: now,
     }

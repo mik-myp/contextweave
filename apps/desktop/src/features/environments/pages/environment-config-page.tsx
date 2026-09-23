@@ -53,7 +53,7 @@ export function EnvironmentConfigPage({ environmentId }: { environmentId?: strin
     )
   else if (environmentId && (!detail || detail.id !== environmentId))
     content = (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8" aria-busy="true">
+      <div className="mx-auto flex w-full min-w-0 flex-col gap-8" aria-busy="true">
         <Skeleton className="h-14" />
         <Skeleton className="h-64" />
         <Skeleton className="h-44" />

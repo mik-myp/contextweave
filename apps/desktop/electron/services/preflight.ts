@@ -45,8 +45,11 @@ export async function checkEnvironment(
   if (existsSync(lock.lockPath)) add(lock.live ? 'RUNTIME_BUSY' : 'RECOVERY_REQUIRED')
   if (['starting', 'running', 'stopping'].includes(record.status) && !existsSync(lock.lockPath))
     add('RUNTIME_BUSY')
-  if (record.kernelId !== 'standard-chromium') add('PROVIDER_UNVERIFIED')
-  else add('NATIVE_MODE', 'info')
+  if (record.kernelId === 'standard-chromium') add('NATIVE_MODE', 'info')
+  else if (
+    kernels.list().find((kernel) => kernel.id === record.kernelId)?.providerStatus !== 'verified'
+  )
+    add('PROVIDER_UNVERIFIED')
   let executableVersion: string | undefined
   const executable = kernels.executableFor(record)
   if (!executable) add('KERNEL_UNAVAILABLE')
@@ -77,7 +80,6 @@ export async function checkEnvironment(
           add('CREDENTIAL_UNAVAILABLE')
         }
       }
-      if (config.proxy?.type === 'socks5' && config.proxy.username) add('CONFIG_INVALID')
       if (config.proxy && !(await checkProxyConnection(config.proxy.host, config.proxy.port)))
         add('PROXY_UNREACHABLE')
     }

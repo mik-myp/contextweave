@@ -54,6 +54,7 @@ export const proxyHostSchema = z
   }, 'Invalid proxy host')
 
 export const proxyConfigSchema = z.object({
+  name: z.string().trim().max(80).optional(),
   type: proxyTypeSchema,
   host: proxyHostSchema,
   port: z.number().int().min(1).max(65535),
@@ -91,6 +92,7 @@ export const kernelManifestSchema = z.object({
   arch: architectureSchema,
   executable: z.string().trim().min(1),
   package: kernelPackageSchema.optional(),
+  sourceType: z.enum(['official', 'custom']).optional(),
   controlProtocol: controlProtocolSchema,
   capabilities: kernelCapabilitiesSchema,
   configSchema: z.string().trim().min(1),
@@ -224,14 +226,30 @@ export const saveProxyInputSchema = z
         path: ['password'],
         message: 'Cannot set and clear a password together',
       })
-    if (input.config.type === 'socks5' && (input.config.username || input.password))
-      ctx.addIssue({
-        code: 'custom',
-        path: ['config', 'username'],
-        message: 'Authenticated SOCKS5 is not supported by this runtime',
-      })
+
   })
 export type SaveProxyInput = z.infer<typeof saveProxyInputSchema>
+
+export const proxyTestInputSchema = z.union([
+  z.object({ proxyId: z.string().min(1) }).strict(),
+  saveProxyInputSchema,
+])
+export type ProxyTestInput = z.infer<typeof proxyTestInputSchema>
+export const proxyTestResultSchema = z.object({
+  success: z.boolean(),
+  latencyMs: z.number().nonnegative(),
+  checkedAt: z.string().datetime(),
+  exitIp: z.string().optional(),
+  errorCode: z.enum(['PROXY_TEST_FAILED', 'PROXY_TEST_TIMEOUT', 'CREDENTIAL_UNAVAILABLE']).optional(),
+})
+export type ProxyTestResult = z.infer<typeof proxyTestResultSchema>
+
+export const fingerprintIdentitySchema = z.object({
+  seed: z.number().int().min(1).max(4294967295),
+  platform: z.enum(['windows', 'macos', 'linux']),
+  hardwareConcurrency: z.number().int().min(1).max(64),
+}).strict()
+export type FingerprintIdentity = z.infer<typeof fingerprintIdentitySchema>
 
 export * from './theme'
 
@@ -255,6 +273,7 @@ export type EnvironmentSummary = z.infer<typeof environmentSummarySchema>
 export const environmentDetailsSchema = environmentSummarySchema
   .extend({
     browserSettings: browserSettingsSchema,
+    fingerprint: fingerprintIdentitySchema.optional(),
   })
   .strict()
 export type EnvironmentDetails = z.infer<typeof environmentDetailsSchema>
@@ -292,3 +311,17 @@ export type ActivitySummary = z.infer<typeof activitySummarySchema>
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string }
 
 export * from './lifecycle'
+
+export const kernelProviderSchema = z.object({ id: z.string(), label: z.string(), license: z.string() })
+export const kernelCatalogInputSchema = z.object({ providerId: z.string().min(1), refresh: z.boolean().default(false) })
+export const customKernelSourceSchema = z.object({
+  providerId: z.string().min(1),
+  url: z.string().url().max(4096).refine((value) => {
+    const url = new URL(value)
+    return url.protocol === 'https:' && !url.username && !url.password && !url.hash
+  }, 'A direct HTTPS URL without embedded credentials is required'),
+  version: z.string().regex(/^\d+\.\d+\.\d+\.\d+$/).optional(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/i).optional(),
+  trustedSource: z.boolean().default(false),
+}).strict()
+export type CustomKernelSource = z.infer<typeof customKernelSourceSchema>

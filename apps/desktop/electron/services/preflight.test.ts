@@ -68,7 +68,7 @@ it('reports multiple actionable blockers without leaking credentials or granting
   expect(JSON.stringify(report)).not.toContain('secret-ref')
   expect(record.environmentId).toBe(report.environmentId)
 })
-it('does not treat an unconfigured provider or missing profile directory as usable', async () => {
+it('does not treat an uninstalled provider or missing profile directory as usable', async () => {
   const { record, repository, kernels, dir } = fixture()
   rmSync(dir, { recursive: true })
   const report = await checkEnvironment(
@@ -78,7 +78,7 @@ it('does not treat an unconfigured provider or missing profile directory as usab
     { read: () => undefined },
   )
   expect(report.issues.map((issue) => issue.code)).toEqual(
-    expect.arrayContaining(['PROVIDER_UNVERIFIED', 'DIRECTORY_UNWRITABLE']),
+    expect.arrayContaining(['KERNEL_UNAVAILABLE', 'DIRECTORY_UNWRITABLE']),
   )
   expect(report.canStart).toBe(false)
 })

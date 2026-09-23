@@ -1,4 +1,29 @@
 export const lifecycleMessages = {
+  'error.KERNEL_VERSION_MISMATCH':
+    'The executable version differs from the version pinned to this environment. Startup was stopped. Install the matching release.',
+
+  'error.CUSTOM_SOURCE_DETAILS_REQUIRED':
+    'Custom sources require a kernel version, trusted SHA-256, and confirmation of the source and license.',
+  'error.ADAPTER_UNSUPPORTED':
+    'This kernel version has no compatible adapter. Choose a supported version.',
+
+  'error.PLATFORM_UNSUPPORTED':
+    'This kernel release does not support this platform or architecture.',
+  'error.DOWNLOAD_FAILED': 'Kernel download failed. Check your network and retry.',
+  'error.DOWNLOAD_TIMEOUT': 'Download timed out. Please retry.',
+  'error.DOWNLOAD_SOURCE_INVALID': 'Download blocked: the source is not in the trusted catalog.',
+  'error.PACKAGE_SIZE_MISMATCH': 'The downloaded package size is incorrect. Please retry.',
+  'error.PACKAGE_HASH_MISMATCH':
+    'SHA-256 verification failed. Installation was blocked. Please download again.',
+  'error.ARCHIVE_UNSAFE': 'The archive contains unsafe paths or excessive content and was blocked.',
+  'error.ARCHIVE_INVALID': 'Invalid browser archive structure. Download it again.',
+  'error.EXECUTABLE_INVALID': 'The package does not contain a valid browser executable.',
+  'error.ARCHITECTURE_MISMATCH': 'The browser architecture does not match this platform.',
+  'error.INSTALL_FAILED':
+    'Kernel installation failed. Existing installs and environment data are retained.',
+  'error.PROXY_TEST_FAILED': 'Proxy authentication or HTTPS request failed. Check proxy settings.',
+  'error.PROXY_TEST_TIMEOUT': 'Proxy connection test timed out. Check the network.',
+
   'life.active': 'Environments',
   'life.trash': 'Trash',
   'life.restore': 'Restore',

@@ -113,17 +113,23 @@ describe.each(modes)('custom theme colors in %s mode', (mode) => {
   })
 
   it('emits finite sRGB colors for every token, including semantic status colors', () => {
+    const invalidTokens: string[] = []
+    // Check the complete sample set without allocating an assertion for every channel.
     for (const { seed, tokens } of palettes) {
       for (const [name, value] of Object.entries(tokens)) {
-        const rgb = toRgb(value)!
-        expect(rgb, seed + ':' + name).toBeDefined()
-        expect([rgb.r, rgb.g, rgb.b].every(Number.isFinite), seed + ':' + name).toBe(true)
-        expect(displayable(value), seed + ':' + name).toBe(true)
-        expect(rgb.alpha ?? 1, seed + ':' + name).toBe(
-          name === 'overlay' ? (mode === 'light' ? 0.24 : 0.55) : 1,
-        )
+        const rgb = toRgb(value)
+        const expectedAlpha = name === 'overlay' ? (mode === 'light' ? 0.24 : 0.55) : 1
+        if (
+          !rgb ||
+          ![rgb.r, rgb.g, rgb.b].every(Number.isFinite) ||
+          !displayable(value) ||
+          (rgb.alpha ?? 1) !== expectedAlpha
+        ) {
+          invalidTokens.push(seed + ':' + name + '=' + value)
+        }
       }
     }
+    expect(invalidTokens).toEqual([])
   })
 
   it('keeps foregrounds readable on supported surfaces and opaque hover states', () => {

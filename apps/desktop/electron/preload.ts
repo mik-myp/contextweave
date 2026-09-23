@@ -2,6 +2,13 @@ import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   environmentDetailsSchema,
+  kernelSummarySchema,
+  operationSummarySchema,
+  preflightReportSchema,
+  orphanDirectorySchema,
+  dataChangedSchema,
+  themeConfigSchema,
+  type DataDomain,
   proxySummarySchema,
   saveProxyInputSchema,
   activitySummarySchema,
@@ -12,79 +19,82 @@ import {
   ipcResultSchema,
   type CreateEnvironmentInput,
   type UpdateEnvironmentInput,
-  type IpcResult,
-  type EnvironmentSummary,
   type SaveProxyInput,
   type ThemeConfig,
 } from '@contextweave/contracts'
-import type { WorkerResult, WorkerTask } from '@contextweave/worker-protocol'
+import {
+  workerResultSchema,
+  workerTaskSchema,
+  type WorkerTask,
+} from '@contextweave/worker-protocol'
 
 const api = {
   app: {
-    quit: () => ipcRenderer.invoke('app:quit') as Promise<IpcResult<boolean>>,
-    getInfo: () =>
-      ipcRenderer.invoke('app:get-info') as Promise<
-        IpcResult<{
-          name: string
-          version: string
-          platform: string
-          arch: string
-          secureStorageAvailable: boolean
-        }>
-      >,
-    getPaths: () =>
-      ipcRenderer.invoke('app:get-paths') as Promise<
-        IpcResult<{
-          userData: string
-          dataRoot: string
-          environmentRoot: string
-          kernelRoot: string
-          logRoot: string
-        }>
-      >,
-    openExternal: (url: string) =>
-      ipcRenderer.invoke('app:open-external', url) as Promise<IpcResult<boolean>>,
+    quit: async () => ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('app:quit')),
+    getInfo: async () =>
+      ipcResultSchema(
+        z.object({
+          name: z.string(),
+          version: z.string(),
+          platform: z.string(),
+          arch: z.string(),
+          secureStorageAvailable: z.boolean(),
+        }),
+      ).parse(await ipcRenderer.invoke('app:get-info')),
+    getPaths: async () =>
+      ipcResultSchema(
+        z.object({
+          userData: z.string(),
+          dataRoot: z.string(),
+          environmentRoot: z.string(),
+          kernelRoot: z.string(),
+          logRoot: z.string(),
+        }),
+      ).parse(await ipcRenderer.invoke('app:get-paths')),
+    openExternal: async (url: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('app:open-external', z.string().url().parse(url)),
+      ),
   },
   settings: {
-    getTheme: () => ipcRenderer.invoke('settings:get-theme') as Promise<IpcResult<ThemeConfig>>,
-    setTheme: (theme: ThemeConfig) =>
-      ipcRenderer.invoke('settings:set-theme', theme) as Promise<IpcResult<ThemeConfig>>,
+    getTheme: async () =>
+      ipcResultSchema(themeConfigSchema).parse(await ipcRenderer.invoke('settings:get-theme')),
+    setTheme: async (theme: ThemeConfig) =>
+      ipcResultSchema(themeConfigSchema).parse(
+        await ipcRenderer.invoke('settings:set-theme', themeConfigSchema.parse(theme)),
+      ),
+  },
+  events: {
+    onDataChanged: (listener: (domains: DataDomain[]) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+        const parsed = dataChangedSchema.safeParse(value)
+        if (parsed.success) listener(parsed.data.domains)
+      }
+      ipcRenderer.on('data:changed', handler)
+      return () => {
+        ipcRenderer.removeListener('data:changed', handler)
+      }
+    },
   },
   kernel: {
-    list: () =>
-      ipcRenderer.invoke('kernel:list') as Promise<
-        IpcResult<
-          ReadonlyArray<{
-            id: string
-            label: string
-            family: string
-            platform: string
-            arch: string
-            version: string
-            status: string
-            executablePath?: string
-            installationPath?: string
-            packageAvailable: boolean
-            capabilities: Record<string, boolean>
-          }>
-        >
-      >,
-    install: (kernelId: string) =>
-      ipcRenderer.invoke('kernel:install', kernelId) as Promise<
-        IpcResult<{
-          id: string
-          label: string
-          family: string
-          platform: string
-          arch: string
-          version: string
-          status: string
-          executablePath?: string
-          installationPath?: string
-          packageAvailable: boolean
-          capabilities: Record<string, boolean>
-        }>
-      >,
+    list: async () =>
+      ipcResultSchema(z.array(kernelSummarySchema)).parse(await ipcRenderer.invoke('kernel:list')),
+    install: async (kernelId: string) =>
+      ipcResultSchema(kernelSummarySchema).parse(
+        await ipcRenderer.invoke('kernel:install', environmentIdSchema.parse(kernelId)),
+      ),
+  },
+  operation: {
+    list: async () =>
+      ipcResultSchema(z.array(operationSummarySchema)).parse(
+        await ipcRenderer.invoke('operation:list'),
+      ),
+  },
+  storage: {
+    orphans: async () =>
+      ipcResultSchema(z.array(orphanDirectorySchema)).parse(
+        await ipcRenderer.invoke('storage:orphans'),
+      ),
   },
   activity: {
     list: async () =>
@@ -105,6 +115,18 @@ const api = {
       ),
   },
   environment: {
+    preflight: async (id: string) =>
+      ipcResultSchema(preflightReportSchema).parse(
+        await ipcRenderer.invoke('environment:preflight', environmentIdSchema.parse(id)),
+      ),
+    trash: async () =>
+      ipcResultSchema(z.array(environmentSummarySchema)).parse(
+        await ipcRenderer.invoke('environment:trash-list'),
+      ),
+    restore: async (id: string) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:restore', environmentIdSchema.parse(id)),
+      ),
     get: async (id: string) =>
       ipcResultSchema(environmentDetailsSchema).parse(
         await ipcRenderer.invoke('environment:get', environmentIdSchema.parse(id)),
@@ -113,31 +135,40 @@ const api = {
       ipcResultSchema(environmentSummarySchema).parse(
         await ipcRenderer.invoke('environment:update', updateEnvironmentInputSchema.parse(input)),
       ),
-    delete: (id: string) =>
-      ipcRenderer.invoke('environment:delete', id) as Promise<IpcResult<boolean>>,
-    list: () => ipcRenderer.invoke('environment:list') as Promise<IpcResult<EnvironmentSummary[]>>,
+    delete: async (id: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('environment:delete', environmentIdSchema.parse(id)),
+      ),
+    list: async () =>
+      ipcResultSchema(z.array(environmentSummarySchema)).parse(
+        await ipcRenderer.invoke('environment:list'),
+      ),
     create: async (input: CreateEnvironmentInput) =>
       ipcResultSchema(environmentSummarySchema).parse(
         await ipcRenderer.invoke('environment:create', createEnvironmentInputSchema.parse(input)),
       ),
-    start: (environmentId: string) =>
-      ipcRenderer.invoke('environment:start', environmentId) as Promise<
-        IpcResult<EnvironmentSummary>
-      >,
-    stop: (environmentId: string) =>
-      ipcRenderer.invoke('environment:stop', environmentId) as Promise<
-        IpcResult<EnvironmentSummary>
-      >,
-    recover: (environmentId: string) =>
-      ipcRenderer.invoke('environment:recover', environmentId) as Promise<
-        IpcResult<EnvironmentSummary>
-      >,
+    start: async (id: string) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:start', environmentIdSchema.parse(id)),
+      ),
+    stop: async (id: string) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:stop', environmentIdSchema.parse(id)),
+      ),
+    recover: async (id: string) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:recover', environmentIdSchema.parse(id)),
+      ),
   },
   worker: {
-    runSmoke: (task: WorkerTask) =>
-      ipcRenderer.invoke('worker:run-smoke', task) as Promise<IpcResult<WorkerResult>>,
-    cancel: (taskId: string) =>
-      ipcRenderer.invoke('worker:cancel', taskId) as Promise<IpcResult<boolean>>,
+    runSmoke: async (task: WorkerTask) =>
+      ipcResultSchema(workerResultSchema).parse(
+        await ipcRenderer.invoke('worker:run-smoke', workerTaskSchema.parse(task)),
+      ),
+    cancel: async (taskId: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('worker:cancel', z.string().min(1).parse(taskId)),
+      ),
   },
 } as const
 

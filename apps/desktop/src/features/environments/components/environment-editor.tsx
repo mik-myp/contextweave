@@ -1,3 +1,4 @@
+import { EnvironmentPreflight } from './environment-preflight'
 import { FormProvider } from 'react-hook-form'
 import { ArrowLeftIcon } from 'lucide-react'
 import type { EnvironmentDetails } from '@contextweave/contracts'
@@ -122,6 +123,8 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
           expanded={editor.expanded}
           onExpandedChange={editor.setExpanded}
         />
+        <Separator />
+        <EnvironmentPreflight detail={detail} />
       </form>
       <EnvironmentConfirmDialog
         kind="stop"

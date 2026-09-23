@@ -27,8 +27,7 @@ export function EnvironmentRowActions({
   onDelete: () => void
 }) {
   const { t } = useI18n()
-  const active = environment.status === 'running'
-  const transition = ['starting', 'stopping'].includes(environment.status)
+  const active = environment.status === 'running' || environment.status === 'starting'
   const needsReview = environment.status === 'error' || environment.status === 'needs-recovery'
   return (
     <div className="flex items-center justify-end gap-1">
@@ -50,11 +49,15 @@ export function EnvironmentRowActions({
         <Button
           size="sm"
           variant="ghost"
-          disabled={pending || transition}
+          disabled={
+            environment.status === 'stopping' || (pending && environment.status !== 'starting')
+          }
           onClick={active ? onStop : onStart}
         >
           {pending && <Spinner data-icon="inline-start" />}
-          {transition ? t(`status.${environment.status}`) : t(active ? 'env.stop' : 'env.start')}
+          {environment.status === 'stopping'
+            ? t('status.stopping')
+            : t(active ? 'env.stop' : 'env.start')}
         </Button>
       )}
       <DropdownMenu>
@@ -90,7 +93,7 @@ export function EnvironmentRowActions({
               disabled={isEnvironmentReadOnly(environment.status)}
               onClick={onDelete}
             >
-              {t('admin.delete')}
+              {t('life.op.trash')}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

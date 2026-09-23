@@ -20,6 +20,7 @@ export function prepareBrowserLanguage(dataDir: string, language: string) {
 
 const messageSchema = z.object({
   id: z.number().optional(),
+  sessionId: z.string().optional(),
   method: z.string().optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   result: z.record(z.string(), z.unknown()).optional(),
@@ -47,8 +48,9 @@ export async function connectBrowserSettings(
   port: number,
   settings: BrowserSettings,
   onFailure: (error: Error) => void,
+  proxy?: { username: string; password: string; host: string; port: number },
 ): Promise<() => void> {
-  if (settings.language === 'system' && settings.timezone === 'system') return () => {}
+  if (!proxy && settings.language === 'system' && settings.timezone === 'system') return () => {}
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
     signal: AbortSignal.timeout(5000),
   })
@@ -67,6 +69,7 @@ export async function connectBrowserSettings(
   const pending = new Map<number, PendingCommand>()
   const attached = new Set<string>()
   const initializing = new Set<Promise<void>>()
+  const authAttempts = new Set<string>()
   let sequence = 0
   let closed = false
   let ready = false
@@ -114,6 +117,7 @@ export async function connectBrowserSettings(
         await send('Emulation.setTimezoneOverride', { timezoneId: settings.timezone }, sessionId)
       if (settings.language !== 'system')
         await send('Emulation.setLocaleOverride', { locale: settings.language }, sessionId)
+      if (proxy) await send('Fetch.enable', { handleAuthRequests: true }, sessionId)
       await send('Runtime.runIfWaitingForDebugger', {}, sessionId)
     } catch (cause) {
       // Closing a tab during setup is normal; other failures invalidate this runtime.
@@ -137,9 +141,54 @@ export async function connectBrowserSettings(
         const task = configure(target.sessionId)
         initializing.add(task)
         void task.finally(() => initializing.delete(task))
+      } else if (message.method === 'Fetch.requestPaused' && message.sessionId) {
+        const request = z.object({ requestId: z.string() }).parse(message.params)
+        void send(
+          'Fetch.continueRequest',
+          { requestId: request.requestId },
+          message.sessionId,
+        ).catch(fail)
+      } else if (message.method === 'Fetch.authRequired' && message.sessionId) {
+        const request = z
+          .object({
+            requestId: z.string(),
+            authChallenge: z.object({ source: z.string(), origin: z.string() }),
+          })
+          .parse(message.params)
+        const key = `${message.sessionId}:${request.requestId}`
+        let matchesProxy = false
+        try {
+          const origin = new URL(request.authChallenge.origin)
+          matchesProxy =
+            !!proxy &&
+            request.authChallenge.source === 'Proxy' &&
+            origin.hostname === proxy.host &&
+            Number(origin.port || (origin.protocol === 'https:' ? 443 : 80)) === proxy.port
+        } catch {
+          /* Never provide credentials to an unrecognized challenge. */
+        }
+        const authorized = matchesProxy && !authAttempts.has(key) && authAttempts.size < 10000
+        if (authorized) authAttempts.add(key)
+        void send(
+          'Fetch.continueWithAuth',
+          {
+            requestId: request.requestId,
+            authChallengeResponse:
+              authorized && proxy
+                ? {
+                    response: 'ProvideCredentials',
+                    username: proxy.username,
+                    password: proxy.password,
+                  }
+                : { response: matchesProxy ? 'CancelAuth' : 'Default' },
+          },
+          message.sessionId,
+        ).catch(fail)
       } else if (message.method === 'Target.detachedFromTarget') {
         const detached = z.object({ sessionId: z.string() }).parse(message.params)
         attached.delete(detached.sessionId)
+        for (const key of authAttempts)
+          if (key.startsWith(`${detached.sessionId}:`)) authAttempts.delete(key)
       }
     } catch (cause) {
       fail(cause)

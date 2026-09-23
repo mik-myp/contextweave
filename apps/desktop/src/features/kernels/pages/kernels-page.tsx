@@ -27,7 +27,7 @@ const getRowId = (row: KernelSummary) => row.id
 
 export function KernelsPage() {
   const { t } = useI18n()
-  const { kernels, loading, kernelError, refresh, setNotice } = useAppData()
+  const { kernels, loading, kernelError, refresh, setNotice } = useAppData(['kernels'])
   const [detail, setDetail] = useState<KernelSummary>()
   const [target, setTarget] = useState<KernelSummary>()
   const [pending, setPending] = useState(false)
@@ -182,7 +182,7 @@ export function KernelsPage() {
               )}
               <Separator />
               <h2 className="text-sm font-medium">{t('kernel.capabilities')}</h2>
-              <KernelCapabilities capabilities={detail.capabilities} />
+              <KernelCapabilities report={detail.capabilityReport} />
             </>
           )}
         </DialogContent>

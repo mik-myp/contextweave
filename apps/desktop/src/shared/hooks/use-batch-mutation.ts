@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
-import { useAppData } from '@/app/use-app-data'
+import { useAppData, type AppDomain } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
 import { runBatch, type BatchFailure } from '@/shared/lib/batch'
 
-export function useBatchMutation() {
-  const { refresh, setNotice } = useAppData()
+export function useBatchMutation(domains: readonly AppDomain[]) {
+  const { refresh, setNotice } = useAppData(domains)
   const { t } = useI18n()
   const busy = useRef(false)
   const [pending, setPending] = useState(false)

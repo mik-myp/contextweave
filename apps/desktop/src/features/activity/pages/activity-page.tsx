@@ -1,3 +1,6 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { OperationsTable } from './operations-table'
+import { errorMessage } from '@/shared/lib/error-message'
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -12,8 +15,25 @@ import { Badge } from '@/components/ui/badge'
 const getRowId = (row: ActivitySummary) => row.sessionId
 const statuses = ['starting', 'running', 'stopping', 'stopped', 'crashed'] as const
 export function ActivityPage() {
+  const { t } = useI18n()
+  return (
+    <Tabs defaultValue="sessions">
+      <TabsList>
+        <TabsTrigger value="sessions">{t('life.sessions')}</TabsTrigger>
+        <TabsTrigger value="operations">{t('life.operations')}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="sessions">
+        <SessionsTable />
+      </TabsContent>
+      <TabsContent value="operations">
+        <OperationsTable />
+      </TabsContent>
+    </Tabs>
+  )
+}
+function SessionsTable() {
   const { t, locale } = useI18n()
-  const { activity, loading, activityError, refresh } = useAppData()
+  const { activity, loading, activityError, refresh } = useAppData(['activity'])
   const columns = useMemo<ColumnDef<DataTableFeatures, ActivitySummary, unknown>[]>(
     () => [
       {
@@ -85,6 +105,25 @@ export function ActivityPage() {
         ),
       },
       {
+        accessorKey: 'endedAt',
+        header: t('life.endedAt'),
+        meta: { label: t('life.endedAt') },
+        cell: ({ row }) =>
+          row.original.endedAt ? new Date(row.original.endedAt).toLocaleString(locale) : '—',
+      },
+      {
+        accessorKey: 'revision',
+        header: t('life.revision'),
+        meta: { label: t('life.revision') },
+        cell: ({ row }) => row.original.revision ?? '—',
+      },
+      {
+        accessorKey: 'executableVersion',
+        header: t('kernel.version'),
+        meta: { label: t('kernel.version') },
+        cell: ({ row }) => row.original.executableVersion ?? '—',
+      },
+      {
         accessorKey: 'sessionId',
         header: t('activity.session'),
         meta: { label: t('activity.session') },
@@ -108,7 +147,9 @@ export function ActivityPage() {
             className="block max-w-80 truncate text-muted-foreground"
             title={row.original.exitReason ?? undefined}
           >
-            {row.original.exitReason ?? '—'}
+            {row.original.exitReason
+              ? errorMessage(row.original.exitReason, row.original.exitReason)
+              : '—'}
           </span>
         ),
       },

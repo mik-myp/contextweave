@@ -20,7 +20,17 @@ pnpm --filter @contextweave/desktop build
 ## 目录边界
 
 - `src/`：React Renderer，不直接访问 Node.js 或 Electron。
-- `electron/main.ts`：窗口、IPC、本地数据库和外部浏览器生命周期。
+- `electron/main.ts`：窗口、IPC 来源验证和应用装配。
+- `electron/application.ts`：统一命令入口与领域服务组合。
+- `electron/services/`：环境、内核、运行协调、预检、凭据和 Worker；命令不依赖页面生命周期。
 - `electron/preload.ts`：类型化、白名单 API。
 - `electron/worker.ts`：独立 Playwright/CDP smoke Worker。
 - `electron.vite.config.ts`：Main、Preload、Worker、Renderer 的构建入口。
+
+## v0.1 验证与开发数据
+
+`pnpm check` 执行格式、lint、类型和行为测试；构建后运行 `pnpm test:desktop --require-native` 验证真实沙盒桥接和原生环境闭环。`node scripts/verify-browser.mjs --executable /path/to/browser` 从仓库根目录探测已批准的本机浏览器，只访问本地测试页面。
+
+开发态可以用 `CONTEXTWEAVE_USER_DATA` 指定临时用户数据目录进行桌面验收，避免修改正常使用的数据。发行包不读取这个开发覆盖项。远程调试端口仅在测试启动命令中显式提供，正式应用不默认开启 Renderer 的调试端口。
+
+数据库从旧 schema 迁移时会创建旁路一致性备份。回退前必须关闭客户端和相关浏览器，保留当前数据库及用户目录，再把备份交给兼容的旧客户端使用。不要直接把新 schema 降级标记为旧版本。

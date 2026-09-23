@@ -3,7 +3,6 @@
 import * as React from 'react'
 import {
   ActivityIcon,
-  FingerprintIcon,
   BoxesIcon,
   Globe2Icon,
   SettingsIcon,
@@ -26,7 +25,6 @@ export function AppSidebar({
     { title: t('nav.environments'), url: appRoutes.environments, icon: <Globe2Icon /> },
     { title: t('nav.proxies'), url: appRoutes.proxies, icon: <SlidersHorizontalIcon /> },
     { title: t('nav.kernels'), url: appRoutes.kernels, icon: <BoxesIcon /> },
-    { title: t('nav.fingerprints'), url: appRoutes.fingerprints, icon: <FingerprintIcon /> },
     { title: t('nav.activity'), url: appRoutes.activity, icon: <ActivityIcon /> },
     { title: t('nav.settings'), url: appRoutes.settings, icon: <SettingsIcon /> },
   ]

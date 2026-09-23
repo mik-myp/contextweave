@@ -1,8 +1,10 @@
+import { lifecycleMessages } from './zh-CN-lifecycle'
 import { adminMessages } from './zh-CN-admin'
 import { workspaceMessages } from './zh-CN-workspace'
 import type { TranslationKey } from '../types'
 
 export const zhCNMessages: Record<TranslationKey, string> = {
+  ...lifecycleMessages,
   ...workspaceMessages,
   ...adminMessages,
   'common.retry': '重试',

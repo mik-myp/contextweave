@@ -38,7 +38,7 @@ export default defineConfig({
         },
       },
     },
-    plugins: [externalizeDepsPlugin({ exclude: workspaceDependencies })],
+    plugins: [externalizeDepsPlugin({ exclude: [...workspaceDependencies, 'zod'] })],
   },
   renderer: {
     root: resolve(__dirname),

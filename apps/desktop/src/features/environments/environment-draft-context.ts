@@ -1,7 +1,11 @@
 import { createContext, useContext } from 'react'
 import type { EnvironmentFormValues } from './environment-form'
 
-export type EnvironmentDraft = { values: EnvironmentFormValues; defaults: EnvironmentFormValues }
+export type EnvironmentDraft = {
+  revision?: number
+  values: EnvironmentFormValues
+  defaults: EnvironmentFormValues
+}
 export type EnvironmentDraftStore = {
   drafts: Map<string, EnvironmentDraft>
   resumeId: string | undefined

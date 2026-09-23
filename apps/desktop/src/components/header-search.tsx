@@ -24,7 +24,6 @@ type SearchItem = {
     | 'nav.activity'
     | 'nav.settings'
     | 'nav.about'
-    | 'nav.fingerprints'
   keywords: string
   icon: React.ReactNode
 }
@@ -76,12 +75,6 @@ export function HeaderSearch() {
         url: appRoutes.settings,
         labelKey: 'nav.settings',
         keywords: 'settings theme 设置 主题',
-        icon: <SearchIcon />,
-      },
-      {
-        url: appRoutes.fingerprints,
-        labelKey: 'nav.fingerprints',
-        keywords: 'fingerprint 指纹',
         icon: <SearchIcon />,
       },
       {

@@ -1,22 +1,22 @@
-import type { IpcResult } from '@contextweave/contracts'
 import {
   toCreateEnvironmentInput,
   toUpdateEnvironmentInput,
   type EnvironmentFormValues,
 } from './environment-form'
 
-async function unwrap<T>(request: Promise<IpcResult<T>>): Promise<T> {
-  const result = await request
-  if (!result.ok) throw new Error(result.message)
-  return result.data
-}
+import { unwrapIpc as unwrap } from '@/shared/lib/ipc'
 
 export const environmentService = {
   delete: (id: string) => unwrap(window.contextweave.environment.delete(id)),
   get: (id: string) => unwrap(window.contextweave.environment.get(id)),
-  save: (values: EnvironmentFormValues, id?: string) =>
+  save: (values: EnvironmentFormValues, id?: string, expectedRevision?: number) =>
     id
-      ? unwrap(window.contextweave.environment.update(toUpdateEnvironmentInput(id, values)))
+      ? unwrap(
+          window.contextweave.environment.update({
+            ...toUpdateEnvironmentInput(id, values),
+            expectedRevision,
+          }),
+        )
       : unwrap(window.contextweave.environment.create(toCreateEnvironmentInput(values))),
   start: (id: string) => unwrap(window.contextweave.environment.start(id)),
   stop: (id: string) => unwrap(window.contextweave.environment.stop(id)),

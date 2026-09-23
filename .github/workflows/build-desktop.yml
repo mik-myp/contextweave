@@ -47,6 +47,11 @@ jobs:
       - name: Run checks
         run: pnpm check
 
+      - name: Build and verify desktop runtime
+        run: |
+          pnpm --filter @contextweave/desktop exec electron-vite build
+          pnpm test:desktop
+
       - name: Build desktop package
         run: pnpm --filter @contextweave/desktop build
 

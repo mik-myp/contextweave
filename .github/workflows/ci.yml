@@ -37,3 +37,6 @@ jobs:
 
       - name: Build Electron Vite outputs
         run: pnpm --filter @contextweave/desktop exec electron-vite build
+
+      - name: Verify sandboxed desktop lifecycle
+        run: pnpm test:desktop

@@ -82,9 +82,10 @@ describe('theme color input', () => {
 
 describe.each(modes)('custom theme colors in %s mode', (mode) => {
   let palettes: Palette[]
+  // The full gamut sweep needs more time on shared Intel runners; keep every sample and assertion.
   beforeAll(() => {
     palettes = sampleColors().map((seed) => ({ seed, tokens: deriveThemeTokens(seed, mode) }))
-  }, 10000)
+  }, 30000)
 
   it('keeps neutral surfaces, text and structural borders independent of the accent', () => {
     const baseline = deriveThemeTokens(defaultThemeConfig.color, mode)

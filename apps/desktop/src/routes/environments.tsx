@@ -1,4 +1,2 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { EnvironmentsPage } from '@/features/environments/pages/environments-page'
-
-export const Route = createFileRoute('/environments')({ component: EnvironmentsPage })
+import { createFileRoute, Outlet } from '@tanstack/react-router'
+export const Route = createFileRoute('/environments')({ component: Outlet })

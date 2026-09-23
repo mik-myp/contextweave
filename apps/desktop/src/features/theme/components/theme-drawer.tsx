@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AlertCircleIcon, PaletteIcon, RotateCcwIcon } from 'lucide-react'
+import { AlertCircleIcon, PaletteIcon, RotateCcwIcon, XIcon } from 'lucide-react'
 import {
   defaultThemeConfig,
   type ThemeConfig,
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import {
   Drawer,
   DrawerContent,
+  DrawerClose,
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
@@ -135,7 +136,14 @@ export function ThemeDrawer() {
       </DrawerTrigger>
       <DrawerContent className="w-full sm:max-w-md">
         <DrawerHeader className="border-b px-5 py-4">
-          <DrawerTitle>{t('header.themeTitle')}</DrawerTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DrawerTitle>{t('header.themeTitle')}</DrawerTitle>
+            <DrawerClose
+              render={<Button variant="ghost" size="icon-sm" aria-label={t('common.close')} />}
+            >
+              <XIcon />
+            </DrawerClose>
+          </div>
           <DrawerDescription>{t('header.themeDescription')}</DrawerDescription>
         </DrawerHeader>
         <div className="flex-1 overflow-y-auto px-5 py-5">
@@ -172,6 +180,9 @@ export function ThemeDrawer() {
               showReset={theme.color !== defaultThemeConfig.color}
               onReset={() => reset('color')}
             >
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {t('theme.accentHelp')}
+              </p>
               <ChoiceGrid
                 value={theme.color}
                 choices={colorOptions.map(([value, labelKey]) => ({
@@ -190,7 +201,7 @@ export function ThemeDrawer() {
                   type="color"
                   value={theme.color}
                   onChange={(event) => setColor(event.target.value)}
-                  className="theme-color-input size-8 shrink-0 cursor-pointer appearance-none overflow-hidden rounded-md border border-input bg-transparent p-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="theme-color-input size-(--control-height) shrink-0 cursor-pointer appearance-none overflow-hidden rounded-md border border-input bg-transparent p-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 />
                 <Input
                   aria-label={t('theme.customColor')}
@@ -239,6 +250,9 @@ export function ThemeDrawer() {
               showReset={theme.density !== defaultThemeConfig.density}
               onReset={() => reset('density')}
             >
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {t('theme.densityHelp')}
+              </p>
               <ChoiceGrid
                 value={theme.density}
                 choices={(Object.keys(densityPreviews) as Array<keyof typeof densityPreviews>).map(

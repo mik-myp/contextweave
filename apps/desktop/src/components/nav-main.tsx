@@ -12,6 +12,7 @@ import {
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
 import { ChevronRightIcon } from 'lucide-react'
+import { isRouteActive } from '@/lib/navigation'
 
 type NavItem = {
   title: string
@@ -39,7 +40,10 @@ export function NavMain({
       >
         <CollapsibleTrigger
           render={
-            <SidebarMenuButton tooltip={item.title} isActive={location.pathname === item.url} />
+            <SidebarMenuButton
+              tooltip={item.title}
+              isActive={isRouteActive(location.pathname, item.url)}
+            />
           }
         >
           {item.icon}
@@ -50,7 +54,10 @@ export function NavMain({
           <SidebarMenuSub>
             {item.items.map((subItem) => (
               <SidebarMenuSubItem key={subItem.title}>
-                <SidebarMenuSubButton render={<Link to={subItem.url} />}>
+                <SidebarMenuSubButton
+                  isActive={isRouteActive(location.pathname, subItem.url)}
+                  render={<Link to={subItem.url} />}
+                >
                   <span>{subItem.title}</span>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
@@ -62,7 +69,7 @@ export function NavMain({
       <SidebarMenuItem key={item.title}>
         <SidebarMenuButton
           tooltip={item.title}
-          isActive={location.pathname === item.url}
+          isActive={isRouteActive(location.pathname, item.url)}
           render={<Link to={item.url} />}
         >
           {item.icon}

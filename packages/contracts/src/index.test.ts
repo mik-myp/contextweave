@@ -93,27 +93,30 @@ describe("contracts", () => {
     },
   );
 
-  it("requires an explicit version and nullable proxy when editing an environment", () => {
-    expect(
-      updateEnvironmentInputSchema.parse({
-        version: 1,
-        environmentId: "env-test",
-        name: "新的名称",
-        proxyId: null,
-      }),
-    ).toEqual({
+  it("requires the complete editable projection without accepting privileged fields", () => {
+    const input = {
       version: 1,
       environmentId: "env-test",
       name: "新的名称",
       proxyId: null,
-    });
-    expect(
-      updateEnvironmentInputSchema.safeParse({
-        environmentId: "env-test",
-        name: "新的名称",
-        proxyId: null,
-      }).success,
-    ).toBe(false);
+      browserSettings: { language: "system", timezone: "UTC", window: { width: 1440, height: 900 } },
+    };
+    expect(updateEnvironmentInputSchema.parse(input)).toEqual(input);
+    expect(updateEnvironmentInputSchema.safeParse({ ...input, version: undefined }).success).toBe(false);
+    expect(updateEnvironmentInputSchema.safeParse({ ...input, browserSettings: undefined }).success).toBe(false);
+    expect(updateEnvironmentInputSchema.safeParse({ ...input, kernelId: "other" }).success).toBe(false);
+    for (const browserSettings of [
+      {},
+      { ...input.browserSettings, language: undefined },
+      { ...input.browserSettings, window: { width: 1440 } },
+      { ...input.browserSettings, window: { width: 1440, height: 900, unknown: true } },
+      { ...input.browserSettings, language: "not a language" },
+      { ...input.browserSettings, timezone: "Mars/Olympus" },
+      { ...input.browserSettings, window: { width: 0, height: 900 } },
+      { ...input.browserSettings, userAgent: "unexpected" },
+    ]) {
+      expect(updateEnvironmentInputSchema.safeParse({ ...input, browserSettings }).success).toBe(false);
+    }
   });
 
   it.each([

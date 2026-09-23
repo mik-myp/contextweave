@@ -17,9 +17,11 @@ export function statusLabel(status: EnvironmentSummary['status']): string {
 
 export function statusVariant(
   status: EnvironmentSummary['status'],
-): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'running') return 'default'
-  if (status === 'error' || status === 'needs-recovery') return 'destructive'
+): 'success' | 'warning' | 'info' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'running') return 'success'
+  if (status === 'starting' || status === 'stopping') return 'info'
+  if (status === 'needs-recovery') return 'warning'
+  if (status === 'error') return 'destructive'
   if (status === 'created' || status === 'stopped') return 'secondary'
   return 'outline'
 }

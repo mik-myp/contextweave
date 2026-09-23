@@ -1,6 +1,10 @@
+import { adminMessages } from './en-US-admin'
+import { workspaceMessages } from './en-US-workspace'
 import type { TranslationKey } from '../types'
 
 export const enUSMessages: Record<TranslationKey, string> = {
+  ...workspaceMessages,
+  ...adminMessages,
   'common.retry': 'Retry',
   'theme.saveErrorTitle': 'Theme not saved',
   'theme.saveErrorDescription':
@@ -24,7 +28,7 @@ export const enUSMessages: Record<TranslationKey, string> = {
   'header.themeDescription': 'Adjust the appearance and sidebar layout.',
   'header.appearance': 'Appearance',
   'header.mode': 'Mode',
-  'header.palette': 'Palette',
+  'header.palette': 'Accent color',
   'header.font': 'Font',
   'header.radius': 'Radius',
   'header.density': 'Density',
@@ -54,7 +58,7 @@ export const enUSMessages: Record<TranslationKey, string> = {
   'nav.activity': 'Activity',
   'nav.settings': 'System settings',
   'nav.about': 'About',
-  'nav.fingerprints': 'Fingerprint policies',
+  'nav.fingerprints': 'Capabilities',
   'theme.system': 'System',
   'theme.light': 'Light',
   'theme.dark': 'Dark',
@@ -73,6 +77,10 @@ export const enUSMessages: Record<TranslationKey, string> = {
   'theme.motionSystemDescription':
     'Following your system: reduces motion when requested by your operating system.',
   'theme.motionReducedDescription': 'On: always reduces motion.',
+  'theme.accentHelp':
+    'Used for primary actions, selection, focus and charts. Surfaces stay neutral.',
+  'theme.densityHelp':
+    'Adjust controls and content spacing. Use interface scaling to change text size.',
   'theme.customColor': 'Custom color',
   'theme.auto': 'Auto',
   'theme.colorBlue': 'Blue',

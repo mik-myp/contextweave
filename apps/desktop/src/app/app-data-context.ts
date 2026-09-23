@@ -1,5 +1,5 @@
 import * as React from 'react'
-import type { EnvironmentSummary } from '@contextweave/contracts'
+import type { ActivitySummary, EnvironmentSummary } from '@contextweave/contracts'
 import type {
   AppInfo,
   AppPaths,
@@ -11,6 +11,11 @@ import type {
 
 export type AppDataContextValue = {
   environments: EnvironmentSummary[]
+  activity: ActivitySummary[]
+  activityError?: string
+  proxyError?: string
+  kernelError?: string
+  appError?: string
   proxies: ProxySummary[]
   kernels: KernelSummary[]
   appInfo?: AppInfo
@@ -20,6 +25,9 @@ export type AppDataContextValue = {
   notice?: Notice
   setNotice: (notice: Notice | undefined) => void
   loading: boolean
+  error?: string
+  configurationError?: string
+  upsertEnvironment: (environment: EnvironmentSummary) => void
   refresh: () => Promise<void>
   perform: (action: EnvironmentAction, success: string) => Promise<void>
   lastWorkerResult?: string

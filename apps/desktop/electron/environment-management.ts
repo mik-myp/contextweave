@@ -1,8 +1,11 @@
 import { existsSync } from 'node:fs'
 import {
   environmentConfigSchema,
+  environmentDetailsSchema,
+  environmentIdSchema,
   updateEnvironmentInputSchema,
   type EnvironmentConfig,
+  type EnvironmentDetails,
 } from '@contextweave/contracts'
 import {
   inspectRuntimeLock,
@@ -55,6 +58,7 @@ export function updateEnvironment(
   const next = resolveEnvironmentProxy(repository, {
     ...config,
     name: parsed.name,
+    commonConfig: { ...config.commonConfig, ...parsed.browserSettings },
     proxyId: parsed.proxyId ?? undefined,
     proxy: undefined,
   })
@@ -79,4 +83,29 @@ export function assertProxyMutable(
     throw new Error(`此代理被 ${references.length} 个环境使用，请先在环境编辑中解除绑定。`)
   }
   for (const record of references) assertEnvironmentEditable(repository, record)
+}
+
+export function getEnvironmentDetails(
+  repository: EnvironmentRepository,
+  id: unknown,
+): EnvironmentDetails {
+  const record = repository.get(environmentIdSchema.parse(id))
+  if (!record) throw new Error('环境已不存在。')
+  const config = environmentConfigSchema.parse(JSON.parse(record.configJson))
+  return environmentDetailsSchema.parse({
+    id: record.environmentId,
+    name: record.name,
+    status: record.status,
+    kernelId: record.kernelId,
+    kernelVersion: record.kernelVersion,
+    proxyId: record.proxyId ?? undefined,
+    platform: record.platform,
+    arch: record.arch,
+    updatedAt: record.updatedAt,
+    browserSettings: {
+      language: config.commonConfig.language,
+      timezone: config.commonConfig.timezone,
+      window: config.commonConfig.window,
+    },
+  })
 }

@@ -1,3 +1,4 @@
+import { saveProxyConfiguration, toProxySummary } from './proxy-management'
 import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
 import log from 'electron-log/main'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -8,7 +9,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import {
   createEnvironmentInputSchema,
   environmentConfigSchema,
-  saveProxyInputSchema,
+  activitySummarySchema,
+  type ProxySummary,
   type EnvironmentConfig,
   type EnvironmentSummary,
   type IpcResult,
@@ -43,17 +45,19 @@ import {
   releaseRuntimeLock,
   type EnvironmentRecord,
   type KernelInstallationRecord,
-  type ProxyRecord,
   updateRuntimeLockOwner,
 } from '@contextweave/storage'
 import { workerTaskSchema, type WorkerResult } from '@contextweave/worker-protocol'
 
 import {
   assertProxyMutable,
+  getEnvironmentDetails,
   removeEnvironment,
   resolveEnvironmentProxy,
   updateEnvironment,
 } from './environment-management'
+
+import { connectBrowserSettings, prepareBrowserLanguage } from './browser-settings'
 
 log.initialize()
 
@@ -78,6 +82,7 @@ type ManagedSession = {
   dataDir: string
   stopRequested: boolean
   startFailed: boolean
+  closeSettings?: () => void
 }
 
 type CredentialFile = Record<string, string>
@@ -330,7 +335,9 @@ function proxyArgs(config: EnvironmentConfig): string[] {
 
 function commonChromiumArgs(config: EnvironmentConfig): string[] {
   const args = [
-    `--lang=${config.commonConfig.language}`,
+    ...(config.commonConfig.language === 'system'
+      ? []
+      : [`--lang=${config.commonConfig.language}`]),
     `--window-size=${config.commonConfig.window.width},${config.commonConfig.window.height}`,
   ]
   if (config.commonConfig.userAgent) args.push(`--user-agent=${config.commonConfig.userAgent}`)
@@ -360,6 +367,8 @@ function executableFor(record: EnvironmentRecord, config: EnvironmentConfig): st
   return undefined
 }
 
+const kernelInstallationsInProgress = new Set<string>()
+
 async function installKernel(
   kernelId: string,
 ): Promise<IpcResult<ReturnType<typeof manifestToKernelSummary>>> {
@@ -369,6 +378,9 @@ async function installKernel(
   } catch (error) {
     return fail('KERNEL_NOT_FOUND', error instanceof Error ? error.message : 'Kernel was not found')
   }
+  if (kernelInstallationsInProgress.has(kernelId))
+    return fail('INSTALL_IN_PROGRESS', '此内核正在安装，请等待完成。')
+  kernelInstallationsInProgress.add(kernelId)
   const manifest = adapter.getManifest()
   try {
     const result = await installKernelPackage(manifest, join(dataRoot(), 'kernels'))
@@ -388,6 +400,8 @@ async function installKernel(
       'KERNEL_INSTALL_FAILED',
       error instanceof Error ? error.message : 'Kernel installation failed',
     )
+  } finally {
+    kernelInstallationsInProgress.delete(kernelId)
   }
 }
 
@@ -519,6 +533,22 @@ async function createEnvironment(input: unknown): Promise<IpcResult<EnvironmentS
   }
   const manifest = kernel.getManifest()
   const repository = databaseOrThrow()
+  const installation = repository.getKernelInstallation(
+    manifest.id,
+    manifest.version,
+    manifest.platform,
+    manifest.arch,
+  )
+  const installed =
+    installation?.state === 'installed' &&
+    existsSync(join(installation.installPath, manifest.executable))
+  const available =
+    manifest.id === 'standard-chromium'
+      ? discoverStandardChromiumExecutable(process.platform).length > 0 || installed
+      : installed
+  if (!available) return fail('KERNEL_UNAVAILABLE', '所选内核不可用，请先在内核管理中安装或配置。')
+  const validation = kernel.validateConfig(parsed.data.kernelConfig)
+  if (!validation.ok) return fail('INVALID_CONFIG', validation.issues.join('; '))
   const proxyRecord = parsed.data.proxyId ? repository.getProxy(parsed.data.proxyId) : undefined
   if (parsed.data.proxyId && !proxyRecord)
     return fail('PROXY_NOT_FOUND', 'The selected proxy was not found')
@@ -548,10 +578,6 @@ async function createEnvironment(input: unknown): Promise<IpcResult<EnvironmentS
   return ok(toSummary(record))
 }
 
-function proxySummary(record: ProxyRecord): ProxyRecord {
-  return record
-}
-
 function getThemeSettings(): ThemeConfig {
   const stored = databaseOrThrow().getSetting<unknown>('theme')
   return readThemeConfig(stored)
@@ -565,26 +591,14 @@ function setThemeSettings(input: unknown): IpcResult<ThemeConfig> {
   return ok(parsed.data)
 }
 
-async function saveProxy(input: unknown): Promise<IpcResult<ProxyRecord>> {
-  const parsed = saveProxyInputSchema.safeParse(input)
-  if (!parsed.success)
-    return fail('INVALID_INPUT', parsed.error.issues.map((issue) => issue.message).join('; '))
-  const repository = databaseOrThrow()
-  const proxyId = parsed.data.proxyId ?? `proxy-${randomUUID()}`
-  const previous = parsed.data.proxyId ? repository.getProxy(proxyId) : undefined
-  if (parsed.data.proxyId && !previous) return fail('NOT_FOUND', '代理已不存在，请刷新列表。')
-  let credentialRef = previous?.credentialRef
+async function saveProxy(input: unknown): Promise<IpcResult<ProxySummary>> {
   try {
-    if (previous) assertProxyMutable(repository, proxyId, false)
-    if (parsed.data.password) {
-      credentialRef = `proxy:${proxyId}:password`
-      saveCredential(credentialRef, parsed.data.password)
-    }
-    const record = repository.saveProxy(proxyId, {
-      ...parsed.data.config,
-      credentialRef,
-    })
-    return ok(proxySummary(record))
+    return ok(
+      saveProxyConfiguration(databaseOrThrow(), input, {
+        save: saveCredential,
+        remove: deleteCredential,
+      }),
+    )
   } catch (error) {
     return fail(
       'PROXY_SAVE_FAILED',
@@ -652,6 +666,7 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
   let persistedSession = false
   try {
     const plan = buildLaunchPlan(record, config, port)
+    prepareBrowserLanguage(record.dataDir, config.commonConfig.language)
     repository.updateConfig(config)
     repository.updateStatus(environmentId, 'starting')
     const child = spawn(plan.executablePath, plan.args, { stdio: 'ignore', windowsHide: true })
@@ -682,6 +697,7 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
     })
     persistedSession = true
     child.once('exit', (code, signal) => {
+      managedSession?.closeSettings?.()
       sessions.delete(environmentId)
       const expectedStop = managedSession?.stopRequested === true
       const startFailed = managedSession?.startFailed === true
@@ -701,12 +717,28 @@ async function startEnvironment(environmentId: string): Promise<IpcResult<Enviro
       log.info('Browser process exited', { environmentId, code, signal })
     })
     await waitForCdp(port)
+    managedSession.closeSettings = await connectBrowserSettings(
+      port,
+      config.commonConfig,
+      (error) => {
+        // CDP often closes just before a normal browser exit. Only fail a still-live process.
+        setTimeout(() => {
+          if (!isChildRunning(child) || managedSession?.stopRequested) return
+          log.error('Browser settings failed', { environmentId, message: error.message })
+          if (managedSession) managedSession.startFailed = true
+          terminateChild(child)
+        }, 200)
+      },
+    )
+    if (managedSession.stopRequested || !isChildRunning(child))
+      throw new Error('Browser was stopped during startup')
     repository.updateRuntimeSession(sessionId, 'running')
     repository.updateStatus(environmentId, 'running')
     return ok(toSummary(repository.get(environmentId)!))
   } catch (error) {
     if (managedSession) {
       managedSession.startFailed = true
+      managedSession.closeSettings?.()
       terminateChild(managedSession.child)
     }
     if (persistedSession) {
@@ -856,13 +888,75 @@ function registerIpcHandlers(): void {
       }),
     )
   })
-  ipcMain.handle('kernel:install', (_event, kernelId: string) => installKernel(kernelId))
-  ipcMain.handle('proxy:list', () => ok(databaseOrThrow().listProxies().map(proxySummary)))
-  ipcMain.handle('proxy:save', (_event, input: unknown) => saveProxy(input))
-  ipcMain.handle('proxy:delete', (_event, proxyId: string) => deleteProxy(proxyId))
+  ipcMain.handle('kernel:install', (event, kernelId: unknown) =>
+    event.senderFrame === mainWindow?.webContents.mainFrame && typeof kernelId === 'string'
+      ? installKernel(kernelId)
+      : fail('INVALID_INPUT', '请求无效'),
+  )
+  ipcMain.handle('activity:list', (event) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
+    try {
+      const repository = databaseOrThrow()
+      const names = new Map(repository.list().map((record) => [record.environmentId, record.name]))
+      return ok(
+        repository.listRuntimeSessions().map((session) =>
+          activitySummarySchema.parse({
+            ...session,
+            environmentName: names.get(session.environmentId),
+          }),
+        ),
+      )
+    } catch (error) {
+      return fail(
+        'ACTIVITY_READ_FAILED',
+        error instanceof Error ? error.message : 'Unable to read sessions',
+      )
+    }
+  })
+  ipcMain.handle('proxy:list', (event) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
+    return ok(databaseOrThrow().listProxies().map(toProxySummary))
+  })
+  ipcMain.handle('proxy:save', (event, input: unknown) =>
+    event.senderFrame === mainWindow?.webContents.mainFrame
+      ? saveProxy(input)
+      : fail('FORBIDDEN', '请求来源无效'),
+  )
+  ipcMain.handle('proxy:delete', (event, proxyId: unknown) =>
+    event.senderFrame === mainWindow?.webContents.mainFrame && typeof proxyId === 'string'
+      ? deleteProxy(proxyId)
+      : fail('INVALID_INPUT', '请求无效'),
+  )
   ipcMain.handle('environment:list', () => ok(databaseOrThrow().list().map(toSummary)))
-  ipcMain.handle('environment:create', (_event, input: unknown) => createEnvironment(input))
-  ipcMain.handle('environment:update', (_event, input: unknown) => {
+  ipcMain.handle('environment:create', async (event, input: unknown) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
+    try {
+      return await createEnvironment(input)
+    } catch (error) {
+      return fail(
+        'ENVIRONMENT_CREATE_FAILED',
+        error instanceof Error ? error.message : '环境创建失败',
+      )
+    }
+  })
+  ipcMain.handle('environment:get', (event, id: unknown) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
+    try {
+      return ok(getEnvironmentDetails(databaseOrThrow(), id))
+    } catch (error) {
+      return fail(
+        'ENVIRONMENT_READ_FAILED',
+        error instanceof Error ? error.message : '环境读取失败',
+      )
+    }
+  })
+  ipcMain.handle('environment:update', (event, input: unknown) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
     try {
       return ok(toSummary(updateEnvironment(databaseOrThrow(), input)))
     } catch (error) {
@@ -872,7 +966,9 @@ function registerIpcHandlers(): void {
       )
     }
   })
-  ipcMain.handle('environment:delete', (_event, id: unknown) => {
+  ipcMain.handle('environment:delete', (event, id: unknown) => {
+    if (event.senderFrame !== mainWindow?.webContents.mainFrame)
+      return fail('FORBIDDEN', '请求来源无效')
     try {
       removeEnvironment(databaseOrThrow(), id)
       return ok(true)

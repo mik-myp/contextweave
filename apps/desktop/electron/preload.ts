@@ -1,11 +1,21 @@
+import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
-import type {
-  CreateEnvironmentInput,
-  UpdateEnvironmentInput,
-  IpcResult,
-  EnvironmentSummary,
-  SaveProxyInput,
-  ThemeConfig,
+import {
+  environmentDetailsSchema,
+  proxySummarySchema,
+  saveProxyInputSchema,
+  activitySummarySchema,
+  environmentSummarySchema,
+  environmentIdSchema,
+  createEnvironmentInputSchema,
+  updateEnvironmentInputSchema,
+  ipcResultSchema,
+  type CreateEnvironmentInput,
+  type UpdateEnvironmentInput,
+  type IpcResult,
+  type EnvironmentSummary,
+  type SaveProxyInput,
+  type ThemeConfig,
 } from '@contextweave/contracts'
 import type { WorkerResult, WorkerTask } from '@contextweave/worker-protocol'
 
@@ -76,46 +86,40 @@ const api = {
         }>
       >,
   },
+  activity: {
+    list: async () =>
+      ipcResultSchema(z.array(activitySummarySchema)).parse(
+        await ipcRenderer.invoke('activity:list'),
+      ),
+  },
   proxy: {
-    list: () =>
-      ipcRenderer.invoke('proxy:list') as Promise<
-        IpcResult<
-          ReadonlyArray<{
-            proxyId: string
-            type: string
-            host: string
-            port: number
-            username?: string
-            credentialRef?: string
-            createdAt: string
-            updatedAt: string
-          }>
-        >
-      >,
-    save: (input: SaveProxyInput) =>
-      ipcRenderer.invoke('proxy:save', input) as Promise<
-        IpcResult<{
-          proxyId: string
-          type: string
-          host: string
-          port: number
-          username?: string
-          credentialRef?: string
-          createdAt: string
-          updatedAt: string
-        }>
-      >,
-    delete: (proxyId: string) =>
-      ipcRenderer.invoke('proxy:delete', proxyId) as Promise<IpcResult<boolean>>,
+    list: async () =>
+      ipcResultSchema(z.array(proxySummarySchema)).parse(await ipcRenderer.invoke('proxy:list')),
+    save: async (input: SaveProxyInput) =>
+      ipcResultSchema(proxySummarySchema).parse(
+        await ipcRenderer.invoke('proxy:save', saveProxyInputSchema.parse(input)),
+      ),
+    delete: async (proxyId: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('proxy:delete', z.string().min(1).parse(proxyId)),
+      ),
   },
   environment: {
-    update: (input: UpdateEnvironmentInput) =>
-      ipcRenderer.invoke('environment:update', input) as Promise<IpcResult<EnvironmentSummary>>,
+    get: async (id: string) =>
+      ipcResultSchema(environmentDetailsSchema).parse(
+        await ipcRenderer.invoke('environment:get', environmentIdSchema.parse(id)),
+      ),
+    update: async (input: UpdateEnvironmentInput) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:update', updateEnvironmentInputSchema.parse(input)),
+      ),
     delete: (id: string) =>
       ipcRenderer.invoke('environment:delete', id) as Promise<IpcResult<boolean>>,
     list: () => ipcRenderer.invoke('environment:list') as Promise<IpcResult<EnvironmentSummary[]>>,
-    create: (input: CreateEnvironmentInput) =>
-      ipcRenderer.invoke('environment:create', input) as Promise<IpcResult<EnvironmentSummary>>,
+    create: async (input: CreateEnvironmentInput) =>
+      ipcResultSchema(environmentSummarySchema).parse(
+        await ipcRenderer.invoke('environment:create', createEnvironmentInputSchema.parse(input)),
+      ),
     start: (environmentId: string) =>
       ipcRenderer.invoke('environment:start', environmentId) as Promise<
         IpcResult<EnvironmentSummary>

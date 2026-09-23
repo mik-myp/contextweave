@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ReactTable, RowData } from '@tanstack/react-table'
-import { ArrowDownIcon, ArrowUpIcon, ArrowUpDownIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
+import { DataTableColumnHeader } from './data-table-column-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import {
@@ -37,7 +36,7 @@ export function DataTableBody<TData extends RowData>({
   return (
     <div
       data-slot="data-table-surface"
-      className="overflow-hidden rounded-md border"
+      className="overflow-hidden rounded-lg border bg-background"
       aria-busy={loading}
     >
       <Table aria-label={label}>
@@ -50,7 +49,10 @@ export function DataTableBody<TData extends RowData>({
                   <TableHead
                     key={header.id}
                     colSpan={header.colSpan}
-                    className={cn(header.column.columnDef.meta?.align === 'end' && 'text-end')}
+                    className={cn(
+                      'px-4',
+                      header.column.columnDef.meta?.align === 'end' && 'text-end',
+                    )}
                     aria-sort={
                       header.column.getCanSort()
                         ? sorted === 'asc'
@@ -61,24 +63,10 @@ export function DataTableBody<TData extends RowData>({
                         : undefined
                     }
                   >
-                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => header.column.toggleSorting()}
-                        aria-label={`排序：${header.column.columnDef.meta?.label ?? header.column.id}`}
-                      >
+                    {header.isPlaceholder ? null : (
+                      <DataTableColumnHeader table={table} column={header.column}>
                         <table.FlexRender header={header} />
-                        {sorted === 'asc' ? (
-                          <ArrowUpIcon data-icon="inline-end" />
-                        ) : sorted === 'desc' ? (
-                          <ArrowDownIcon data-icon="inline-end" />
-                        ) : (
-                          <ArrowUpDownIcon data-icon="inline-end" />
-                        )}
-                      </Button>
-                    ) : (
-                      <table.FlexRender header={header} />
+                      </DataTableColumnHeader>
                     )}
                   </TableHead>
                 )
@@ -99,11 +87,19 @@ export function DataTableBody<TData extends RowData>({
             ))
           ) : rows.length > 0 ? (
             rows.map((row) => (
-              <TableRow key={row.id} data-state={row.id === selectedRowId ? 'selected' : undefined}>
+              <TableRow
+                key={row.id}
+                data-state={
+                  row.getIsSelected() || row.id === selectedRowId ? 'selected' : undefined
+                }
+              >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
-                    className={cn(cell.column.columnDef.meta?.align === 'end' && 'text-end')}
+                    className={cn(
+                      'px-4 py-(--table-cell-py)',
+                      cell.column.columnDef.meta?.align === 'end' && 'text-end',
+                    )}
                   >
                     <table.FlexRender cell={cell} />
                   </TableCell>

@@ -86,6 +86,32 @@ describe.each(modes)('custom theme colors in %s mode', (mode) => {
     palettes = sampleColors().map((seed) => ({ seed, tokens: deriveThemeTokens(seed, mode) }))
   }, 10000)
 
+  it('keeps neutral surfaces, text and structural borders independent of the accent', () => {
+    const baseline = deriveThemeTokens(defaultThemeConfig.color, mode)
+    const neutralRoles = [
+      'background',
+      'foreground',
+      'card',
+      'popover',
+      'muted',
+      'muted-foreground',
+      'secondary',
+      'sidebar',
+      'border',
+      'input',
+    ]
+    for (const { seed, tokens } of palettes) {
+      expect(tokens.input).toBe(tokens.border)
+      for (const role of neutralRoles) {
+        expect(tokens[role], seed + ':' + role).toBe(baseline[role])
+        expect(toOklch(tokens[role])!.c).toBeLessThan(0.002)
+      }
+    }
+    const otherAccent = deriveThemeTokens('#DB2777', mode)
+    for (const role of ['primary', 'accent', 'ring', 'sidebar-accent', 'chart-1'])
+      expect(otherAccent[role], role).not.toBe(baseline[role])
+  })
+
   it('emits finite sRGB colors for every token, including semantic status colors', () => {
     for (const { seed, tokens } of palettes) {
       for (const [name, value] of Object.entries(tokens)) {
@@ -115,8 +141,10 @@ describe.each(modes)('custom theme colors in %s mode', (mode) => {
         ['sidebar-foreground', 'sidebar'],
         ['sidebar-primary-foreground', 'sidebar-primary'],
         ['sidebar-accent-foreground', 'sidebar-accent'],
-        ['destructive', 'destructive-muted'],
-        ['destructive', 'destructive-muted-hover'],
+        ...statuses.flatMap((status) => [
+          [status, status + '-muted'],
+          [status, status + '-muted-hover'],
+        ]),
         ...statuses.map((status) => [status + '-foreground', status]),
         ...surfaces.flatMap((surface) =>
           ['foreground', 'muted-foreground', 'primary', ...statuses].map((text) => [text, surface]),
@@ -126,13 +154,11 @@ describe.each(modes)('custom theme colors in %s mode', (mode) => {
     )
   })
 
-  it('keeps essential input boundaries, focus indicators and chart marks distinguishable', () => {
+  it('keeps focus indicators and chart marks distinguishable', () => {
     expectContrast(
       palettes,
       [
-        ...surfaces.flatMap((surface) =>
-          ['input', 'ring'].map((indicator) => [indicator, surface]),
-        ),
+        ...surfaces.flatMap((surface) => ['ring'].map((indicator) => [indicator, surface])),
         ...['background', 'card'].flatMap((surface) =>
           [1, 2, 3, 4, 5].map((index) => ['chart-' + index, surface]),
         ),
@@ -150,7 +176,7 @@ describe.each(modes)('custom theme colors in %s mode', (mode) => {
           const fill = composite(tokens.muted, tokens[surface], opacity)
           for (const text of ['foreground', 'muted-foreground', 'destructive'])
             textMinimum = Math.min(textMinimum, wcagContrast(toRgb(tokens[text])!, fill))
-          for (const boundary of ['input', 'ring', 'destructive'])
+          for (const boundary of ['ring', 'destructive'])
             boundaryMinimum = Math.min(
               boundaryMinimum,
               wcagContrast(toRgb(tokens[boundary])!, fill),

@@ -1,757 +1,266 @@
 # ContextWeave 技术栈与长期库选型
 
-**项目名称：ContextWeave（织境）**  
-**定位：目标为开源、可自托管、面向个人与团队的多内核浏览器工作台**
-**文档日期：2026-09-22**
+**修订日期：2026-09-23**
 
-本文档定义 ContextWeave 从个人环境管理到团队协作、浏览器自动化、数据处理和 AI/RAG 的总体技术路线。它不要求第一天安装所有依赖，而是规定接口边界、阶段性技术栈以及后续版本应采用的库和替换条件。
+**对应路线：** [项目总体规划与技术方案](project-plan.md)
 
-**审查日期：** 2026-09-22
-**维护规则：** 后续版本开发必须按本文件选择技术和库；新增、替换或延期使用依赖时，先更新本文件并记录原因、影响、许可证和迁移方式。
-**当前实现：** 以仓库实际依赖和代码为准；阶段路线是后续实现的默认技术基线，不是可在代码中静默绕开的建议。
+**职责：** 记录当前技术基线、下一步采用的技术、引入条件、替换边界和维护责任。
 
-## 当前 v0.1 实际基线
+本轮重设计保留现有 Electron/TypeScript 技术基础，优先完善稳定环境、能力验证、运行与数据恢复。参考项目的桌面框架、内核和服务端分别评估；不把一个参考仓库整套迁入 ContextWeave。
 
-| 领域       | 当前实现                                                                                                              |
-| ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| 运行时     | Node.js `>=22.15.0 <23`、Electron `44.4.3`；发布前检查官方支持窗口                                                    |
-| 包管理     | pnpm `10.26.2`、pnpm workspace                                                                                        |
-| 构建       | electron-vite `5.x`、Vite `7.x`、electron-builder `26.x`                                                              |
-| UI         | React `19.x`、Base UI、Tailwind CSS、Zod、React Hook Form、Zustand                                                    |
-| 路由与表格 | `@tanstack/react-router` 文件路由、`@tanstack/react-table`                                                            |
-| 本地数据   | `node:sqlite` `DatabaseSync`（当前可能有实验性警告）；Drizzle ORM 仅用于 schema 定义，读写 repository 直接使用 SQLite |
-| 凭据       | Electron `safeStorage`                                                                                                |
-| 浏览器控制 | `playwright-core`、CDP、Kernel Registry/Adapter                                                                       |
-| 验证       | ESLint、Prettier、TypeScript、Vitest                                                                                  |
+“已采用”表示当前源码有相应实现；“计划采用”需在对应工作包加入依赖与测试；“候选”尚未通过接入验证。下文不表示所有库已经安装或所有能力已发布。精确版本以各 `package.json` 与 `pnpm-lock.yaml` 为准。
 
-团队 API、PostgreSQL、对象存储、工作流、AI/RAG、Web 管理端和远程执行节点都不属于当前 v0.1 实际基线。
+## 1. 当前可复用基线
 
-## 1. 选型原则
+| 范围       | 当前基线                                               | 本轮决定                                                    |
+| ---------- | ------------------------------------------------------ | ----------------------------------------------------------- |
+| 桌面       | Electron 44.4.3、electron-vite 5、electron-builder 26  | 保留；把业务职责从入口移出，继续使用外部浏览器进程          |
+| 开发运行时 | Node.js `>=22.15.0 <23`，pnpm 10.26.2 workspace        | 当前不改锁文件；独立工作包升级开发/CI 到受支持 LTS          |
+| Renderer   | React 19、TypeScript strict、Tailwind CSS 4            | 保留，业务逻辑按 feature 和应用服务组织                     |
+| UI         | shadcn base-nova / Base UI，Lucide                     | 保留；已有组件源码按项目语义 token 维护                     |
+| 路由       | TanStack Router 文件路由与 Hash History                | 保留，配置页与设置分区用嵌套路由                            |
+| 表格       | TanStack Table 9.2.4 + 共享 DataTable                  | 保留，不复制参考项目旧版本 API                              |
+| 表单       | React Hook Form + Zod + Resolver                       | 保留，一套字段/校验支持新建和编辑                           |
+| 数据       | `node:sqlite` DatabaseSync、repository、Drizzle schema | 保留驱动；补可重复迁移、一致性备份和恢复测试                |
+| 凭据       | Electron safeStorage                                   | 保留；凭据引用与业务配置分离                                |
+| 浏览器     | Kernel Registry/Adapter、playwright-core、CDP          | 保留抽象方向，替换指纹占位参数并补完整运行协议              |
+| 质量       | ESLint、Prettier、TypeScript、Vitest                   | 保留，补真实浏览器与安装/恢复测试，不以单元测试替代内核实测 |
 
-### 1.1 先稳定边界，再增加库
+Node 官方计划中，22 的支持结束日期为 **2027-04-30**，24 为 **2028-04-30**。建议下一次运行时维护工作包评估 Node 24 LTS；必须同时验证构建工具、SQLite 和 CI，不能只改 `engines`。开发 Node、Electron 内嵌 Node 与被启动的浏览器版本独立管理。来源见[官方发布计划](https://github.com/nodejs/Release/blob/main/schedule.json)。
 
-核心边界必须独立于桌面框架、浏览器内核和 AI 供应商：
+## 2. 应用边界和目录演进
 
-- 浏览器内核通过 Kernel Registry、Kernel Adapter 和 Browser Runtime 接入。
-- 工作流通过版本化 Workflow Schema 和确定性执行器运行。
-- 个人与团队通过资源、事件、版本和租约接口连接。
-- AI 通过受控 Tool Schema 调用浏览器、文件、HTTP 和数据工具。
-- React 只负责界面，长任务由 Main、本地 Worker 或服务端 Worker 执行。
-
-### 1.2 首期少依赖，后期按功能加入
-
-首期只需要 Electron、React、TypeScript、SQLite、浏览器进程管理和基础本地任务能力。团队 API、React Flow、数据处理、队列、LangGraph 和向量库应在对应功能进入开发阶段时加入。
-
-### 1.3 TypeScript 为主，Python 作为可选专用 Worker
-
-主产品使用 TypeScript，减少客户端、服务端、工作流和 AI 之间的类型转换。Python 只用于 JS 生态不适合的 OCR、复杂文档解析、数据科学或特定浏览器内核，不作为普通用户的前置安装依赖。
-
-### 1.4 不把桌面 WebView 当作指纹内核
-
-Electron 自带 Chromium 只渲染管理界面。访问网站时使用独立浏览器进程、独立用户目录和内核专属适配器。任何 JavaScript 指纹注入库都不能替代真正的浏览器内核能力。
-
-### 1.5 可自托管和可迁移
-
-团队服务必须可以使用 Docker Compose 部署。数据库使用 PostgreSQL，对象存储使用 S3 兼容接口；不能把产品核心绑定到某一家云厂商。
-
-## 2. 推荐总体架构
+### 2.1 保留的进程边界
 
 ```text
-contextweave/
-├── apps/
-│   ├── desktop/                 # Electron + React 桌面客户端
-│   ├── server/                  # 自托管团队 API 服务
-│   ├── web/                     # 后期的 Web 管理界面，可复用 UI 和 API Client
-│   ├── worker-browser/           # 浏览器自动化和工作流 Worker
-│   ├── worker-ai/               # LangChain/LangGraph/RAG Worker
-│   └── worker-python/            # 可选的 OCR、文档和数据科学 Worker
-├── packages/
-│   ├── contracts/                # Zod 契约、JSON Schema、事件和权限模型
-│   ├── workflow-schema/          # 工作流节点和版本迁移
-│   ├── browser-control/          # 与具体内核无关的浏览器控制接口
-│   ├── kernel-registry/          # 内核 manifest、下载、校验和注册
-│   ├── kernel-adapters/          # Chromium、Camoufox 等适配器
-│   ├── env-core/                 # 环境目录、运行锁、快照和本地状态
-│   ├── db-local/                 # SQLite schema 和迁移
-│   ├── db-server/                # PostgreSQL schema 和迁移
-│   ├── api-client/               # 服务端 API Client
-│   ├── ui/                       # shadcn/ui 的共享组件
-│   ├── config/                   # ESLint、TypeScript、Vitest 等共享配置
-│   └── observability/            # 日志、事件和追踪接口
-├── deploy/
-│   ├── docker-compose.yml        # PostgreSQL、对象存储和团队服务
-│   └── migrations/
-└── docs/
+Renderer → Preload → Application Services → Runtime / Repository / Credentials
+                                             ↓
+                                      独立浏览器进程
+后续 Local API / CLI / MCP → 同一 Application Services
+后续团队服务             → 远程元数据与快照接口，不直接控制 Renderer
 ```
 
-实际实现可以先只有 `apps/desktop` 和 `packages/contracts`，目录结构不代表需要一次性创建所有应用。
-
-## 3. 依赖分层
-
-| 层级       | 首选技术                                            |        进入阶段 | 主要边界                                     |
-| ---------- | --------------------------------------------------- | --------------: | -------------------------------------------- |
-| 包管理     | pnpm workspaces                                     |            v0.1 | 统一锁文件和脚本                             |
-| 任务编排   | pnpm recursive scripts；Turborepo 后续评估          |     v0.1 多包后 | 只负责构建缓存，不承载业务逻辑               |
-| 语言       | TypeScript strict                                   |            v0.1 | 所有跨进程数据必须运行时校验                 |
-| 桌面       | Electron                                            |            v0.1 | 管理界面、本地协调和受控 IPC                 |
-| UI         | React + Vite + shadcn/ui                            |            v0.1 | 只做展示和用户交互                           |
-| 本地数据   | SQLite `node:sqlite`                                |            v0.1 | 环境元数据和本地设置                         |
-| 浏览器控制 | 自有 Browser Control API + Playwright/CDP 适配      |       v0.1/v1.1 | 不暴露具体内核参数给业务层                   |
-| 团队 API   | NestJS + Fastify adapter + Zod                      |            v0.4 | 模块化单体、REST/OpenAPI、自托管和客户端兼容 |
-| 团队数据库 | PostgreSQL + Drizzle ORM                            |            v0.4 | 租约、版本、权限和审计                       |
-| 对象存储   | S3 API + MinIO 开发环境                             |       v0.4/v0.5 | 快照、附件、报表和日志产物                   |
-| 队列       | PostgreSQL + pg-boss                                |       v0.5/v1.4 | 初期不额外引入 Redis                         |
-| 工作流     | 自有 Workflow Schema + TypeScript Executor          |            v1.1 | 确定性执行、重试和审计                       |
-| 流程画布   | React Flow（`@xyflow/react`）                       |            v1.2 | 只负责编辑和布局                             |
-| AI         | LangChain.js + LangGraph.js                         |            v1.6 | 通过 Tool Gateway 调用能力                   |
-| RAG        | PostgreSQL + pgvector                               |            v1.6 | 先复用团队数据库，规模增加再拆分             |
-| 测试       | Vitest 当前使用；Playwright/Testcontainers 后续加入 | v0.1 起分层加入 | 单元、浏览器、服务和桌面测试                 |
-
-## 4. Monorepo 与开发工具
-
-### 4.1 包管理和构建
-
-推荐：
-
-- **pnpm workspaces**：依赖安装快，支持 workspace 协议，适合 Electron、服务端和共享包。
-- **Turborepo**：在多应用出现后提供任务依赖、缓存和并行构建。
-- **Changesets**：共享包和协议发生版本变化时生成变更记录；客户端整体发布仍由 GitHub Release 控制。
-- **Node.js LTS**：使用 `.nvmrc` 或 Volta 固定主版本，CI 和本地保持一致。
-
-不建议第一天使用 Nx、Bazel 或自建构建系统。它们可以解决更大规模问题，但会增加前期认知成本。
-
-### 4.2 TypeScript 配置
-
-- 当前启用 `strict`；`noUncheckedIndexedAccess` 和 `exactOptionalPropertyTypes` 为后续逐包收紧目标，启用前修复相应边界并独立验收。
-- 使用 project references 或统一的 `tsconfig.base.json`。
-- 跨进程消息、数据库 JSON 和 API 输入都必须经过 Zod 运行时校验。
-- 共享包只导出稳定的类型和函数，不直接依赖 Electron、NestJS/Fastify 或 React 具体实现。
-
-### 4.3 代码质量
-
-推荐组合：
-
-- **ESLint**：代码规则和危险 API 检查。
-- **typescript-eslint**：TypeScript 规则。
-- **Prettier**：格式统一。
-- **lint-staged + Husky**：提交前执行轻量检查，可选加入。
-- **Commitlint**：多人协作时使用 Conventional Commits。
-- **Vitest**：单元测试和契约测试。
-
-v0.1 的正式 `pnpm check` 门禁为 Prettier（本次维护的 Renderer/Main/Preload 文件）、ESLint、TypeScript 和 Vitest。Oxlint/Oxfmt 只在后续独立试运行中评估，不替换当前 Electron 根链路；Vite+ 仍不作为桌面应用根脚手架。
-
-格式化和 lint 不能替代代码审查。不要为了通过规则在 Renderer 中放宽 Electron 安全检查。
-
-## 5. Electron 桌面客户端
-
-### 5.1 基础库
-
-首选：
-
-- **Electron**：窗口、托盘、生命周期、IPC、文件选择和外部进程协调。
-- **Vite + React + TypeScript**：管理界面构建。
-- **electron-vite**：提供 Main、Preload、Renderer 和后续 Worker 的 Vite/Rollup 构建与开发体验。当前稳定 5.x 的 peer 依赖支持 Vite 5/6/7；官方 React/TypeScript 模板当前使用 Vite 7 系列，不追求未经适配的 Vite 8。
-- **React + `@vitejs/plugin-react`**：管理界面和 Fast Refresh。
-- **electron-builder**：Windows NSIS、macOS DMG、Linux AppImage/deb、`extraResources`、`asarUnpack` 和 GitHub Release 产物。
-- **electron-log**：本地日志滚动、日志目录和崩溃前诊断。
-- **@electron/rebuild**：仅在引入 Electron 原生模块时使用；每个操作系统和 Electron major 都要在 CI 验证。
-- **electron-updater**：后期再加入；未签名发布阶段先使用 GitHub Release 手动下载。
-
-`Electron Forge + @electron-forge/plugin-vite` 是官方替代方案，适合更看重 make/publish 一体化的项目；其 Vite 插件和 Monorepo/native module 组合需要锁定版本并单独验证。ContextWeave 当前选择 `electron-vite + electron-builder`，因为外部内核资源、多入口 Worker、SQLite 持久化和自托管发布需要更细的打包控制。两套方案只选一套，不能同时维护两套发布链路。
-
-### 5.2 Renderer 层
-
-推荐：
-
-- **React**：页面和组件。
-- **TanStack React Router (`@tanstack/react-router`)**：桌面端文件路由、类型化 params/search、loader 和权限前置校验。
-- v0.1 当前使用 TanStack Router File-based Routing：通过 `@tanstack/router-plugin/vite` 生成 `src/routeTree.gen.ts`，Renderer 使用 `createRouter` + `RouterProvider`，Electron 打包页面使用 `createHashHistory`，避免 `file://` 路径回退问题。菜单只负责导航到 route，不再维护手工 `page` 状态。
-- **shadcn/ui + Base UI**：当前官网默认的可复制、可调整无障碍组件基线；Radix 作为兼容现有项目的可选基础，不作为 ContextWeave v0.1 的 UI primitive。
-- **shadcn CLI 当前 `cn` 工具**：组件源码使用 CLI 当前生成的 `cn` 依赖和 Tailwind class 合并方式；不要再单独维护一套旧的 `cn` 工具实现。
-- **Tailwind CSS**：布局和主题。
-- **主题系统**：以 shadcn/Base UI CSS variables 为唯一主题边界，按 `project-plan.md` §6.0.2 的主题版本路线交付。主题 v1.0 使用单个颜色种子派生浅/深色色板，颜色不影响字体、圆角等设置；Sidebar 形态与布局行为分离，提供缩放和减少动画。ThemeConfig schema v2 通过受限设置接口持久化并迁移旧配置。
-- **主题 Drawer**：使用现有 `@base-ui/react/drawer` 的 Drawer primitive（MIT），不使用 Sheet，不增加 Vaul/Radix 等第二套基础组件；沿用当前本地 UI 依赖，没有额外网络行为或遥测。
-- **界面字体**：Auto 使用 `@fontsource-variable/public-sans` 5.3.0（字体许可 OFL-1.1），替换 Geist 字体依赖；由 Fontsource 独立分发的 CSS/WOFF2 随应用本地打包，无原生模块、运行时网络请求或遥测。Sans/Serif 保留系统字体栈；CJK 使用本机字体回退。替换成本限于字体资源导入和共享字体映射，不引入远程字体服务或 New API 的字体资源。
-- **颜色计算**：使用 **culori**（MIT，纯 JavaScript，无原生模块、运行时网络或遥测）执行 HEX/OKLCH 转换、色域映射和 WCAG 对比度计算；只在主题纯函数模块内依赖它，替换成本限定于颜色适配层。`@types/culori` 只用于编译期。色板规则由 ContextWeave 自行实现，计算与界面预览分离；不引入运行时 AI。输入遵循 contracts 的不透明六位 HEX schema，所有角色（含状态色）统一映射到 sRGB 后评估对比度；通过有界明度搜索保护文本和必要图形，hover 使用独立实色，图表采用有序明度区间。回归测试覆盖全灰阶、RGB 采样、极端色和实际组件状态。
-- **Lucide React**：图标。
-- **TanStack Query**：团队 API 或 Web 管理端出现后再引入；当前桌面端不把它作为运行时依赖。
-- **Zustand**：工作空间选择、侧边栏、弹窗等轻量 UI 状态。
-- **React Hook Form + Zod Resolver**：复杂表单和运行时校验。
-- **TanStack Table**：环境、成员、代理和审计表格。
-- **Base UI Toast**：当前桌面端通知基线；Sonner 不作为当前依赖。
-- **react-day-picker + date-fns**：已安装的 Calendar 使用 react-day-picker 10，配合其 date-fns 4 日期适配与 peer 依赖；使用内置 locale 和显式方向支持。均为 MIT、纯 JavaScript，无原生模块、运行时网络或遥测。业务层简单格式化仍优先使用 Intl；替换边界限定在 Calendar 与日期适配层。
-- **界面语言**：v0.1 使用 `apps/desktop/src/i18n/` 下按 `types`、`locales` 和 Provider 拆分的严格类型字典与受限本地持久化，支持简体中文与 English 的 Header、侧边栏和主题设置文案；业务数据、环境配置和日志不依赖界面语言。待语言数量、翻译资源和复数规则明显增长后，再评估 i18next + react-i18next，并保持现有 `Locale` 边界可迁移。
-
-本次官网核查（2026-09-21）记录：shadcn/ui 的 [Base UI 默认变更说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)说明新项目默认使用 Base UI，同时继续支持 Radix；[组件手册](https://ui.shadcn.com/docs/components/accordion)的 Base UI 版本使用 `@base-ui/react`。当前桌面端使用 `@tanstack/react-router` 和 `@tanstack/router-plugin`，不保留未使用的 React Router 包。
-
-不建议同时使用 Redux、MobX、Zustand 和多个请求状态库。推荐 TanStack Query 管服务端状态，Zustand 管界面状态。
-
-### 5.3 Preload、Main 和 IPC
-
-- `contextIsolation: true`。
-- Renderer sandbox 开启。
-- `nodeIntegration: false`。
-- Preload 只暴露白名单 API，不暴露整个 `ipcRenderer`、`fs` 或 `child_process`。
-- IPC 参数统一使用 `packages/contracts` 中的 Zod schema 校验。
-- 不允许远程网站页面加载进拥有本地能力的窗口。
-- 外部浏览器窗口和管理界面窗口分离，不能共享 Electron session。
-
-IPC 方法应接近领域操作，例如 `environment.start`、`kernel.install`、`team.acquireLease`，不要暴露 `runCommand` 这种无边界接口。
-
-### 5.4 本地任务与进程
-
-- **execa**：启动 Worker、内核安装器和诊断命令，统一 stdout、stderr、超时和退出码。
-- Node.js `child_process.spawn`：需要长期控制的浏览器进程使用原生 API，以便保存 PID、stdio 和取消信号。
-- 基于独占文件句柄的实现：本地环境运行锁；`proper-lockfile` 仅作为后续替代候选。
-- `AbortController`：取消启动、下载、同步和工作流任务。
-- **pino**：Worker 和服务端结构化日志；Electron 日志通过 electron-log 适配。
-
-所有长任务必须有任务 ID、阶段、进度、取消和恢复状态，不能绑定 React 组件生命周期。
-
-### 5.5 项目初始化方案
-
-五种方案的定位不同：
-
-| 方案                                                            | 评价                                                                                                                       | 结论                   |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| 先用裸 Vite，再手工接 Electron                                  | 需要自己处理 Main、Preload、Renderer、HMR、打包、资源和原生模块                                                            | 不推荐作为首个正式项目 |
-| `electron-vite` React/TypeScript 模板                           | Main/Preload/Renderer 已分开，React 开发体验好，配合 electron-builder 可以精细处理 Worker、native module 和外部内核资源    | 当前推荐               |
-| Vite+ `vp create vite -- --template react-ts` 后手工接 Electron | 统一 Web 工具链和 Vite 8/Rolldown/Oxc/Vitest/Vite Task；目前是 Beta，没有 Electron 入口、IPC、原生模块重建或安装包发布集成 | 暂不作为桌面根脚手架   |
-| 先用 shadcn Vite 模板，再接 Electron                            | shadcn 只是组件和样式初始化工具，不是 Electron 架构脚手架                                                                  | 不推荐作为根项目生成器 |
-| Electron Forge Vite/TypeScript 模板                             | 官方 Electron 流程，适合 make、publish 和 GitHub Release，但 Vite 插件与复杂 Monorepo 需要额外验证                         | 官方备选               |
-
-初始化顺序：
-
-1. 使用 `electron-vite` 的 React/TypeScript 模板创建 `apps/desktop`。
-2. 在 Renderer 中加入 React、`@tanstack/react-router`、`@tanstack/router-plugin` 和 React Hook Form。
-3. 运行 shadcn CLI 初始化 Tailwind 和组件；初期组件放在桌面应用，WebUI 出现后再抽到 `packages/ui`。
-4. 将桌面应用接入 pnpm workspace；多应用构建形成实际需求后再引入 Turborepo。
-5. 按现有边界维护 `packages/contracts`、`packages/storage`、`packages/kernel-core`、各 `packages/kernel-*` 适配器和 `packages/worker-protocol`；出现真实复用需求后再抽取共享 UI 或配置包。
-6. 团队服务进入对应版本后，再创建 `apps/api`，使用 NestJS + Fastify adapter；v0.1 只通过本地 adapter 验证桌面端。
-
-典型创建命令由当前 CLI 版本决定，建议使用交互式命令并选择 React + TypeScript 模板；如果 CLI 的包名或参数发生变化，以其当前帮助信息为准：
-
-```bash
-pnpm create electron-vite@latest
-# 选择 React / TypeScript 模板，项目目录使用 apps/desktop
-
-cd apps/desktop
-pnpm add react react-dom @tanstack/react-router react-hook-form zod @hookform/resolvers
-pnpm add -D @tanstack/router-plugin
-pnpm dlx shadcn@latest init
-```
-
-如果当前 `electron-vite` 或 electron-builder 在某个 Electron major 上出现兼容问题，再评估 Electron Forge；不要回到裸 Vite 手工拼接，也不要在同一发行链路中混用 Forge 和 electron-builder。无论选择哪套脚手架，Electron Main 只做窗口、IPC 和本地运行时编排，外部浏览器内核仍由独立进程启动。
-
-### 5.6 Vite+ 的定位与采用策略
-
-[Vite+](https://viteplus.dev/) 是 VoidZero 的统一 Web 工具链。官方当前网站和公告将其标为 Beta；本次核查到的 Vite+ 版本为 0.3.x，核心工具链包含 Vite/Rolldown、Vitest、Oxlint/Oxfmt、tsdown 和 Vite Task。官方文档列出的能力包括：
-
-- `vp create`：创建 Vite 应用、Monorepo 或库。
-- `vp dev`、`vp build`：Vite/Rolldown 开发和构建。
-- `vp check`：Oxlint、Oxfmt 和类型检查。
-- `vp test`：Vitest。
-- `vp run`：Vite Task 的任务依赖和缓存。
-- `vp pack`：通过 tsdown 打包库或 Node 独立可执行文件。
-- `vp env`、`vp install`：运行时和包管理协助。
-
-当前 `electron-vite` React/TypeScript 模板并不等于“最新 Vite”：本次核查的模板依赖为 `electron-vite` 5.x、Vite 7.x；`electron-vite` 6.0.0-beta.1 才将 Vite 8 列入 peer 依赖，属于预发布版本。稳定的 Vite 7 组合对于 Electron 应用已经足够，Vite 主版本不是必须追新的功能。
-
-Vite+ 的 `vp create vite -- --template react-ts` 可以生成 Web React 项目，但当前没有 ContextWeave 所需的 Electron Main、Preload、IPC、安全窗口配置、原生模块 ABI 重建、`extraResources`/`asarUnpack` 或安装包发布流程。`vp pack` 也不是 Electron 安装包打包器；它主要面向库和 Node 独立可执行文件。
-
-因此当前策略是：
-
-1. 桌面应用使用 `electron-vite + electron-builder`，版本固定在经过验证的稳定组合。
-2. Vite+ 暂不作为 `apps/desktop` 的根脚手架，也不与 electron-vite 同时接管同一个桌面入口。
-3. 可以在未来 WebUI 或独立共享包中试用 Vite+，也可以在 Vite+ 达到稳定版本后评估 `vp check`、`vp test` 和 `vp run`。
-4. 如果将 Vite+ 与 Electron Forge v8 的 Vite 插件组合，必须作为独立实验分支验证；不要直接把 Beta 工具链用于主发布链路。Forge v8.0.0-alpha.10 的 `@electron-forge/plugin-vite` 已面向 Vite 8，并支持多个 build 入口（Main、Preload、Worker 等），但插件 README 明确写着 experimental、没有 API 稳定性保证；alpha.10 本身也是预发布版本。因此它适合做 Vite 8 兼容性实验，不适合作为当前首个正式发布基线。
-
-这不是因为 Vite+ 不能编译 JavaScript，而是因为它解决的是 Web 工具链统一问题，Electron Forge/electron-builder 解决的是桌面运行时和安装包发布问题。两者职责不同。
-
-### 5.7 本次核查资料
-
-- [Electron Security](https://www.electronjs.org/docs/latest/tutorial/security)
-- [Electron Release Timeline](https://www.electronjs.org/docs/latest/tutorial/electron-timelines)
-- [Node.js SQLite API](https://nodejs.org/api/sqlite.html)
-- [TanStack Router File-based Routing](https://tanstack.com/router/latest/docs/framework/react/guide/file-based-routing)
-- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
-- [SLSA Build Track](https://slsa.dev/spec/v1.0/levels)
-- [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)
-- [Vite+ 官方首页](https://viteplus.dev/)
-- [Vite+ Creating a Project](https://viteplus.dev/guide/create)
-- [Vite+ Pack](https://viteplus.dev/guide/pack)
-- [Vite+ Monorepo Guide](https://viteplus.dev/guide/monorepo)
-- [electron-vite v5 README](https://github.com/alex8088/electron-vite/tree/v5.0.0)
-- [electron-vite React/TypeScript 模板](https://github.com/alex8088/quick-start/tree/master/packages/create-electron/playground/react-ts)
-- [Electron Forge v8.0.0-alpha.10 Release](https://github.com/electron/forge/releases/tag/v8.0.0-alpha.10)
-- [Electron Forge v8 plugin-vite README](https://github.com/electron/forge/blob/v8.0.0-alpha.10/packages/plugin/vite/README.md)
-- [NestJS Performance（Fastify）](https://docs.nestjs.com/techniques/performance)
-
-## 6. 浏览器内核与自动化库
-
-### 6.1 Kernel Registry
-
-内核注册、下载和校验属于独立模块。推荐使用：
-
-- **Zod**：Kernel Manifest 和内核专属配置 Schema。
-- Node.js `fetch`/`undici`：HTTP 下载。
-- Node.js `crypto`：SHA-256 校验和随机令牌。
-- **extract-zip** 与 **tar**：按清单解压，并自行做路径穿越检查。
-- **get-port**：为 CDP 或内核专用调试端口分配端口。
-- **pidusage**：进程资源诊断。
-
-下载流程：解析 manifest → 校验平台和架构 → 下载临时文件 → SHA-256 校验 → 原子移动 → 记录版本和来源。不能下载后直接执行未校验的压缩包。
-
-### 6.2 Browser Control API
-
-业务层只依赖统一接口，例如：
-
-```ts
-interface BrowserSession {
-  pages(): Promise<PageRef[]>
-  openPage(url: string): Promise<PageRef>
-  click(target: LocatorSpec, options?: ClickOptions): Promise<void>
-  fill(target: LocatorSpec, value: string, options?: FillOptions): Promise<void>
-  extract(spec: ExtractSpec): Promise<unknown>
-  screenshot(options?: ScreenshotOptions): Promise<ArtifactRef>
-  close(): Promise<void>
-}
-```
-
-具体库通过 Adapter 接入：
-
-- **Playwright Core**：优先用于支持 Playwright 协议或 CDP 连接的 Chromium 内核。使用 `playwright-core` 避免自动下载另一套浏览器。
-- **Chrome DevTools Protocol**：对于 Playwright 未覆盖的内核能力，使用 `chrome-remote-interface` 或自有 CDP client。
-- **Camoufox Adapter**：以 Camoufox 官方支持的控制协议为准；如果 Node.js 不能直接连接，则由独立 Python/协议 Worker 提供适配，不污染通用接口。
-- **标准 Chromium/Chrome/Edge Adapter**：只使用实际支持的 CDP 能力，不假设这些浏览器具有 fingerprint-chromium 的专属参数。
-
-不能在业务代码中写 `if kernel === "camoufox"`。内核专属参数只在 Adapter 和 manifest 中出现。
-
-### 6.3 指纹与环境配置
-
-不引入一个“通用指纹 npm 包”来伪装所有特征。配置分为：
-
-- 通用配置：代理、语言、时区、窗口、启动页、扩展、数据目录。
-- 内核配置：平台、硬件并发、Canvas、Audio、WebGL、字体和特定启动参数。
-- 能力声明：CDP、文件上传、截图、iframe、Shadow DOM、下载等。
-
-每个内核单独维护版本、参数 schema、数据目录兼容范围、能力签名和回归测试。内核升级必须先备份，再做启动、代理/DNS 泄漏、跨 iframe/Worker 和用户目录兼容测试。
-
-## 7. 本地环境与数据层
-
-### 7.1 SQLite
-
-推荐：
-
-- **SQLite**：个人模式的本地元数据。
-- **node:sqlite (`DatabaseSync`)**：v0.1 当前使用的 SQLite 运行时，减少额外 native module 的 ABI 兼容负担。
-- **Drizzle ORM**：类型安全、SQL 透明、迁移可控。
-- **drizzle-kit**：生成和执行 schema migration。
-
-数据库保存环境元数据、内核绑定、代理引用、任务状态、备份索引和本地设置。浏览器用户目录仍是独立文件资源，不能把整个用户目录塞进 SQLite。
-
-v0.1 使用 Electron/Node 内置 `node:sqlite` `DatabaseSync`；Drizzle schema 作为长期 schema 表达和后续替换评估的候选。
-
-### 7.2 本地凭据
-
-- 小型本机密钥优先使用 Electron `safeStorage`。
-- 需要跨应用共享凭据时再评估 **keytar**，同时考虑原生模块发布和系统钥匙串差异。
-- 不在日志、工作流 JSON、崩溃报告和普通 SQLite 字段中保存明文代理密码或 Cookie。
-
-### 7.3 环境快照
-
-环境快照需要独立资源模型：
-
-- 元数据：SQLite/PostgreSQL。
-- 大文件：对象存储或本地快照目录。
-- 内容校验：SHA-256 或内容寻址哈希。
-- 敏感快照可选客户端加密：使用 Web Crypto 或 **libsodium-wrappers** 的标准 AEAD，采用信封密钥设计；不自创加密算法。默认不上传 Cookie 和网站会话，用户明确启用后才进入加密同步流程。
-- 上传：临时文件、分片、断点续传和最终提交。
-- 恢复：校验清单、解压到临时目录、原子切换、失败回滚。
-
-早期可使用 `tar`/`zlib`，规模增加后再引入 zstd、分块去重或专门快照服务。不要在第一版就实现复杂的全量增量算法。
-
-## 8. 自托管团队服务端
-
-### 8.1 Web/API 框架
-
-推荐：
-
-- **NestJS**：团队 API 的模块化单体框架，适合认证、成员、环境、租约、快照、审计和任务模块。
-- **@nestjs/platform-fastify**：让 NestJS 使用 Fastify HTTP adapter，保留较低开销和插件生态。
-- **@nestjs/config**：环境变量和服务配置管理。
-- **Zod + nestjs-zod**：请求、响应、配置和事件校验；共享 `packages/contracts` 中的 schema。
-- **@nestjs/swagger** 或 **zod-to-openapi**：生成 OpenAPI；二者只选择一种主要生成路径，避免重复维护 DTO。
-- **openapi-typescript** + **openapi-fetch**：从服务端契约生成轻量 API Client，避免桌面端和 Web 端手写请求类型。
-- **@fastify/helmet**、**@fastify/cors**、**@fastify/rate-limit**：通过 Fastify adapter 注册基础安全插件。
-- **@fastify/multipart**：仅在服务端需要接收文件时启用；大型文件优先走对象存储预签名 URL。
-- **jose**：JWT/JWE 等标准令牌。
-- **argon2**：密码哈希。
-- **nestjs-pino**：Nest 模块中的结构化日志。
-- **@nestjs/terminus**：健康检查和依赖状态。
-- **openid-client**：后期接入自建 OIDC/企业 SSO。
-
-NestJS 只用于 `apps/api` 的服务端模块，不用于 Electron Main、浏览器 Adapter 或 Worker。API 采用模块化单体，不在首期拆微服务；所有模块复用 REST + OpenAPI、Zod、domain 层和 `packages/contracts`。如果未来确实需要极简边缘 API，可以单独评估 Fastify/Hono，但不能同时维护两套团队 API。GraphQL、tRPC 可以作为局部方案研究，但不作为首期公共协议。
-
-### 8.2 PostgreSQL
-
-推荐：
-
-- **PostgreSQL**：团队成员、角色、环境元数据、租约、版本、审计和任务索引。
-- **pg**：Node.js PostgreSQL 驱动。
-- **Drizzle ORM**：schema、事务和迁移。
-- PostgreSQL 原生事务、`SELECT ... FOR UPDATE`、唯一约束和 `SKIP LOCKED`：租约和版本并发控制。
-- 租约记录必须包含 `expiresAt`、心跳、`revision` 和单调递增的 `fencingToken`；所有提交都校验 fencing token，并使用 `If-Match`/幂等键防止旧客户端覆盖新版本。
-- PostgreSQL `jsonb`：保存版本化配置和节点参数，但关键字段仍应有正式列和索引。
-
-服务端所有租约、版本提交和权限变化必须在事务内完成。不能用一个内存 `running` 字段解决团队接力。
-
-### 8.3 认证、权限与审计（团队服务首个版本）
-
-团队服务首个版本：
-
-- 账号、密码、刷新令牌或设备令牌。
-- Argon2id 密码哈希。
-- 短期 access token + 可撤销 refresh token。
-- 团队、成员、角色、环境访问策略。
-- 所有环境接管、提交、恢复、删除和权限变化写入审计日志。
-
-后期：
-
-- OIDC/企业 SSO。
-- SCIM 用户同步。
-- 更细粒度的 ABAC 条件。
-- 管理员强制释放租约和设备撤销。
-
-权限逻辑应放在服务端 domain/policy 层，不散落在 React 菜单判断中。客户端隐藏菜单只是体验优化，不是安全边界。
-
-### 8.4 对象存储
-
-推荐：
-
-- **AWS SDK for JavaScript v3** 的 S3 Client。
-- 本地开发和自托管示例使用 **MinIO**。
-- 生产环境支持 AWS S3、Cloudflare R2、Ceph 或其他 S3 兼容服务。
-- 使用预签名 URL 上传和下载大型快照、截图、报表及日志产物。
-
-服务端数据库只保存对象 key、大小、哈希、版本、归属和生命周期状态，不保存大型二进制内容。
-
-### 8.5 队列与调度
-
-首选分阶段：
-
-- v0.4：同步 API 直接处理小任务。
-- v0.5/v1.4：**pg-boss**，复用 PostgreSQL，处理快照、通知和定时任务。
-- 大规模执行节点出现后：评估 **BullMQ + Redis** 或 Temporal。
-- 需要长时间、可检查点、跨服务工作流时：评估 **Temporal**，但不在首期引入。
-
-队列任务必须幂等，有任务版本、租约、重试次数、退避和死信状态。
-
-## 9. 工作流与自动化
-
-### 9.1 工作流协议
-
-工作流定义使用带版本的 JSON Schema：
-
-- `workflowId`、`version`、`nodes`、`edges`。
-- 每个节点有稳定 `type`、输入 schema、输出 schema和 capability 要求。
-- 节点参数使用 Zod 校验后再转换为 JSON Schema。
-- 保存迁移函数，不直接修改历史工作流结构。
-- 工作流运行、节点运行和产物都拥有独立 ID。
-
-React Flow 只负责画布编辑。它的内部节点格式不能直接作为服务端执行协议。
-
-### 9.2 执行器
-
-推荐库：
-
-- **React Flow（`@xyflow/react`）**：画布。
-- **XState**：运行状态、暂停、取消、人工确认等状态机；不让 XState 替代整个 DAG 数据模型。
-- **p-queue**：并发限制。
-- **p-retry**：带退避的可重试操作。
-- **p-timeout** 或 AbortSignal：节点超时。
-- **cron-parser**：解析定时表达式。
-- **jsonata**：受控字段映射和表达式计算。
-- **jmespath**：JSON 数据查询，可按需加入。
-
-执行器必须支持：节点日志、输入输出摘要、重试、超时、取消、暂停、恢复、人工确认、失败分支和产物引用。
-
-### 9.3 脚本节点
-
-默认不在 Electron Renderer 或 Main 直接执行用户提供的任意 Node.js 代码。
-
-分级策略：
-
-1. 内置表达式：jsonata/jmespath，无文件和网络权限。
-2. 受限 JavaScript：使用 **quickjs-emscripten** 或独立沙箱 Worker，仅暴露显式变量和工具。
-3. 高权限脚本：单独进程或容器执行，明确显示权限和风险；团队管理员可禁用。
-
-用户脚本必须有超时、内存限制、日志截断和取消机制。不能通过 `eval`、Renderer 注入或未限制的 `child_process` 实现脚本功能。
-
-## 10. 电商、数据采集和报表能力
-
-### 10.1 HTTP 与网页数据
-
-- **undici**：服务端和 Worker 的 HTTP 请求。
-- **Crawlee**（后期）：在需要队列、会话池、持久化请求队列和采集生命周期时使用 `@crawlee/playwright`；简单任务仍直接使用 Browser Control API，避免一开始绑定完整爬虫框架。
-- **cheerio**：静态 HTML 解析。
-- Playwright/CDP：需要真实浏览器、登录态、滚动或动态渲染时使用。
-- **robots-parser**、限速器和域名策略：采集任务按站点配置速率和范围。
-- **p-queue**：并发和限速；失败项进入可重试队列。
-
-HTTP 数据采集不能绕过站点权限、验证码或服务条款。产品提供的是用户授权下的浏览器自动化和数据处理能力。
-
-### 10.2 CSV/XLSX 和数据转换
-
-- **csv-parse/csv-stringify**：CSV 解析和写出。
-- **ExcelJS**：XLSX 读写、工作表和格式处理。
-- **Papa Parse**：浏览器端小型 CSV 处理，可选。
-- **Zod**：导入数据行和输出数据集校验。
-- **decimal.js**：价格、税率和币种金额计算，避免 JavaScript 浮点误差。
-- **date-fns-tz**：跨时区日期处理。
-- **DuckDB**（后期）：订单、商品和采集结果需要本地聚合或大于内存时使用；通过 Parquet/CSV/JSONL 与对象存储交换数据，不作为首期事务数据库。
-
-金额、币种、订单号、SKU 和日期应在数据模型中有明确类型和来源字段，不能只保存格式化后的字符串。
-
-### 10.3 文件产物
-
-统一使用 Artifact 模型记录：文件 ID、类型、大小、哈希、来源任务、创建时间、保留策略和对象存储 key。截图、下载报表、异常 HTML 和日志都通过 Artifact 引用，不能全部塞进任务 JSON。
-
-## 11. 网站功能测试
-
-推荐：
-
-- **Playwright Test**：标准浏览器和受支持的外部内核测试。
-- `@playwright/test` 的 trace、截图、视频和 HTML 报告。
-- **axe-core**：可选的无障碍检查。
-- **pixelmatch** 或 Playwright screenshot comparison：视觉回归，可从小范围开始。
-- **Testcontainers**：启动临时 PostgreSQL、MinIO 和测试服务。
-- **Pact** 或 OpenAPI 契约测试（后期）：服务端和桌面/Web API Client 分开发布时，用于检测兼容性破坏。
-- **MSW**：前端 API mock；服务端集成测试优先使用真实测试数据库。
-
-测试工作流与生产工作流共享节点协议，但测试节点额外支持断言、测试数据、前置条件、清理步骤和报告。定制指纹内核与标准 Chromium 应有对照测试矩阵。
-
-## 12. LangChain、LangGraph 与 RAG
-
-### 12.1 AI Worker
-
-推荐：
-
-- **LangChain.js**：模型、检索器、工具和文档处理的组件层。
-- **LangGraph.js**：带状态、检查点、人工确认和恢复的 Agent 图。
-- **@langchain/core**：统一消息、Runnable 和工具接口。
-- 各模型供应商的独立 adapter：`@langchain/openai`、`@langchain/anthropic`、`@langchain/google-genai`、`@langchain/ollama` 或 OpenAI-compatible 服务。
-- **AI SDK** 可以用于前端流式 UI，但不能替代 LangGraph 的服务端状态和权限边界。
-
-AI Worker 不直接获得 Electron、文件系统根目录、数据库超级权限或任意 CDP 端口。它只能调用 Tool Gateway 注册的工具。
-
-### 12.2 RAG 存储
-
-首选：
-
-- PostgreSQL + **pgvector**：团队自托管时减少额外服务。
-- LangChain 的 PostgreSQL vector store 或自有 repository 层。
-- 规模增加后再评估 Qdrant、Weaviate 或 Milvus。
-
-文档表至少保存租户、权限、来源、版本、哈希、分块、embedding 模型、更新时间和删除状态。检索结果必须经过权限过滤，不能先召回再依赖前端隐藏。
-
-### 12.3 文档处理
-
-TypeScript 优先：
-
-- **mammoth**：DOCX 文本提取。
-- **pdf-parse** 或 pdf.js：PDF 文本提取。
-- **ExcelJS**：表格提取。
-- **tesseract.js**：轻量 OCR 试用；生产 OCR 评估 Python/PaddleOCR 或外部服务。
-- 文档分块使用 LangChain splitter，但分块规则和版本写入文档元数据。
-
-AI 生成的工作流只能先生成草稿。涉及修改价格、上传资料、提交订单、删除数据或发送消息时，必须经过权限检查和人工确认。
-
-## 13. Web 管理端
-
-完整 WebUI 放到团队基础稳定后再做，技术栈与桌面 Renderer 共享：
-
-- React + Vite + TypeScript。
-- shadcn/ui、Tailwind CSS、TanStack Query、TanStack Table。
-- 共享 `packages/ui`、`packages/contracts` 和 `packages/api-client`。
-- Web 只能管理团队成员、权限、设备、审计、任务状态和服务设置。
-- Web 不能直接操作成员电脑上的浏览器用户目录或本机进程。
-
-桌面端专属能力通过 Electron Main/Preload 提供；Web 端通过 API 和服务端队列提供能力。不要为了复用页面而把本机文件和进程权限放进 Web API。
-
-## 14. 可观测性与诊断
-
-### 14.1 日志
-
-- **pino**：Worker、API 和服务端结构化日志。
-- **electron-log**：客户端文件日志和滚动策略。
-- 日志字段包含任务 ID、环境 ID、租约 ID、设备 ID、用户 ID 和版本，但不包含 Cookie、代理密码、Authorization header 和完整页面内容。
-- 支持用户主动导出脱敏诊断包。
-
-### 14.2 指标和追踪
-
-- **prom-client**：自托管服务的 Prometheus 指标。
-- **OpenTelemetry**：API、队列、Worker 和数据库的 trace/span。
-- **Sentry** 可作为可选、明确告知并可关闭的崩溃采集；开源默认不上传页面内容和凭据。
-
-v0.1 至少记录：浏览器启动耗时、内核下载失败、Worker 任务结果、应用错误和磁盘空间。快照、租约、工作流节点和队列指标在对应服务进入开发后加入。
-
-## 15. 安全与依赖治理
-
-### 15.1 Electron 安全
-
-- contextIsolation、sandbox、nodeIntegration=false。
-- CSP、禁止不必要的远程内容和导航。
-- IPC 白名单和 Zod 校验。
-- CDP 端口只绑定 loopback，使用随机端口和一次性令牌。
-- 不把外部浏览器的调试端口暴露到局域网。
-- 下载的内核执行文件经过 HTTPS、SHA-256 和 manifest 校验。
-
-### 15.2 服务端安全
-
-- Helmet、CORS 白名单、限流和请求体大小限制。
-- PostgreSQL 使用最小权限账号。
-- 对象存储 bucket 默认私有，下载使用短时预签名 URL。
-- 密钥从环境变量或外部 Secret 管理器读取，不写入镜像和仓库。
-- 团队所有资源查询必须带租户/团队过滤条件。
-- 关键写操作使用幂等键和审计记录。
-
-### 15.3 依赖和许可证
-
-- `pnpm-lock.yaml` 必须提交。
-- 使用 **OSV-Scanner**、`pnpm audit`、GitHub Dependabot 或 Renovate 检查漏洞。
-- 使用 **Syft/Grype** 或同类工具生成发布物 SBOM，可在后期加入。
-- 新增依赖记录用途、许可证、是否包含原生模块、是否联网、是否收集数据。
-- 特别核查 AGPL、GPL、商业许可和带模型/数据条款的依赖。
-- 浏览器内核、补丁源码、二进制下载地址和许可证单独登记，不因为 npm 包许可证宽松就推断内核可自由分发。
-
-## 16. 发布和部署
-
-### 16.1 桌面发布
-
-GitHub Actions 负责：
-
-- Windows、macOS、Linux 构建矩阵。
-- Electron 应用打包和产物校验。
-- 内核下载包的 manifest 和 SHA-256 生成。
-- GitHub Release 草稿和校验文件。
-- 生成 SBOM 和版本变更说明。
-
-用户已经决定前期不把代码签名作为发布前提，但发布流程应保留以后接入 Windows、macOS 和 Linux 签名的接口。未签名安装包需要在文档中说明系统提示和校验方式。
-
-### 16.2 团队服务部署
-
-团队服务的首个部署版本再使用 Docker Compose，包含：
-
-- ContextWeave Server。
-- PostgreSQL。
-- MinIO 或外部 S3 配置。
-- 可选 pg-boss worker。
-- 反向代理由用户选择 Caddy、Nginx 或 Traefik。
-
-服务端必须提供数据库迁移、健康检查、备份说明、环境变量模板和升级回滚说明。
-
-### 16.3 可选远程执行节点
-
-远程执行节点不是普通 API 进程的附属线程。它需要：
-
-- 设备注册和短期凭据。
-- 能力标签，例如 OS、内核、代理区域和可用扩展。
-- 任务租约、心跳和取消。
-- 独立浏览器用户目录。
-- 结果和 Artifact 上传。
-- 节点退出时清理敏感数据。
-
-## 17. 分阶段加入库和能力
-
-### v0.1-v0.3：个人客户端和多内核验证
-
-加入：
-
-- Electron、Vite、React、TypeScript。
-- shadcn/ui、Tailwind、Zustand、React Hook Form、Zod。
-- pnpm、Vitest、ESLint、Prettier。
-- SQLite `node:sqlite`；保留 Drizzle schema 定义，repository 读写仍使用 `node:sqlite`。
-- execa、get-port、electron-log。
-- Kernel Registry、manifest、SHA-256、至少两个内核 Adapter。
-- Playwright Core 或 CDP client 的最小控制闭环。
-
-暂不加入：LangChain、LangGraph、pgvector、Redis、Temporal、完整 WebUI 和复杂增量快照。
-
-### v0.4-v0.6：自托管团队和环境接力
-
-加入：
-
-- NestJS、@nestjs/platform-fastify、Zod、OpenAPI。
-- TanStack Query（团队 API 或 Web 管理端的服务端状态）。
-- PostgreSQL、Drizzle migrations、jose、argon2。
-- S3 SDK、MinIO、预签名 URL。
-- pg-boss、服务端 pino、prom-client。
-- 团队、权限、租约、版本、审计和快照恢复。
-- Testcontainers 的 PostgreSQL/MinIO 集成测试。
-
-### v1.1-v1.5：工作流、采集和测试
-
-加入：
-
-- 独立 TypeScript Worker。
-- Workflow Schema、XState、React Flow、p-queue、p-retry。
-- Playwright Test、csv-parse、ExcelJS、decimal.js、cheerio、undici。
-- 任务队列、定时调度、断言、测试报告和数据集。
-
-### v1.6 以后：AI、RAG 和复杂执行
-
-加入：
-
-- LangChain.js、LangGraph.js、独立 AI Worker。
-- PostgreSQL pgvector，后期按规模评估 Qdrant 等向量数据库。
-- 文档解析、OCR、Embedding、重排序和知识库权限过滤。
-- 人工审批、工具调用审计、Agent 检查点和失败恢复。
-- 可选 Python Worker、Ollama、云模型或企业模型服务。
-
-## 18. 首期不建议引入的技术
-
-- 不同时使用 Electron、Tauri 和 Wails。
-- 不把 Electron Renderer 当作指纹浏览器。
-- 不在第一版引入 Redis、Kafka、Temporal、Kubernetes 或微服务拆分。
-- 不直接采用重量级低代码工作流引擎替代自己的 Workflow Schema。
-- 不把 LangGraph 当作基础浏览器操作执行器。
-- 不把所有环境文件存到 PostgreSQL 大字段中。
-- 不让客户端直接连接 PostgreSQL。
-- 不在 Renderer、Main 或服务端执行没有权限边界的任意用户脚本。
-- 不通过修改 User-Agent 或注入 JavaScript 宣称完成指纹隔离。
-
-## 19. 总体技术基线
-
-ContextWeave 的总体技术基线为：
+- Renderer 不接触数据库、Node、任意 IPC、可执行路径或原始浏览器调试端点。
+- Preload 暴露类型化白名单。输入、响应和事件都通过 contracts 校验，Main 验证发送方。
+- 应用服务负责环境、代理、修订和快照；Runtime Supervisor 负责运行锁、子进程、端点、会话与依赖连接。
+- Runtime Supervisor 首期位于桌面应用内，保持可独立测试；未来需要脱离应用常驻时再迁往独立进程。
+- Worker 用于耗时操作，必须有任务身份、进度、取消和资源上限。普通 Node 子进程不自动成为可执行任意不可信脚本的安全沙箱。
+
+### 2.2 当前目录的渐进拆分
 
 ```text
-Electron
-├── React + TypeScript + Vite
-├── shadcn/ui `base-nova` + Tailwind CSS + Base UI
-├── TanStack Query + Zustand
-├── React Hook Form + Zod
-├── Electron Main/Preload
-├── SQLite `node:sqlite` + Drizzle ORM
-├── Kernel Registry + Kernel Adapter + Browser Runtime
-├── Playwright Core/CDP adapter
-└── 独立 TypeScript Worker
+apps/desktop/
+├── electron/
+│   ├── main.ts                 # 应用生命周期与装配
+│   ├── preload.ts              # 最小白名单桥接
+│   ├── ipc/                    # 校验与协议适配
+│   ├── services/               # 环境、代理、安装、快照应用服务
+│   ├── runtime/                # 进程所有权、锁、会话、运行事件
+│   └── infrastructure/         # 系统凭据、目录、受控下载等适配
+└── src/
+    ├── app/                    # Shell、Provider、路由装配
+    ├── features/               # 领域页面、表单、hooks、查询
+    ├── components/             # 通用组合与 shadcn UI
+    ├── i18n/                   # 字典、类型、Provider
+    └── routes/                 # 路由参数与页面组合
 
-自托管团队服务
-├── NestJS + Fastify adapter + Zod + OpenAPI
-├── PostgreSQL + Drizzle ORM
-├── jose + argon2
-├── S3 API + MinIO
-├── pg-boss
-└── pino + Prometheus/OpenTelemetry
-
-后期能力
-├── React Flow + XState + p-queue + p-retry
-├── Playwright Test + Testcontainers
-├── CSV/XLSX/HTML 数据处理
-├── LangChain.js + LangGraph.js
-├── PostgreSQL pgvector
-└── 可选 Python/OCR/本地模型 Worker
+packages/
+├── contracts/                  # 按 environment/runtime/proxy/kernel/theme 拆 schema
+├── storage/                    # repository、迁移、锁/恢复元数据
+├── kernel-core/                # manifest、能力、提供方接口与安装协议
+├── kernel-standard-chromium/
+├── kernel-fingerprint-chromium/ # 完成真实验证后替换占位实现
+└── worker-protocol/
 ```
 
-这套方案允许替换 Electron、PostgreSQL 托管方式、浏览器内核、模型供应商和向量数据库，而不破坏环境模型、团队协议、工作流协议和 AI Tool Schema。真正需要长期维护的是这些边界，而不是某一个具体库的调用方式。
+目录按实施进度建立，不创建一批空 packages。只有第二个真实消费者出现时，才把桌面内部应用服务提为共享包；`contracts` 不依赖 Electron/React/数据库驱动。共享包使用公开入口，不能用跨目录内部引用绕开边界。
+
+## 3. 前端选型与状态管理
+
+### 3.1 已确认的 UI 方案
+
+- 管理页面与 CRUD 使用 shadcn-admin 风格的组件组合；保留根目录 `THIRD_PARTY_NOTICES.md` 与应用内声明。
+- 主题参考 New API 的交互与视觉，代码、SVG、CSS 自主实现；使用现有 Base UI Drawer，不增加第二套浮层基础库。
+- 大型环境表单使用独立路由页，代理等小表单使用 Dialog。系统设置使用页内左右结构，主题/语言入口只在右上角。
+- DataTable 统一搜索、Popover+Command 多选、排序/隐藏、列设置、选择范围、分页与批量结果；业务列与命令留在 feature。
+- 路由文件仅组合页面与参数，不承担数据库访问或运行状态机。页面和列表状态继续可恢复。
+- 主题类别、ThemeConfig v2、Public Sans 本地字体、语义状态色、RTL 和密度规则按总体规划保留；默认全宽，居中最大 64 rem。
+
+### 3.2 下一步状态拆分
+
+| 状态                      | 技术与位置                                                         | 约束                                            |
+| ------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- |
+| 持久化领域数据            | Main 服务/repository 为权威来源                                    | UI 不独立决定运行结果                           |
+| 列表与详情查询            | 计划采用 `@tanstack/react-query`，queryFn 调类型化 feature service | 以领域/资源 ID 组织缓存，订阅运行事件后精确失效 |
+| 表单与校验                | React Hook Form + Zod                                              | 草稿不含明文凭据，提交冲突保留输入              |
+| 主题和语言                | 现有专用 Provider                                                  | 不合并到环境业务缓存                            |
+| 列选择、打开状态、临时 UI | 组件状态或有边界的 Zustand store                                   | 不复制整个数据库和任务结果                      |
+| 长操作                    | Main 的 Operation 协调与事件                                       | 页面卸载不终止已提交任务                        |
+
+TanStack Query 用于替换 AppDataProvider 的跨领域整体轮询，而不是让多个 store 同时持有相同环境列表。先迁移一个领域，验证旧请求不覆盖新修改、事件失效和断线对账，再扩展。运行事件带递增序号或等价游标；事件丢失时重新读取快照。
+
+`@tanstack/react-query` 为 MIT、纯 JS，无原生模块；业务 `queryFn` 才决定 IPC/网络访问，不增加产品遥测。替换成本限定在查询 hooks。当前不安装，随 v0.1 对应工作包单独提交依赖、锁文件和行为验证。技术入口：[TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview)。
+
+## 4. 指纹配置与内核提供方
+
+### 4.1 选择顺序
+
+| 提供方/工具                            | 状态               | 决策与退出条件                                                                        |
+| -------------------------------------- | ------------------ | ------------------------------------------------------------------------------------- |
+| 本机 Chromium/Chrome/Edge              | 当前基础能力       | 用于原生环境和回归；目录兼容性、实际版本与路径均要核验，不声明内核级指纹保护          |
+| fingerprint-chromium                   | 首个接入验证候选   | 复用 Chromium/CDP 路径；源码与二进制不匹配、维护不足、关键实测失败则不进入产品分发    |
+| Fury Core                              | 替代 Chromium 候选 | 验证其源码补丁、配置传输、许可和各平台集成；不因其自带 Rust agent 就重写 ContextWeave |
+| Camoufox + camoufox-js                 | 第二家族候选       | JS 客户端是实验性；需验证持久目录、独立控制协议和进程接管。与 Chromium 分开验收       |
+| BrowserForge / Apify Fingerprint Suite | 生成器研究/候选    | 只映射到实际支持的字段。生成结果、seed 和生成器版本同时持久化；不默认开启 JS 注入器   |
+| CloakBrowser / Wayfern 等第三方内核    | 非默认方案         | 管理端开源不等于内核授权；先完成独立分发、源码与维护核查，再决定是否提供可选适配      |
+
+完整调研、许可文件和提交快照见总体规划附录。此表不批准下载或执行未经验证的二进制。
+
+### 4.2 Provider 接口需要提供的职责
+
+当前 `validateConfig` / `buildLaunchPlan` / `getCapabilities` 不足以表达全部行为，逐步补充：
+
+- **Manifest**：提供方 ID、家族、确切版本、平台/架构、来源与校验、许可材料、控制协议和目录兼容条件。
+- **Resolve**：把用户配置解析为固定版本的实际配置，返回不可用字段与不一致诊断；不能丢弃不支持输入后继续报告成功。
+- **Prepare/Launch**：安装/目录/网络准备、启动、就绪检查及失败清理；不限定所有提供方都只能生成 Chromium 参数。
+- **SessionHandle**：查询健康状态、订阅退出、协调停止、取得受控的控制会话。
+- **Capabilities**：能力来源、已测平台/版本、支持范围、变更需重启/重建、证据时间与测试 ID。
+- **Migration**：检查现有用户目录能否升级或迁移，提供拒绝原因和恢复要求。
+
+具体接口先由一个真实提供方的验证结果驱动；首期不建设能执行任意第三方代码的插件商店。
+
+### 4.3 自动化协议
+
+- Chromium 采用 CDP 和 `playwright-core`，直接 CDP 用于必要的生命周期/配置控制。避免多个连接同时争抢同一页面的自动附加与调试控制。
+- Playwright 官方明确 `connectOverCDP` 仅支持 Chromium，能力低于其原生连接。Firefox 提供方使用独立适配器，不复用 Chromium 端口探测协议。
+- `playwright-core` 不替用户定义安全的浏览器版本。运行库版本、外部内核版本、适配器与测试矩阵分别固定。
+- 人工、工作流和外部工具的写操作协调由应用控制；API 连接成功不能绕过环境运行锁或配置修订。
+- 不以绕过验证码、网站风控或访问限制作为支持承诺。检测工具只用于观察具体行为。
+
+依据：[Playwright BrowserType](https://playwright.dev/docs/api/class-browsertype)、[Camoufox](https://github.com/daijro/camoufox)、[camoufox-js](https://github.com/apify/camoufox-js)。
+
+## 5. 完整内核安装和维护
+
+现有 installer 的单文件写入流程不足以安装完整 Chromium 包。第一个真实提供方接入时必须实现以下完整协议：
+
+1. 可信 manifest 固定产物 URL、格式、大小上限、哈希、目标平台、可执行入口和文件布局。
+2. 受控下载流式写入临时目录，支持取消、超时与错误恢复，不将不受限的整个包读入内存。
+3. 在隔离暂存目录解包，校验路径、符号链接与解压后大小，保留 Chromium 资源文件和 macOS `.app` 结构。
+4. 校验内容与许可，探测版本并完成最小启动验证，成功后原子登记安装目录。
+5. 多版本并存；环境绑定固定版本。升级环境之前停止、检查数据兼容性并生成恢复点，不覆盖运行中的安装。
+6. 失败清理只移除本次暂存资源；保留旧版本和操作记录，重启后可对账。
+
+具体解包库随候选产物格式选定，必须记录许可与原生依赖，不通过任意 shell 命令拼接下载或解压。哈希验证说明“内容与 manifest 一致”，可信来源和 manifest 的发布真实性另行验证，不能把下载包自行算出的哈希视为来源认证。
+
+## 6. 数据、凭据与恢复
+
+### 6.1 SQLite 与 repository
+
+保留 `node:sqlite`。当前 Drizzle 只描述 schema，读写由 repository 执行；迁移要建立一个可执行的权威流程，避免 Drizzle schema 和手写 SQL 各自演进。
+
+- 配置修订、Operation 和 RuntimeSession 独立建模，运行记录补结束时间和结构化失败阶段。
+- 普通写入用事务，迁移有版本、校验和、失败恢复和幂等测试。
+- 同步 SQLite 查询保持短小；大量历史查询采用索引和分页。确认阻塞超过可接受范围后再把存储迁入单独线程/进程，不先增加第二个数据库驱动。
+- 数据量增长时，分页/筛选由 repository 执行。前端 TanStack Table 的选中集合与服务端查询范围分开，不依赖一次读取全部数据。
+- 备份采用 SQLite 支持的一致性方式；浏览器用户目录快照要求停止写入。数据库事务不覆盖文件系统操作，需操作日志和恢复对账。
+
+### 6.2 凭据
+
+继续使用 safeStorage，保存加密内容与引用；Renderer 只能知道是否已配置密码。编辑时留空表示保持，明确清除表示删除。安全存储不可用时显示可操作错误，不回退到明文。
+
+凭据管理抽象出保存/读取/删除/恢复失败，避免领域服务直接操作全局凭据文件。代理密码、CDP 地址令牌、Cookie 和团队令牌不进入日志、表格、普通草稿、URL 或进程参数。
+
+### 6.3 归档、回收站和兼容性
+
+配置导出与完整快照分开。完整快照包含格式版本、清单、内核/平台/配置修订和完整性信息；敏感快照需要明确的加密、密钥恢复与传输设计。
+
+归档库先评估 ZIP 的 `yauzl`/`yazl`（MIT，JS 实现），用于本项目导入导出；它们不自动提供加密或安全解包策略。内核下载的归档格式另行处理，不强制把所有上游包当作 ZIP。
+
+浏览器内部凭据可能与操作系统/应用身份绑定，不能将“复制目录”当作跨设备登录态迁移协议。恢复只在声明支持的组合上开放；不兼容时允许恢复配置或建立新环境，不悄悄丢失数据后报告成功。
+
+回收站是明确的逻辑状态与可恢复数据，不是删除数据库记录后留下无索引目录。永久删除、数据库清理、文件清理和旧版本 GC 分阶段记录结果，重启后能够继续。
+
+## 7. Local API、CLI、MCP 与工作流
+
+### 7.1 v0.4 接口层
+
+- 同一应用命令层提供输入/输出 Zod schema、业务错误码、资源作用域、幂等和取消能力。
+- Local API 计划使用 Fastify；只监听 loopback，默认关闭，开启后使用可撤销令牌和明确权限。浏览器来源/Host 校验与防止跨站调用一起设计。
+- CLI/MCP 先提供 stdio 接入，采用官方 TypeScript SDK；诊断写入 stderr，stdout 保持协议内容。HTTP MCP 不是首个交付要求。
+- 外部工具默认获取受控命令，不默认发放任意 CDP 连接。确有需要的高级连接单独授权、限时并记录访问。
+- MCP 是工具协议，不要求安装 LLM，也不让环境启动依赖 AI 服务。
+
+Fastify 为 MIT、JS 实现。MCP TypeScript SDK 的当前 [LICENSE](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/LICENSE) 正在从 MIT 迁往 Apache-2.0，尚未取得重新许可同意的旧贡献仍适用 MIT；引入时必须按选定版本保留对应许可，不能沿用旧的单一 MIT 结论。两者的网络行为由应用显式配置，并锁定与 Node、Zod 的兼容组合；工具描述和接口文档从同一 schema 生成。当前阶段不安装这些依赖。
+
+### 7.2 v1.3 工作流
+
+先做可持久化的顺序执行器、输入输出、取消、重试和人工暂停，再采用 `@xyflow/react`（MIT）构建画布。图编辑器不是执行引擎；已完成的外部副作用不能因重试而默认为可重复执行。
+
+单机调度先使用本地持久化任务与有限并发。出现多 Worker/团队调度需求再引入 BullMQ 的开源部分与明确兼容的队列服务；不为首期浏览器启动引入 Redis 和分布式队列。
+
+脚本节点默认只运行用户信任的本地脚本；若要执行第三方脚本，需要独立的权限与隔离设计，不能只套一个 Node `vm` 或 Worker 后宣称安全。
+
+## 8. 自托管团队技术路线
+
+团队是个人稳定版之后的独立部署边界：
+
+| 能力       | 计划技术                                | 引入条件与边界                                                             |
+| ---------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| API        | Fastify + TypeScript + Zod/OpenAPI      | 与本地接口共用契约和领域规则，不共用桌面权限                               |
+| 元数据     | PostgreSQL + Drizzle                    | 团队成员、项目权限、资源版本、租约、审计；浏览器数据不塞入 JSON 字段       |
+| 文件       | S3 兼容接口；优先 AWS SDK v3 的所需子包 | 只上传已完成的版本化快照；兼容的对象存储部署另行核验许可                   |
+| 身份       | 成熟 OIDC 提供方和服务端会话            | 不自创密码认证；服务端逐资源授权，设备/成员撤销可验证                      |
+| 加密交接   | 经过审查的 AEAD 与密钥封装实现          | 先定密钥归属、恢复、轮换和设备加入方案，再选定库；不承诺远程擦除已解密副本 |
+| 部署       | Docker Compose                          | API、数据库、对象存储最小组合；Redis/额外 Worker 按负载需求加入            |
+| Web 管理端 | 复用 React、路由、UI 和 API 客户端      | 用于成员/设备/审计；不赋予网页任意本地能力                                 |
+
+不同时引入 NestJS 和 Fastify 两套应用架构。若团队模块、组织规模和依赖注入需求使 Fastify 的显式组织方式不足，另作有迁移证据的评估。当前不为未实施的团队版本创建空服务或搭建云基础设施。
+
+租约使用服务端时间、版本条件提交与 fencing token；客户端网络分区和离线浏览器是明确的产品限制。快照是不可变版本对象，不用逐文件最后写入胜出替代团队并发控制。
+
+## 9. AI、数据处理与长期库边界
+
+- 浏览器工具先由确定性命令和授权模型定义。AI 只调用这一边界，不直接访问 SQLite、任意 shell 或内核管理权限。
+- LangGraph 可在需要可恢复的模型决策流程时评估；LangChain 按所需模型/文档适配器引入，不作为普通 CRUD 或环境启动依赖。
+- RAG 从团队已有 PostgreSQL + pgvector 候选开始；只有具体检索质量/数据规模验证需要时再加向量系统。
+- Python 仅用于无法合理在 JS 内完成的特定内核、OCR、文档或数据任务，以独立打包 Worker 提供，不能要求普通用户自行配全套开发环境。
+- HTTP/文件/CSV/XLSX 等按实际业务模板选择小范围库；原路线中的长依赖清单不作为提前安装承诺。
+- 数据处理与 AI 的库、许可、网络目的地、资源上限和取消行为随功能进入开发时核查。基础环境管理保持离线可用。
+
+## 10. 引入与替换决策表
+
+| 决策                              | 原因                                                         | 重新评估的触发条件                                                     |
+| --------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| 保留 Electron，不迁移 Wails/Tauri | 已有行为、UI、IPC 与构建可复用；当前缺口集中于领域和运行职责 | 实测资源成本/平台约束无法通过模块改进解决，且有完整迁移样例            |
+| 保留一套 Base UI/shadcn           | 支持现有主题、RTL 与组件组合，减少基础组件重复               | 出现无法修复的无障碍/平台问题，不因参考项目使用另一套 primitive 就迁移 |
+| 先一个生产指纹提供方              | 控制平台与能力组合数量，建立真实验证基线                     | 第二提供方有明确用户价值并独立通过完整矩阵                             |
+| 计划引入 TanStack Query           | 消除 AppDataProvider 的跨领域读取与缓存混合                  | 独立试点证明事件、查询与提交一致性后扩展                               |
+| SQLite 单驱动                     | 现有数据可保留，迁移/恢复的投入优先于换 ORM                  | 持久化阻塞或团队需求出现，有基准与迁移方案                             |
+| API/MCP 早于可视化工作流          | 先建立可编排命令和运行闭环                                   | 有真实用户需求改变顺序时更新产品路线                                   |
+| 团队晚于个人稳定版                | 团队放大运行和数据恢复问题                                   | 本地闭环和数据兼容性已验证，才开启服务器和跨设备交接                   |
+
+## 11. 依赖、验证与发布
+
+新增依赖在实际引入的提交中记录用途、精确版本、许可、原生模块、网络行为/遥测和替换边界。方案中的候选列表不是依赖安装授权清单；本轮没有新增任何依赖。
+
+- 版本以锁文件和已验证组合为准，不在规划文档中长期宣称某库是“最新”。
+- 原生模块按 OS/架构/Electron ABI 验证。当前 node:sqlite 路线不因引入备份就换用另一个 SQLite 原生模块。
+- 上游源码、下载资源、字体、图标、内核及测试数据分别审查许可。应用的 MIT/AGPL 标记不能覆盖第三方二进制。
+- Renderer 继续采用 contextIsolation、sandbox 和限制性 CSP；外部浏览器与管理端不共享本地权限。
+- 格式、lint、类型和契约/单元测试保留；运行状态、安装、指纹和恢复增加真实集成验证。
+- 发布前核查受支持 Electron/Node 版本、签名/公证、安装包完整性、SBOM 与升级路径；是否签名如实按平台列出，不能由 CI 构建通过推导。
+- 回退应用代码、回退数据库、回退浏览器内核与恢复用户目录是四项独立操作，发布说明必须写明可行范围。
+
+## 12. 官方依据与参考入口
+
+指纹产品的提交快照和源码路径统一维护在 [项目规划附录](project-plan.md#附录-a调研快照与关键源码)，本文件不重复维护另一份版本表。
+
+- [Electron 安全指南](https://www.electronjs.org/docs/latest/tutorial/security)
+- [Node.js 发布计划](https://github.com/nodejs/Release/blob/main/schedule.json)与 [SQLite API](https://nodejs.org/api/sqlite.html)
+- [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview)、[TanStack Router](https://tanstack.com/router/latest/docs/framework/react/overview)、[TanStack Table](https://tanstack.com/table/latest/docs/introduction)
+- [shadcn/ui](https://ui.shadcn.com/docs)、[Base UI](https://base-ui.com/react/overview/quick-start)、[shadcn-admin 许可](https://github.com/satnaing/shadcn-admin/blob/main/LICENSE)
+- [Playwright BrowserType](https://playwright.dev/docs/api/class-browsertype)
+- [Fastify](https://github.com/fastify/fastify)、[MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)、[React Flow](https://github.com/xyflow/xyflow)
+- [Drizzle](https://github.com/drizzle-team/drizzle-orm)、[AWS SDK v3](https://github.com/aws/aws-sdk-js-v3)、[BullMQ](https://github.com/taskforcesh/bullmq)
+- [yauzl](https://github.com/thejoshwolfe/yauzl)、[yazl](https://github.com/thejoshwolfe/yazl)
+- [Chrome App-Bound Encryption](https://security.googleblog.com/2024/07/improving-security-of-chrome-cookies-on.html)

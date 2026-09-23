@@ -34,7 +34,7 @@ import { proxyFormSchema, toSaveProxyInput, type ProxyFormValues } from '../prox
 const protocols = proxyTypeSchema.options.map((value) => ({ value, label: value.toUpperCase() }))
 export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose: () => void }) {
   const { t } = useI18n()
-  const { refresh, setNotice, appInfo } = useAppData()
+  const { refresh, setNotice, appInfo } = useAppData(['proxies', 'app'])
   const [error, setError] = useState<string>()
   const [discard, setDiscard] = useState(false)
   const form = useForm<ProxyFormValues>({

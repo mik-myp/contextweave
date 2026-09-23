@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import type {
   EnvironmentConfig,
+  OperationKind,
+  OperationSummary,
   EnvironmentStatus,
   ProxyConfig,
   RuntimeSession,
@@ -10,64 +12,7 @@ import type {
   TargetPlatform,
 } from '@contextweave/contracts'
 
-const migrationSql = `
-CREATE TABLE IF NOT EXISTS environments (
-  environment_id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  status TEXT NOT NULL,
-  kernel_id TEXT NOT NULL,
-  kernel_version TEXT NOT NULL,
-  proxy_id TEXT,
-  config_json TEXT NOT NULL,
-  data_dir TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  arch TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS kernel_installations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kernel_id TEXT NOT NULL,
-  version TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  arch TEXT NOT NULL,
-  source_url TEXT,
-  sha256 TEXT,
-  install_path TEXT NOT NULL,
-  state TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS runtime_sessions (
-  session_id TEXT PRIMARY KEY,
-  environment_id TEXT NOT NULL,
-  pid INTEGER NOT NULL,
-  control_port INTEGER NOT NULL,
-  started_at TEXT NOT NULL,
-  status TEXT NOT NULL,
-  exit_reason TEXT
-);
-CREATE TABLE IF NOT EXISTS proxies (
-  proxy_id TEXT PRIMARY KEY,
-  type TEXT NOT NULL,
-  host TEXT NOT NULL,
-  port INTEGER NOT NULL,
-  username TEXT,
-  credential_ref TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS app_settings (
-  setting_key TEXT PRIMARY KEY,
-  value_json TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_environments_updated_at ON environments(updated_at);
-CREATE INDEX IF NOT EXISTS idx_runtime_sessions_environment ON runtime_sessions(environment_id);
-CREATE INDEX IF NOT EXISTS idx_runtime_sessions_status ON runtime_sessions(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
-  ON kernel_installations(kernel_id, version, platform, arch);
-`
+import { migrateDatabase } from './migrations'
 
 type Row = Record<string, unknown>
 
@@ -80,8 +25,13 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
   mkdirSync(dirname(filePath), { recursive: true })
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
-  sqlite.exec(migrationSql)
-  return { sqlite, close: () => sqlite.close() }
+  try {
+    migrateDatabase(sqlite, filePath)
+    return { sqlite, close: () => sqlite.close() }
+  } catch (error) {
+    sqlite.close()
+    throw error
+  }
 }
 
 export type EnvironmentRecord = {
@@ -92,6 +42,9 @@ export type EnvironmentRecord = {
   kernelVersion: string
   proxyId: string | null
   configJson: string
+  revision: number
+  lifecycle: 'active' | 'trashed'
+  trashedAt: string | null
   dataDir: string
   platform: TargetPlatform
   arch: TargetArchitecture
@@ -143,6 +96,9 @@ function mapEnvironment(row: Row): EnvironmentRecord {
     kernelVersion: stringValue(row, 'kernel_version'),
     proxyId: nullableStringValue(row, 'proxy_id'),
     configJson: stringValue(row, 'config_json'),
+    revision: Number(row.revision),
+    lifecycle: stringValue(row, 'lifecycle') as EnvironmentRecord['lifecycle'],
+    trashedAt: nullableStringValue(row, 'trashed_at'),
     dataDir: stringValue(row, 'data_dir'),
     platform: stringValue(row, 'platform') as TargetPlatform,
     arch: stringValue(row, 'arch') as TargetArchitecture,
@@ -160,6 +116,11 @@ function mapRuntimeSession(row: Row): RuntimeSessionRecord {
     startedAt: stringValue(row, 'started_at'),
     status: stringValue(row, 'status') as RuntimeSession['status'],
     exitReason: nullableStringValue(row, 'exit_reason'),
+    endedAt: nullableStringValue(row, 'ended_at'),
+    revision: row.revision == null ? undefined : Number(row.revision),
+    kernelVersion: nullableStringValue(row, 'kernel_version') ?? undefined,
+    executableVersion: nullableStringValue(row, 'executable_version') ?? undefined,
+    phase: stringValue(row, 'phase'),
   }
 }
 
@@ -197,7 +158,6 @@ export class EnvironmentRepository {
   private readonly getStatement: StatementSync
   private readonly insertStatement: StatementSync
   private readonly updateConfigStatement: StatementSync
-  private readonly deleteEnvironmentStatement: StatementSync
   private readonly updateStatusStatement: StatementSync
   private readonly listRuntimeSessionsStatement: StatementSync
   private readonly getRuntimeSessionStatement: StatementSync
@@ -214,8 +174,10 @@ export class EnvironmentRepository {
   private readonly getKernelInstallationStatement: StatementSync
   private readonly insertKernelInstallationStatement: StatementSync
 
-  constructor(sqlite: DatabaseSync) {
-    this.listStatement = sqlite.prepare('SELECT * FROM environments ORDER BY updated_at DESC')
+  constructor(private readonly sqlite: DatabaseSync) {
+    this.listStatement = sqlite.prepare(
+      "SELECT * FROM environments WHERE lifecycle = 'active' ORDER BY updated_at DESC",
+    )
     this.getStatement = sqlite.prepare('SELECT * FROM environments WHERE environment_id = ?')
     this.insertStatement = sqlite.prepare(`
       INSERT INTO environments (
@@ -224,20 +186,29 @@ export class EnvironmentRepository {
       ) VALUES (@environmentId, @name, @status, @kernelId, @kernelVersion, @proxyId,
         @configJson, @dataDir, @platform, @arch, @createdAt, @updatedAt)
     `)
-    this.updateConfigStatement = sqlite.prepare('UPDATE environments SET name = ?, proxy_id = ?, config_json = ?, updated_at = ? WHERE environment_id = ?')
-    this.deleteEnvironmentStatement = sqlite.prepare('DELETE FROM environments WHERE environment_id = ?')
-    this.updateStatusStatement = sqlite.prepare('UPDATE environments SET status = ?, updated_at = ? WHERE environment_id = ?')
-    this.listRuntimeSessionsStatement = sqlite.prepare('SELECT * FROM runtime_sessions ORDER BY started_at DESC')
-    this.getRuntimeSessionStatement = sqlite.prepare('SELECT * FROM runtime_sessions WHERE session_id = ?')
+    this.updateConfigStatement = sqlite.prepare(
+      'UPDATE environments SET name = ?, proxy_id = ?, config_json = ?, updated_at = ?, revision = revision + 1 WHERE environment_id = ? AND revision = ?',
+    )
+    this.updateStatusStatement = sqlite.prepare(
+      'UPDATE environments SET status = ?, updated_at = ? WHERE environment_id = ?',
+    )
+    this.listRuntimeSessionsStatement = sqlite.prepare(
+      'SELECT * FROM runtime_sessions ORDER BY started_at DESC',
+    )
+    this.getRuntimeSessionStatement = sqlite.prepare(
+      'SELECT * FROM runtime_sessions WHERE session_id = ?',
+    )
     this.insertRuntimeSessionStatement = sqlite.prepare(`
       INSERT INTO runtime_sessions (
-        session_id, environment_id, pid, control_port, started_at, status, exit_reason
-      ) VALUES (@sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason)
+        session_id, environment_id, pid, control_port, started_at, status, exit_reason, ended_at, revision, kernel_version, executable_version, phase
+      ) VALUES (@sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason, @endedAt, @revision, @kernelVersion, @executableVersion, @phase)
     `)
     this.updateRuntimeSessionStatement = sqlite.prepare(`
-      UPDATE runtime_sessions SET status = ?, exit_reason = ? WHERE session_id = ?
+      UPDATE runtime_sessions SET status = ?, exit_reason = ?, ended_at = COALESCE(ended_at, ?), phase = ? WHERE session_id = ?
     `)
-    this.deleteRuntimeSessionStatement = sqlite.prepare('DELETE FROM runtime_sessions WHERE session_id = ?')
+    this.deleteRuntimeSessionStatement = sqlite.prepare(
+      'DELETE FROM runtime_sessions WHERE session_id = ?',
+    )
     this.listProxyStatement = sqlite.prepare('SELECT * FROM proxies ORDER BY updated_at DESC')
     this.getProxyStatement = sqlite.prepare('SELECT * FROM proxies WHERE proxy_id = ?')
     this.insertProxyStatement = sqlite.prepare(`
@@ -253,13 +224,17 @@ export class EnvironmentRepository {
         updated_at = excluded.updated_at
     `)
     this.deleteProxyStatement = sqlite.prepare('DELETE FROM proxies WHERE proxy_id = ?')
-    this.getSettingStatement = sqlite.prepare('SELECT value_json FROM app_settings WHERE setting_key = ?')
+    this.getSettingStatement = sqlite.prepare(
+      'SELECT value_json FROM app_settings WHERE setting_key = ?',
+    )
     this.upsertSettingStatement = sqlite.prepare(`
       INSERT INTO app_settings (setting_key, value_json, updated_at)
       VALUES (?, ?, ?)
       ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
     `)
-    this.listKernelInstallationsStatement = sqlite.prepare('SELECT * FROM kernel_installations ORDER BY updated_at DESC')
+    this.listKernelInstallationsStatement = sqlite.prepare(
+      'SELECT * FROM kernel_installations ORDER BY updated_at DESC',
+    )
     this.getKernelInstallationStatement = sqlite.prepare(`
       SELECT * FROM kernel_installations
       WHERE kernel_id = ? AND version = ? AND platform = ? AND arch = ?
@@ -302,13 +277,22 @@ export class EnvironmentRepository {
       kernelVersion: input.config.kernelVersion,
       proxyId: input.config.proxyId ?? null,
       configJson: JSON.stringify(input.config),
+      revision: 1,
+      lifecycle: 'active',
+      trashedAt: null,
       dataDir: input.dataDir,
       platform: input.platform,
       arch: input.arch,
       createdAt: now,
       updatedAt: now,
     }
-    this.insertStatement.run(record)
+    this.transaction(() => {
+      const { revision, lifecycle: _lifecycle, trashedAt: _trashedAt, ...insert } = record
+      this.insertStatement.run(insert)
+      this.sqlite
+        .prepare('INSERT INTO environment_revisions VALUES (?, ?, ?, ?)')
+        .run(record.environmentId, revision, record.configJson, now)
+    })
     return record
   }
 
@@ -318,20 +302,128 @@ export class EnvironmentRepository {
     return this.get(environmentId)
   }
 
-  updateConfig(config: EnvironmentConfig): EnvironmentRecord | undefined {
-    this.updateConfigStatement.run(
-      config.name,
-      config.proxyId ?? null,
-      JSON.stringify(config),
-      new Date().toISOString(),
-      config.environmentId,
-    )
-    return this.get(config.environmentId)
+  private transaction<T>(run: () => T): T {
+    this.sqlite.exec('BEGIN IMMEDIATE')
+    try {
+      const result = run()
+      this.sqlite.exec('COMMIT')
+      return result
+    } catch (error) {
+      this.sqlite.exec('ROLLBACK')
+      throw error
+    }
   }
 
-  // Remove metadata only. The profile and runtime history remain available for manual recovery.
+  updateConfig(
+    config: EnvironmentConfig,
+    expectedRevision?: number,
+  ): EnvironmentRecord | undefined {
+    const current = this.get(config.environmentId)
+    if (!current) return undefined
+    return this.transaction(() => {
+      const now = new Date().toISOString()
+      const json = JSON.stringify(config)
+      const result = this.updateConfigStatement.run(
+        config.name,
+        config.proxyId ?? null,
+        json,
+        now,
+        config.environmentId,
+        expectedRevision ?? current.revision,
+      )
+      if (Number(result.changes) !== 1) throw new Error('CONFIG_CONFLICT')
+      this.sqlite
+        .prepare('INSERT INTO environment_revisions VALUES (?, ?, ?, ?)')
+        .run(config.environmentId, current.revision + 1, json, now)
+      return this.get(config.environmentId)
+    })
+  }
+
+  getRevision(environmentId: string, revision: number): string | undefined {
+    const row = this.sqlite
+      .prepare(
+        'SELECT config_json FROM environment_revisions WHERE environment_id = ? AND revision = ?',
+      )
+      .get(environmentId, revision)
+    return row ? stringValue(row, 'config_json') : undefined
+  }
+
+  listAll(): EnvironmentRecord[] {
+    return (
+      this.sqlite.prepare('SELECT * FROM environments ORDER BY updated_at DESC').all() as Row[]
+    ).map(mapEnvironment)
+  }
+
+  listTrash(): EnvironmentRecord[] {
+    return this.listAll().filter((record) => record.lifecycle === 'trashed')
+  }
+
+  // Soft deletion preserves the identity, immutable revisions, history and browser directory.
   deleteEnvironment(environmentId: string): void {
-    this.deleteEnvironmentStatement.run(environmentId)
+    const now = new Date().toISOString()
+    this.sqlite
+      .prepare(
+        "UPDATE environments SET lifecycle = 'trashed', trashed_at = ?, updated_at = ? WHERE environment_id = ?",
+      )
+      .run(now, now, environmentId)
+  }
+
+  restoreEnvironment(environmentId: string): EnvironmentRecord | undefined {
+    this.sqlite
+      .prepare(
+        "UPDATE environments SET lifecycle = 'active', trashed_at = NULL, updated_at = ? WHERE environment_id = ?",
+      )
+      .run(new Date().toISOString(), environmentId)
+    return this.get(environmentId)
+  }
+
+  createOperation(operationId: string, kind: OperationKind, environmentId: string | null): void {
+    this.sqlite
+      .prepare("INSERT INTO operations VALUES (?, ?, ?, 'running', 'queued', ?, NULL, NULL)")
+      .run(operationId, environmentId, kind, new Date().toISOString())
+  }
+
+  updateOperation(
+    operationId: string,
+    phase: string,
+    status: OperationSummary['status'] = 'running',
+    errorCode: string | null = null,
+  ): void {
+    this.sqlite
+      .prepare(
+        'UPDATE operations SET phase = ?, status = ?, ended_at = ?, error_code = ? WHERE operation_id = ?',
+      )
+      .run(
+        phase,
+        status,
+        status === 'running' ? null : new Date().toISOString(),
+        errorCode,
+        operationId,
+      )
+  }
+
+  recoverOperations(): void {
+    this.sqlite
+      .prepare(
+        "UPDATE operations SET status = 'failed', phase = 'interrupted', error_code = 'CLIENT_INTERRUPTED', ended_at = ? WHERE status = 'running'",
+      )
+      .run(new Date().toISOString())
+  }
+
+  listOperations(): OperationSummary[] {
+    return this.sqlite
+      .prepare('SELECT * FROM operations ORDER BY started_at DESC LIMIT 500')
+      .all()
+      .map((row) => ({
+        operationId: stringValue(row, 'operation_id'),
+        environmentId: nullableStringValue(row, 'environment_id'),
+        kind: stringValue(row, 'kind') as OperationKind,
+        status: stringValue(row, 'status') as OperationSummary['status'],
+        phase: stringValue(row, 'phase'),
+        startedAt: stringValue(row, 'started_at'),
+        endedAt: nullableStringValue(row, 'ended_at'),
+        errorCode: nullableStringValue(row, 'error_code'),
+      }))
   }
 
   listRuntimeSessions(): RuntimeSessionRecord[] {
@@ -344,7 +436,14 @@ export class EnvironmentRepository {
   }
 
   createRuntimeSession(input: RuntimeSessionRecord): RuntimeSessionRecord {
-    this.insertRuntimeSessionStatement.run(input)
+    this.insertRuntimeSessionStatement.run({
+      ...input,
+      endedAt: input.endedAt ?? null,
+      revision: input.revision ?? null,
+      kernelVersion: input.kernelVersion ?? null,
+      executableVersion: input.executableVersion ?? null,
+      phase: input.phase ?? 'launch',
+    })
     return input
   }
 
@@ -353,8 +452,21 @@ export class EnvironmentRepository {
     status: RuntimeSession['status'],
     exitReason: string | null = null,
   ): RuntimeSessionRecord | undefined {
-    this.updateRuntimeSessionStatement.run(status, exitReason, sessionId)
+    const terminal = status === 'stopped' || status === 'crashed'
+    this.updateRuntimeSessionStatement.run(
+      status,
+      exitReason,
+      terminal ? new Date().toISOString() : null,
+      terminal ? 'ended' : status,
+      sessionId,
+    )
     return this.getRuntimeSession(sessionId)
+  }
+
+  setRuntimeVersion(sessionId: string, version: string): void {
+    this.sqlite
+      .prepare('UPDATE runtime_sessions SET executable_version = ? WHERE session_id = ?')
+      .run(version, sessionId)
   }
 
   deleteRuntimeSession(sessionId: string): void {
@@ -378,7 +490,11 @@ export class EnvironmentRepository {
       createdAt: this.getProxy(proxyId)?.createdAt ?? now,
       updatedAt: now,
     }
-    this.insertProxyStatement.run({ ...record, username: record.username ?? null, credentialRef: record.credentialRef ?? null })
+    this.insertProxyStatement.run({
+      ...record,
+      username: record.username ?? null,
+      credentialRef: record.credentialRef ?? null,
+    })
     return record
   }
 
@@ -406,13 +522,21 @@ export class EnvironmentRepository {
     platform: TargetPlatform,
     arch: TargetArchitecture,
   ): KernelInstallationRecord | undefined {
-    const row = this.getKernelInstallationStatement.get(kernelId, version, platform, arch) as Row | undefined
+    const row = this.getKernelInstallationStatement.get(kernelId, version, platform, arch) as
+      Row | undefined
     return row ? mapKernelInstallation(row) : undefined
   }
 
-  recordKernelInstallation(input: Omit<KernelInstallationRecord, 'id' | 'createdAt' | 'updatedAt'>): KernelInstallationRecord {
+  recordKernelInstallation(
+    input: Omit<KernelInstallationRecord, 'id' | 'createdAt' | 'updatedAt'>,
+  ): KernelInstallationRecord {
     const now = new Date().toISOString()
-    const existing = this.getKernelInstallation(input.kernelId, input.version, input.platform, input.arch)
+    const existing = this.getKernelInstallation(
+      input.kernelId,
+      input.version,
+      input.platform,
+      input.arch,
+    )
     const record = {
       ...input,
       createdAt: existing?.createdAt ?? now,

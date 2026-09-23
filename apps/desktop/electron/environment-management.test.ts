@@ -83,7 +83,7 @@ describe('environment management boundaries', () => {
     expect(detail).not.toHaveProperty('dataDir')
     expect(detail).not.toHaveProperty('kernelConfig')
     expect(detail).not.toHaveProperty('proxy')
-    expect(() => getEnvironmentDetails(repository, 'missing')).toThrow('已不存在')
+    expect(() => getEnvironmentDetails(repository, 'missing')).toThrow('NOT_FOUND')
 
     repository.updateStatus('env-test', 'running')
     expect(() =>
@@ -98,7 +98,7 @@ describe('environment management boundaries', () => {
           window: { width: 1920, height: 1080 },
         },
       }),
-    ).toThrow('请先停止浏览器')
+    ).toThrow('ENVIRONMENT_BUSY')
     database.close()
   })
 
@@ -125,9 +125,10 @@ describe('environment management boundaries', () => {
         configVersion: 1,
       },
     })
-    expect(() => assertProxyMutable(repository, 'proxy-test', true)).toThrow('环境使用')
+    expect(() => assertProxyMutable(repository, 'proxy-test', true)).toThrow('PROXY_IN_USE')
     removeEnvironment(repository, 'env-test')
-    expect(repository.get('env-test')).toBeUndefined()
+    expect(repository.get('env-test')?.lifecycle).toBe('trashed')
+    expect(() => getEnvironmentDetails(repository, 'env-test')).toThrow('ENVIRONMENT_TRASHED')
     database.close()
   })
 })

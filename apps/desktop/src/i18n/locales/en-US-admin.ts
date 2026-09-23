@@ -26,7 +26,7 @@ export const adminMessages: Record<keyof typeof zhMessages, string> = {
   'table.selection': '{count} selected',
   'table.hiddenSelection': '{count} hidden by filters; excluded from this action',
   'env.deleteDescription':
-    'The environment will be removed from this list. Its browser data directory stays on disk, and the record is not automatically restored. Stop and recover active environments first.',
+    'Moves environments to trash. Browser data, configuration and history are retained and can be restored.',
   'env.batchDescription':
     'Only the eligible environments listed below will be changed. Each runs independently, with failures reported individually.',
   'proxy.list': 'Proxies',

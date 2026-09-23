@@ -22,9 +22,7 @@ export type LaunchPlan = {
   controlPort: number
 }
 
-export type ConfigValidationResult =
-  | { ok: true }
-  | { ok: false; issues: string[] }
+export type ConfigValidationResult = { ok: true } | { ok: false; issues: string[] }
 
 export interface BrowserKernelAdapter<TConfig = unknown> {
   getManifest(): KernelManifest
@@ -73,6 +71,7 @@ export function buildChromiumArgs(input: LaunchInput): string[] {
   return [
     `--user-data-dir=${input.userDataDir}`,
     `--remote-debugging-port=${input.controlPort}`,
+    '--remote-debugging-address=127.0.0.1',
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-features=Translate',

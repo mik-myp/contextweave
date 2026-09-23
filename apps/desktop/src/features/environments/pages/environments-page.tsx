@@ -1,3 +1,5 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { EnvironmentTrash } from '../components/environment-trash'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
 import { BatchResult } from '@/components/batch-result'
@@ -22,10 +24,31 @@ import { useEnvironmentDrafts } from '../environment-draft-context'
 const getRowId = (row: EnvironmentSummary) => row.id
 
 export function EnvironmentsPage() {
+  const { t } = useI18n()
+  return (
+    <Tabs defaultValue="active">
+      <TabsList>
+        <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
+        <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="active">
+        <ActiveEnvironmentsPage />
+      </TabsContent>
+      <TabsContent value="trash">
+        <EnvironmentTrash />
+      </TabsContent>
+    </Tabs>
+  )
+}
+function ActiveEnvironmentsPage() {
   const { t, locale } = useI18n()
-  const { environments, kernels, proxies, loading, error, refresh } = useAppData()
+  const { environments, kernels, proxies, loading, error, refresh } = useAppData([
+    'environments',
+    'kernels',
+    'proxies',
+  ])
   const actions = useEnvironmentActions()
-  const batch = useBatchMutation()
+  const batch = useBatchMutation(['environments'])
   const [target, setTarget] = useState<{
     action: 'start' | 'stop' | 'delete'
     items: EnvironmentSummary[]
@@ -148,7 +171,7 @@ export function EnvironmentsPage() {
                 disabled={batch.pending || !eligible[action].length}
                 onClick={() => setTarget({ action, items: eligible[action] })}
               >
-                {t(action === 'delete' ? 'admin.delete' : `env.${action}`)} (
+                {t(action === 'delete' ? 'life.op.trash' : `env.${action}`)} (
                 {eligible[action].length})
               </Button>
             ))}
@@ -202,7 +225,7 @@ export function EnvironmentsPage() {
             '{action}',
             t(
               target?.action === 'delete'
-                ? 'admin.delete'
+                ? 'life.op.trash'
                 : target?.action === 'stop'
                   ? 'env.stop'
                   : 'env.start',
@@ -212,7 +235,7 @@ export function EnvironmentsPage() {
         description={t(
           target?.action === 'delete' ? 'env.deleteDescription' : 'env.batchDescription',
         )}
-        actionLabel={t(target?.action === 'delete' ? 'admin.delete' : 'common.confirm')}
+        actionLabel={t(target?.action === 'delete' ? 'life.op.trash' : 'common.confirm')}
         destructive={target?.action === 'delete'}
         pending={batch.pending}
         onConfirm={() => void confirmBatch()}

@@ -141,3 +141,35 @@ describe('browser settings runtime', () => {
     expect(failure).not.toHaveBeenCalled()
   })
 })
+
+it('only supplies credentials to the configured proxy, never an origin, and cancels repeated challenges', async () => {
+  mockCdp()
+  const close = await connectBrowserSettings(9222, settings, vi.fn(), {
+    host: '127.0.0.1',
+    port: 8080,
+    username: 'fixture-user',
+    password: 'fixture-password',
+  })
+  const socket = MockSocket.instance
+  const challenge = (requestId: string, source: string, origin: string) =>
+    socket.emit({
+      method: 'Fetch.authRequired',
+      sessionId: 'page-1',
+      params: { requestId, authChallenge: { source, origin } },
+    })
+  challenge('origin', 'Server', 'https://example.test')
+  challenge('wrong', 'Proxy', 'http://different.test:8080')
+  challenge('proxy', 'Proxy', 'http://127.0.0.1:8080')
+  challenge('proxy', 'Proxy', 'http://127.0.0.1:8080')
+  await Promise.resolve()
+  const responses = socket.commands
+    .filter((command) => command.method === 'Fetch.continueWithAuth')
+    .map((command) => command.params.authChallengeResponse)
+  expect(responses).toEqual([
+    { response: 'Default' },
+    { response: 'Default' },
+    { response: 'ProvideCredentials', username: 'fixture-user', password: 'fixture-password' },
+    { response: 'CancelAuth' },
+  ])
+  close()
+})

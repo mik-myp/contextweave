@@ -1,4 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { FingerprintPage } from '@/features/fingerprints/pages/fingerprint-page'
-
-export const Route = createFileRoute('/fingerprints')({ component: FingerprintPage })
+import { createFileRoute, redirect } from '@tanstack/react-router'
+export const Route = createFileRoute('/fingerprints')({
+  beforeLoad: () => {
+    throw redirect({ to: '/kernels' })
+  },
+})

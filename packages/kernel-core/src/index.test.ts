@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { buildChromiumArgs, installKernelPackage, KernelRegistry, type BrowserKernelAdapter } from './index'
+import {
+  buildChromiumArgs,
+  installKernelPackage,
+  KernelRegistry,
+  type BrowserKernelAdapter,
+} from './index'
 
 const adapter: BrowserKernelAdapter = {
   getManifest: () => ({
@@ -39,17 +44,20 @@ const adapter: BrowserKernelAdapter = {
 
 describe('kernel core', () => {
   it('builds deterministic Chromium launch arguments', () => {
-    expect(buildChromiumArgs({
-      environmentId: 'env-test',
-      userDataDir: 'C:\\data',
-      controlPort: 9222,
-      executablePath: 'chrome.exe',
-      proxyArgs: ['--proxy-server=http://127.0.0.1:8080'],
-      commonArgs: ['--lang=zh-CN'],
-      kernelArgs: ['--kernel-test=true'],
-    })).toEqual([
+    expect(
+      buildChromiumArgs({
+        environmentId: 'env-test',
+        userDataDir: 'C:\\data',
+        controlPort: 9222,
+        executablePath: 'chrome.exe',
+        proxyArgs: ['--proxy-server=http://127.0.0.1:8080'],
+        commonArgs: ['--lang=zh-CN'],
+        kernelArgs: ['--kernel-test=true'],
+      }),
+    ).toEqual([
       '--user-data-dir=C:\\data',
       '--remote-debugging-port=9222',
+      '--remote-debugging-address=127.0.0.1',
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-features=Translate',
@@ -71,16 +79,20 @@ describe('kernel core', () => {
     const directory = mkdtempSync(join(tmpdir(), 'contextweave-kernel-'))
     try {
       const bytes = new TextEncoder().encode('verified-kernel')
-      const result = await installKernelPackage({
-        ...adapter.getManifest(),
-        package: {
-          url: 'https://downloads.example.test/test-kernel.bin',
-          sha256: '01944a0fa97916354003abca7d37bccff6459a8d8947b6343b8c98fa22a8fc31',
-          sizeBytes: bytes.byteLength,
+      const result = await installKernelPackage(
+        {
+          ...adapter.getManifest(),
+          package: {
+            url: 'https://downloads.example.test/test-kernel.bin',
+            sha256: '01944a0fa97916354003abca7d37bccff6459a8d8947b6343b8c98fa22a8fc31',
+            sizeBytes: bytes.byteLength,
+          },
         },
-      }, directory, {
-        download: async () => bytes,
-      })
+        directory,
+        {
+          download: async () => bytes,
+        },
+      )
 
       expect(result.executablePath).toContain('test-kernel')
       expect(result.sizeBytes).toBe(bytes.byteLength)
@@ -91,14 +103,20 @@ describe('kernel core', () => {
 
   it('rejects a package when the declared hash does not match', async () => {
     const bytes = new TextEncoder().encode('untrusted-kernel')
-    await expect(installKernelPackage({
-      ...adapter.getManifest(),
-      package: {
-        url: 'https://downloads.example.test/test-kernel.bin',
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000',
-      },
-    }, 'C:\\contextweave-test', {
-      download: async () => bytes,
-    })).rejects.toThrow('SHA-256 mismatch')
+    await expect(
+      installKernelPackage(
+        {
+          ...adapter.getManifest(),
+          package: {
+            url: 'https://downloads.example.test/test-kernel.bin',
+            sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+          },
+        },
+        'C:\\contextweave-test',
+        {
+          download: async () => bytes,
+        },
+      ),
+    ).rejects.toThrow('SHA-256 mismatch')
   })
 })

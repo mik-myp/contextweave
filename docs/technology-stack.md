@@ -12,19 +12,19 @@
 
 ## 1. 当前可复用基线
 
-| 范围       | 当前基线                                               | 本轮决定                                                    |
-| ---------- | ------------------------------------------------------ | ----------------------------------------------------------- |
-| 桌面       | Electron 44.4.3、electron-vite 5、electron-builder 26  | 保留；把业务职责从入口移出，继续使用外部浏览器进程          |
-| 开发运行时 | Node.js `>=22.15.0 <23`，pnpm 10.26.2 workspace        | 当前不改锁文件；独立工作包升级开发/CI 到受支持 LTS          |
-| Renderer   | React 19、TypeScript strict、Tailwind CSS 4            | 保留，业务逻辑按 feature 和应用服务组织                     |
-| UI         | shadcn base-nova / Base UI，Lucide                     | 保留；已有组件源码按项目语义 token 维护                     |
-| 路由       | TanStack Router 文件路由与 Hash History                | 保留，配置页与设置分区用嵌套路由                            |
-| 表格       | TanStack Table 9.2.4 + 共享 DataTable                  | 保留，不复制参考项目旧版本 API                              |
-| 表单       | React Hook Form + Zod + Resolver                       | 保留，一套字段/校验支持新建和编辑                           |
-| 数据       | `node:sqlite` DatabaseSync、repository、Drizzle schema | 保留驱动；补可重复迁移、一致性备份和恢复测试                |
-| 凭据       | Electron safeStorage                                   | 保留；凭据引用与业务配置分离                                |
-| 浏览器     | Kernel Registry/Adapter、playwright-core、CDP          | 保留抽象方向，替换指纹占位参数并补完整运行协议              |
-| 质量       | ESLint、Prettier、TypeScript、Vitest                   | 保留，补真实浏览器与安装/恢复测试，不以单元测试替代内核实测 |
+| 范围       | 当前基线                                               | 本轮决定                                                                 |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| 桌面       | Electron 44.4.3、electron-vite 5、electron-builder 26  | 保留；把业务职责从入口移出，继续使用外部浏览器进程                       |
+| 开发运行时 | Node.js `>=22.15.0 <23`，pnpm 10.26.2 workspace        | 保持开发/CI 的 Node 主版本；新增 Query 随锁文件提交，Node 升级另立工作包 |
+| Renderer   | React 19、TypeScript strict、Tailwind CSS 4            | 保留，业务逻辑按 feature 和应用服务组织                                  |
+| UI         | shadcn base-nova / Base UI，Lucide                     | 保留；已有组件源码按项目语义 token 维护                                  |
+| 路由       | TanStack Router 文件路由与 Hash History                | 保留，配置页与设置分区用嵌套路由                                         |
+| 表格       | TanStack Table 9.2.4 + 共享 DataTable                  | 保留，不复制参考项目旧版本 API                                           |
+| 表单       | React Hook Form + Zod + Resolver                       | 保留，一套字段/校验支持新建和编辑                                        |
+| 数据       | `node:sqlite` DatabaseSync、repository、Drizzle schema | 保留驱动；补可重复迁移、一致性备份和恢复测试                             |
+| 凭据       | Electron safeStorage                                   | 保留；凭据引用与业务配置分离                                             |
+| 浏览器     | Kernel Registry/Adapter、playwright-core、CDP          | 保留抽象方向，替换指纹占位参数并补完整运行协议                           |
+| 质量       | ESLint、Prettier、TypeScript、Vitest                   | 保留，补真实浏览器与安装/恢复测试，不以单元测试替代内核实测              |
 
 Node 官方计划中，22 的支持结束日期为 **2027-04-30**，24 为 **2028-04-30**。建议下一次运行时维护工作包评估 Node 24 LTS；必须同时验证构建工具、SQLite 和 CI，不能只改 `engines`。开发 Node、Electron 内嵌 Node 与被启动的浏览器版本独立管理。来源见[官方发布计划](https://github.com/nodejs/Release/blob/main/schedule.json)。
 
@@ -40,13 +40,15 @@ Renderer → Preload → Application Services → Runtime / Repository / Credent
 后续团队服务             → 远程元数据与快照接口，不直接控制 Renderer
 ```
 
-- Renderer 不接触数据库、Node、任意 IPC、可执行路径或原始浏览器调试端点。
+- Renderer 不访问数据库、Node 或任意 IPC，不提交任意可执行路径或原始浏览器调试端点；可显示 Main 提供的只读诊断摘要。
 - Preload 暴露类型化白名单。输入、响应和事件都通过 contracts 校验，Main 验证发送方。
 - 应用服务负责环境、代理、修订和快照；Runtime Supervisor 负责运行锁、子进程、端点、会话与依赖连接。
 - Runtime Supervisor 首期位于桌面应用内，保持可独立测试；未来需要脱离应用常驻时再迁往独立进程。
 - Worker 用于耗时操作，必须有任务身份、进度、取消和资源上限。普通 Node 子进程不自动成为可执行任意不可信脚本的安全沙箱。
 
 ### 2.2 当前目录的渐进拆分
+
+以下是渐进目标。v0.1 的 Runtime Supervisor 和 IPC 命令组合位于 `electron/services/` 与 `electron/application.ts`，有独立复用需求时再抽为 `runtime/` 与 `ipc/`；快照等后续服务尚未实现。
 
 ```text
 apps/desktop/
@@ -69,7 +71,7 @@ packages/
 ├── storage/                    # repository、迁移、锁/恢复元数据
 ├── kernel-core/                # manifest、能力、提供方接口与安装协议
 ├── kernel-standard-chromium/
-├── kernel-fingerprint-chromium/ # 完成真实验证后替换占位实现
+├── kernel-fingerprint-chromium/ # 未验证时明确阻止启动，不生成占位参数
 └── worker-protocol/
 ```
 
@@ -86,20 +88,20 @@ packages/
 - 路由文件仅组合页面与参数，不承担数据库访问或运行状态机。页面和列表状态继续可恢复。
 - 主题类别、ThemeConfig v2、Public Sans 本地字体、语义状态色、RTL 和密度规则按总体规划保留；默认全宽，居中最大 64 rem。
 
-### 3.2 下一步状态拆分
+### 3.2 当前状态拆分
 
-| 状态                      | 技术与位置                                                         | 约束                                            |
-| ------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- |
-| 持久化领域数据            | Main 服务/repository 为权威来源                                    | UI 不独立决定运行结果                           |
-| 列表与详情查询            | 计划采用 `@tanstack/react-query`，queryFn 调类型化 feature service | 以领域/资源 ID 组织缓存，订阅运行事件后精确失效 |
-| 表单与校验                | React Hook Form + Zod                                              | 草稿不含明文凭据，提交冲突保留输入              |
-| 主题和语言                | 现有专用 Provider                                                  | 不合并到环境业务缓存                            |
-| 列选择、打开状态、临时 UI | 组件状态或有边界的 Zustand store                                   | 不复制整个数据库和任务结果                      |
-| 长操作                    | Main 的 Operation 协调与事件                                       | 页面卸载不终止已提交任务                        |
+| 状态                      | 技术与位置                                                           | 约束                                            |
+| ------------------------- | -------------------------------------------------------------------- | ----------------------------------------------- |
+| 持久化领域数据            | Main 服务/repository 为权威来源                                      | UI 不独立决定运行结果                           |
+| 列表与详情查询            | 已采用 `@tanstack/react-query` 5.103.2，queryFn 调类型化 IPC/service | 以领域/资源 ID 组织缓存，订阅运行事件后精确失效 |
+| 表单与校验                | React Hook Form + Zod                                                | 草稿不含明文凭据，提交冲突保留输入              |
+| 主题和语言                | 现有专用 Provider                                                    | 不合并到环境业务缓存                            |
+| 列选择、打开状态、临时 UI | 组件状态或有边界的 Zustand store                                     | 不复制整个数据库和任务结果                      |
+| 长操作                    | Main 的 Operation 协调与事件                                         | 页面卸载不终止已提交任务                        |
 
-TanStack Query 用于替换 AppDataProvider 的跨领域整体轮询，而不是让多个 store 同时持有相同环境列表。先迁移一个领域，验证旧请求不覆盖新修改、事件失效和断线对账，再扩展。运行事件带递增序号或等价游标；事件丢失时重新读取快照。
+TanStack Query 已替换 AppDataProvider 的跨领域整体轮询。Provider 只保留 UI 状态并订阅事件；查询按页面实际需要启用，以领域/资源 ID 作为 key。当前 IPC 事件只触发缓存失效，不携带需要按序合并的数据；窗口重新聚焦和重新进入页面读取快照，补偿遗漏事件。未来若传输增量数据，必须增加序号和重放/对账协议。
 
-`@tanstack/react-query` 为 MIT、纯 JS，无原生模块；业务 `queryFn` 才决定 IPC/网络访问，不增加产品遥测。替换成本限定在查询 hooks。当前不安装，随 v0.1 对应工作包单独提交依赖、锁文件和行为验证。技术入口：[TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview)。
+`@tanstack/react-query` 为 MIT、纯 JS，无原生模块；业务 `queryFn` 才决定 IPC/网络访问，不增加产品遥测。替换成本限定在查询 hooks。已随 v0.1 引入并同步锁文件。缓存取消与修订冲突检查共同避免旧读取或旧表单覆盖新状态。技术入口：[TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview)。
 
 ## 4. 指纹配置与内核提供方
 
@@ -156,19 +158,21 @@ TanStack Query 用于替换 AppDataProvider 的跨领域整体轮询，而不是
 
 ### 6.1 SQLite 与 repository
 
-保留 `node:sqlite`。当前 Drizzle 只描述 schema，读写由 repository 执行；迁移要建立一个可执行的权威流程，避免 Drizzle schema 和手写 SQL 各自演进。
+保留 `node:sqlite`。当前 Drizzle 只描述 schema，读写由 repository 执行；`storage/src/migrations.ts` 是实际迁移入口，Drizzle schema 同步描述结构。v0.1 已采用 schema 版本、事务、迁移前一致性备份和幂等测试；后续迁移只能追加版本，不修改已经交付的迁移。
 
 - 配置修订、Operation 和 RuntimeSession 独立建模，运行记录补结束时间和结构化失败阶段。
-- 普通写入用事务，迁移有版本、校验和、失败恢复和幂等测试。
+- 关联写入用事务。迁移保持版本、失败回滚和幂等测试；后续多版本迁移记录增加脚本校验和，避免已交付迁移被改写。
 - 同步 SQLite 查询保持短小；大量历史查询采用索引和分页。确认阻塞超过可接受范围后再把存储迁入单独线程/进程，不先增加第二个数据库驱动。
 - 数据量增长时，分页/筛选由 repository 执行。前端 TanStack Table 的选中集合与服务端查询范围分开，不依赖一次读取全部数据。
 - 备份采用 SQLite 支持的一致性方式；浏览器用户目录快照要求停止写入。数据库事务不覆盖文件系统操作，需操作日志和恢复对账。
+
+当前首期回收站只改变元数据状态，不移走正在关联的用户目录；恢复保持 ID 和修订。历史孤立目录由只读扫描列出，永不自动清理。
 
 ### 6.2 凭据
 
 继续使用 safeStorage，保存加密内容与引用；Renderer 只能知道是否已配置密码。编辑时留空表示保持，明确清除表示删除。安全存储不可用时显示可操作错误，不回退到明文。
 
-凭据管理抽象出保存/读取/删除/恢复失败，避免领域服务直接操作全局凭据文件。代理密码、CDP 地址令牌、Cookie 和团队令牌不进入日志、表格、普通草稿、URL 或进程参数。
+凭据管理已经抽象为独立 service；无法解析旧文件时拒绝覆盖，不把损坏解释为空存储。运行时 CDP 认证仅向匹配 host/port 的 Proxy challenge 传递密码，不用于网页 Server challenge，重复失败取消认证。代理密码、CDP 地址令牌、Cookie 和团队令牌不进入日志、表格、普通草稿、URL 或进程参数。
 
 ### 6.3 归档、回收站和兼容性
 
@@ -234,7 +238,7 @@ Fastify 为 MIT、JS 实现。MCP TypeScript SDK 的当前 [LICENSE](https://git
 | 保留 Electron，不迁移 Wails/Tauri | 已有行为、UI、IPC 与构建可复用；当前缺口集中于领域和运行职责 | 实测资源成本/平台约束无法通过模块改进解决，且有完整迁移样例            |
 | 保留一套 Base UI/shadcn           | 支持现有主题、RTL 与组件组合，减少基础组件重复               | 出现无法修复的无障碍/平台问题，不因参考项目使用另一套 primitive 就迁移 |
 | 先一个生产指纹提供方              | 控制平台与能力组合数量，建立真实验证基线                     | 第二提供方有明确用户价值并独立通过完整矩阵                             |
-| 计划引入 TanStack Query           | 消除 AppDataProvider 的跨领域读取与缓存混合                  | 独立试点证明事件、查询与提交一致性后扩展                               |
+| 已采用 TanStack Query             | 消除 AppDataProvider 的跨领域读取与缓存混合                  | 查询模型无法覆盖新增订阅/离线需求时再评估，不另建平行数据源            |
 | SQLite 单驱动                     | 现有数据可保留，迁移/恢复的投入优先于换 ORM                  | 持久化阻塞或团队需求出现，有基准与迁移方案                             |
 | API/MCP 早于可视化工作流          | 先建立可编排命令和运行闭环                                   | 有真实用户需求改变顺序时更新产品路线                                   |
 | 团队晚于个人稳定版                | 团队放大运行和数据恢复问题                                   | 本地闭环和数据兼容性已验证，才开启服务器和跨设备交接                   |

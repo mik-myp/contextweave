@@ -25,7 +25,7 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     loading,
     configurationError,
     upsertEnvironment,
-  } = useAppData()
+  } = useAppData(['environments', 'kernels', 'proxies'])
   const { drafts, setResumeId, setSavedId } = useEnvironmentDrafts()
   const key = detail?.id ?? 'new'
   const [draft] = useState(() => drafts.get(key))
@@ -48,6 +48,17 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
   useEffect(() => {
     if (draft) form.reset(draft.values, { keepDefaultValues: true })
   }, [draft, form])
+  useEffect(() => {
+    const subscription = form.watch((_values, event) => {
+      if (event.type !== 'change') return
+      drafts.set(key, {
+        values: form.getValues(),
+        defaults,
+        revision: draft?.revision ?? detail?.revision,
+      })
+    })
+    return () => subscription.unsubscribe()
+  }, [form, drafts, key, defaults, draft?.revision, detail?.revision])
   const blocker = useBlocker({
     shouldBlockFn: () => !allowLeave.current && (form.formState.isDirty || busy.current),
     enableBeforeUnload: () => !allowLeave.current && (form.formState.isDirty || busy.current),
@@ -91,7 +102,11 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     busy.current = true
     setError(undefined)
     try {
-      const saved = await environmentService.save(values, detail?.id)
+      const saved = await environmentService.save(
+        values,
+        detail?.id,
+        draft?.revision ?? detail?.revision,
+      )
       upsertEnvironment(saved)
       clearDraft()
       setSavedId(saved.id)
@@ -130,7 +145,11 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
   }
   const manage = async (destination: '/kernels' | '/proxies') => {
     if (busy.current || disabled) return
-    drafts.set(key, { values: form.getValues(), defaults })
+    drafts.set(key, {
+      values: form.getValues(),
+      defaults,
+      revision: draft?.revision ?? detail?.revision,
+    })
     setResumeId(key)
     allowLeave.current = true
     try {

@@ -1,0 +1,180 @@
+import { ChildProcess } from 'node:child_process'
+import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  environmentConfigSchema,
+  type IpcResult,
+  type PreflightReport,
+} from '@contextweave/contracts'
+import {
+  openLocalDatabase,
+  EnvironmentRepository,
+  acquireRuntimeLock,
+  runtimeLockPath,
+} from '@contextweave/storage'
+import { createRuntimeSupervisor } from './runtime-supervisor'
+import { createKernelService } from './kernel-service'
+import { createCommandCoordinator } from './command-coordinator'
+import { ok } from './result'
+const cleanup: (() => void)[] = []
+afterEach(() => {
+  for (const clean of cleanup.splice(0).reverse()) clean()
+})
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'cw-supervisor-')),
+    dir = join(root, 'env-a')
+  mkdirSync(dir)
+  const db = openLocalDatabase(join(root, 'data.sqlite'))
+  cleanup.push(() => {
+    db.close()
+    rmSync(root, { recursive: true, force: true })
+  })
+  const repository = new EnvironmentRepository(db.sqlite)
+  repository.create({
+    config: environmentConfigSchema.parse({
+      environmentId: 'env-a',
+      name: 'A',
+      kernelId: 'standard-chromium',
+      kernelVersion: 'local',
+      commonConfig: { language: 'system', timezone: 'system' },
+    }),
+    dataDir: dir,
+    platform: 'darwin',
+    arch: 'arm64',
+  })
+  const child = new ChildProcess()
+  Object.defineProperty(child, 'pid', { value: process.pid })
+  child.kill = vi.fn(() => {
+    Object.defineProperty(child, 'exitCode', { value: 0, configurable: true })
+    queueMicrotask(() => child.emit('exit', 0, null))
+    return true
+  })
+  const kernels = createKernelService(repository, 'darwin', 'arm64')
+  vi.spyOn(kernels, 'buildLaunchPlan').mockReturnValue({
+    executablePath: 'fixture',
+    args: [],
+    userDataDir: dir,
+    controlPort: 9000,
+  })
+  const preflight = vi.fn<() => Promise<PreflightReport>>().mockResolvedValue({
+    environmentId: 'env-a',
+    revision: 1,
+    checkedAt: new Date().toISOString(),
+    canStart: true,
+    issues: [],
+    executableVersion: '123.0.0.1',
+  })
+  const driver = {
+    launch: vi.fn(() => child),
+    ready: vi
+      .fn<(port: number, signal: AbortSignal) => Promise<string | undefined>>()
+      .mockResolvedValue('Chrome/123.0.0.1'),
+    settings: vi.fn(async () => () => {}),
+  }
+  const runtime = createRuntimeSupervisor({
+    repository,
+    kernels,
+    credentials: { save: vi.fn(), remove: vi.fn(), read: vi.fn() },
+    preflight,
+    changed: vi.fn(),
+    driver,
+  })
+  return { dir, repository, child, runtime, driver, preflight }
+}
+describe('runtime supervisor', () => {
+  it('allows one launch, records its revision/version and stops without losing the directory', async () => {
+    const { runtime, driver, repository, dir } = fixture()
+    const [first, duplicate] = await Promise.all([runtime.start('env-a'), runtime.start('env-a')])
+    expect(first.ok).toBe(true)
+    expect(duplicate).toMatchObject({ ok: false, code: 'ALREADY_RUNNING' })
+    expect(driver.launch).toHaveBeenCalledTimes(1)
+    expect(repository.listRuntimeSessions()[0]).toMatchObject({
+      revision: 1,
+      executableVersion: '123.0.0.1',
+      status: 'running',
+    })
+    expect((await runtime.stop('env-a')).ok).toBe(true)
+    expect(existsSync(dir)).toBe(true)
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+    expect(repository.listRuntimeSessions()[0]?.endedAt).toBeTruthy()
+  })
+  it('cancels during startup and releases ownership only after the child exits', async () => {
+    const { runtime, driver, repository, dir } = fixture()
+    driver.ready.mockImplementation(
+      (_port, signal) =>
+        new Promise<string>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('cancelled'))),
+        ),
+    )
+    const start = runtime.start('env-a')
+    await vi.waitFor(() => expect(driver.ready).toHaveBeenCalled())
+    runtime.cancelStart('env-a')
+    expect(await start).toMatchObject({ ok: false, code: 'CANCELLED' })
+    expect(repository.get('env-a')?.status).toBe('stopped')
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+  })
+  it('does not launch when preflight fails', async () => {
+    const { runtime, driver, preflight } = fixture()
+    preflight.mockResolvedValue({
+      environmentId: 'env-a',
+      revision: 1,
+      checkedAt: new Date().toISOString(),
+      canStart: false,
+      issues: [{ code: 'CREDENTIAL_UNAVAILABLE', severity: 'error' }],
+    })
+    expect(await runtime.start('env-a')).toMatchObject({
+      ok: false,
+      code: 'CREDENTIAL_UNAVAILABLE',
+    })
+    expect(driver.launch).not.toHaveBeenCalled()
+  })
+  it('marks an unexpected exit for recovery and does not kill a reused/live saved PID', async () => {
+    const { runtime, child, repository, dir } = fixture()
+    await runtime.start('env-a')
+    Object.defineProperty(child, 'exitCode', { value: 1, configurable: true })
+    child.emit('exit', 1, null)
+    expect(repository.get('env-a')?.status).toBe('needs-recovery')
+    expect((await runtime.recover('env-a')).ok).toBe(true)
+    acquireRuntimeLock(dir, {
+      pid: process.pid,
+      sessionId: 'old',
+      controlPort: 9000,
+      startedAt: new Date().toISOString(),
+    })
+    const kill = vi.spyOn(process, 'kill')
+    expect(await runtime.recover('env-a')).toMatchObject({
+      ok: false,
+      code: 'RECOVERY_MANUAL_REQUIRED',
+    })
+    expect(kill.mock.calls.every((call) => call[1] === 0)).toBe(true)
+    kill.mockRestore()
+  })
+  it('serializes commands for one environment and records failures without swallowing them', async () => {
+    const { repository } = fixture(),
+      commands = createCommandCoordinator(repository, vi.fn())
+    let finish!: () => void
+    const pending = commands.run<boolean>(
+      'start',
+      'env-a',
+      () =>
+        new Promise<IpcResult<boolean>>((resolve) => {
+          finish = () => resolve(ok(true))
+        }),
+    )
+    expect(await commands.run('update', 'env-a', () => ok(true))).toMatchObject({
+      ok: false,
+      code: 'OPERATION_IN_PROGRESS',
+    })
+    finish()
+    await pending
+    expect(repository.listOperations()[0]?.status).toBe('succeeded')
+    await commands.run('update', 'env-a', () => {
+      throw new Error('CONFIG_CONFLICT')
+    })
+    expect(
+      repository.listOperations().some((operation) => operation.errorCode === 'CONFIG_CONFLICT'),
+    ).toBe(true)
+  })
+})

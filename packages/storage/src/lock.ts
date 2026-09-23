@@ -24,12 +24,14 @@ export function isProcessAlive(pid: number): boolean {
 
 function readOwner(lockPath: string): RuntimeLockOwner | undefined {
   try {
-    const value = JSON.parse(readFileSync(join(lockPath, 'owner.json'), { encoding: 'utf8' })) as Partial<RuntimeLockOwner>
+    const value = JSON.parse(
+      readFileSync(join(lockPath, 'owner.json'), { encoding: 'utf8' }),
+    ) as Partial<RuntimeLockOwner>
     if (
-      typeof value.pid !== 'number'
-      || typeof value.sessionId !== 'string'
-      || typeof value.controlPort !== 'number'
-      || typeof value.startedAt !== 'string'
+      typeof value.pid !== 'number' ||
+      typeof value.sessionId !== 'string' ||
+      typeof value.controlPort !== 'number' ||
+      typeof value.startedAt !== 'string'
     ) {
       return undefined
     }
@@ -50,7 +52,7 @@ export function acquireRuntimeLock(dataDir: string, owner: RuntimeLockOwner): Ru
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     const existingOwner = readOwner(lockPath)
-    if (existingOwner && isProcessAlive(existingOwner.pid)) {
+    if (!existingOwner || isProcessAlive(existingOwner.pid)) {
       return { acquired: false, lockPath, owner: existingOwner }
     }
     rmSync(lockPath, { recursive: true, force: true })
@@ -64,7 +66,10 @@ export function acquireRuntimeLock(dataDir: string, owner: RuntimeLockOwner): Ru
     }
   }
 
-  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, { encoding: 'utf8', flag: 'w' })
+  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, {
+    encoding: 'utf8',
+    flag: 'w',
+  })
   return { acquired: true, lockPath }
 }
 
@@ -74,7 +79,10 @@ export function updateRuntimeLockOwner(dataDir: string, owner: RuntimeLockOwner)
   if (!currentOwner || currentOwner.sessionId !== owner.sessionId) {
     throw new Error('Runtime lock owner mismatch')
   }
-  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, { encoding: 'utf8', flag: 'w' })
+  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, {
+    encoding: 'utf8',
+    flag: 'w',
+  })
 }
 
 export function releaseRuntimeLock(dataDir: string, sessionId?: string): void {
@@ -86,7 +94,11 @@ export function releaseRuntimeLock(dataDir: string, sessionId?: string): void {
   rmSync(lockPath, { recursive: true, force: true })
 }
 
-export function inspectRuntimeLock(dataDir: string): { lockPath: string; owner?: RuntimeLockOwner; live: boolean } {
+export function inspectRuntimeLock(dataDir: string): {
+  lockPath: string
+  owner?: RuntimeLockOwner
+  live: boolean
+} {
   const lockPath = runtimeLockPath(dataDir)
   const owner = readOwner(lockPath)
   return { lockPath, owner, live: owner ? isProcessAlive(owner.pid) : false }

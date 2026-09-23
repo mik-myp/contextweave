@@ -1,3 +1,5 @@
+import { OrphanDirectories } from '../components/orphan-directories'
+import { Separator } from '@/components/ui/separator'
 import { CopyIcon } from 'lucide-react'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -19,7 +21,7 @@ const pathKeys: Array<keyof AppPaths> = [
 
 export function SettingsStoragePage() {
   const { t } = useI18n()
-  const { paths, appInfo, appError, loading, refresh, setNotice } = useAppData()
+  const { paths, appInfo, appError, loading, refresh, setNotice } = useAppData(['app'])
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value)
@@ -78,6 +80,8 @@ export function SettingsStoragePage() {
               </div>
             ))}
           </dl>
+          <Separator />
+          <OrphanDirectories />
         </>
       )}
     </SettingsSection>

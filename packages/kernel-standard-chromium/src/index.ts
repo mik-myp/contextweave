@@ -1,13 +1,21 @@
+import { z } from 'zod'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { KernelManifest } from '@contextweave/contracts'
-import { buildChromiumArgs, type BrowserKernelAdapter, type LaunchInput, type LaunchPlan } from '@contextweave/kernel-core'
+import {
+  buildChromiumArgs,
+  type BrowserKernelAdapter,
+  type LaunchInput,
+  type LaunchPlan,
+} from '@contextweave/kernel-core'
 
-export type StandardChromiumConfig = {
-  userAgent?: string
-}
+const standardChromiumConfigSchema = z.object({ userAgent: z.string().min(1).optional() }).strict()
+export type StandardChromiumConfig = z.infer<typeof standardChromiumConfigSchema>
 
-export function createStandardChromiumManifest(platform: KernelManifest['platform'], arch: KernelManifest['arch']): KernelManifest {
+export function createStandardChromiumManifest(
+  platform: KernelManifest['platform'],
+  arch: KernelManifest['arch'],
+): KernelManifest {
   return {
     id: 'standard-chromium',
     family: 'chromium',
@@ -32,7 +40,10 @@ export function createStandardChromiumManifest(platform: KernelManifest['platfor
   }
 }
 
-export function discoverStandardChromiumExecutable(platform: NodeJS.Platform, env = process.env): string[] {
+export function discoverStandardChromiumExecutable(
+  platform: NodeJS.Platform,
+  env = process.env,
+): string[] {
   const candidates: string[] = []
   if (platform === 'win32') {
     for (const root of [env.PROGRAMFILES, env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]) {
@@ -63,7 +74,7 @@ export class StandardChromiumAdapter implements BrowserKernelAdapter<StandardChr
   }
 
   validateConfig(config: unknown) {
-    if (config === undefined || typeof config === 'object') return { ok: true as const }
+    if (standardChromiumConfigSchema.safeParse(config ?? {}).success) return { ok: true as const }
     return { ok: false as const, issues: ['Standard Chromium configuration must be an object'] }
   }
 

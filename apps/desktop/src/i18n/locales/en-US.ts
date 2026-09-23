@@ -1,8 +1,10 @@
+import { lifecycleMessages } from './en-US-lifecycle'
 import { adminMessages } from './en-US-admin'
 import { workspaceMessages } from './en-US-workspace'
 import type { TranslationKey } from '../types'
 
 export const enUSMessages: Record<TranslationKey, string> = {
+  ...lifecycleMessages,
   ...workspaceMessages,
   ...adminMessages,
   'common.retry': 'Retry',

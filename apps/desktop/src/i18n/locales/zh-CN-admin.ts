@@ -23,8 +23,7 @@ export const adminMessages = {
   'table.clearSelection': '清除所有选择',
   'table.selection': '已选 {count} 项',
   'table.hiddenSelection': '另有 {count} 项被筛选隐藏，不参与本次操作',
-  'env.deleteDescription':
-    '删除后环境将从列表移除。此操作不会删除磁盘上的浏览器数据目录，也不会自动恢复环境记录。运行中或需要恢复的环境必须先停止并恢复。',
+  'env.deleteDescription': '环境将移入回收站，浏览器数据、配置和运行记录会保留，可在回收站恢复。',
   'env.batchDescription': '仅操作下方列出的、符合条件的环境。每项独立执行，失败项会显示原因。',
   'proxy.list': '代理管理',
   'proxy.search': '筛选地址或 ID…',

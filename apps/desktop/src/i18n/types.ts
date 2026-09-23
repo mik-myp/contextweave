@@ -1,8 +1,10 @@
+import type { lifecycleMessages } from './locales/zh-CN-lifecycle'
 import type { adminMessages } from './locales/zh-CN-admin'
 import type { workspaceMessages } from './locales/zh-CN-workspace'
 export type Locale = 'zh-CN' | 'en-US'
 
 export type TranslationKey =
+  | keyof typeof lifecycleMessages
   | keyof typeof adminMessages
   | keyof typeof workspaceMessages
   | 'common.retry'

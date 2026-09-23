@@ -20,10 +20,13 @@ const getRowId = (row: ProxySummary) => row.proxyId
 
 export function ProxiesPage() {
   const { t, locale } = useI18n()
-  const { proxies, environments, loading, proxyError, refresh } = useAppData()
+  const { proxies, environments, loading, proxyError, refresh } = useAppData([
+    'proxies',
+    'environments',
+  ])
   const [editor, setEditor] = useState<{ proxy?: ProxySummary }>()
   const [targets, setTargets] = useState<ProxySummary[]>([])
-  const batch = useBatchMutation()
+  const batch = useBatchMutation(['proxies', 'environments'])
   const { usage, locked } = useMemo(() => {
     const usage = new Map<string, number>()
     const locked = new Set<string>()

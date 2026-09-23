@@ -15,7 +15,7 @@ import {
 import notices from '../../../../../../THIRD_PARTY_NOTICES.md?raw'
 export function AboutPage() {
   const { t } = useI18n()
-  const { appInfo, appError, setNotice, refresh } = useAppData()
+  const { appInfo, appError, setNotice, refresh } = useAppData(['app'])
   const open = async (url: string) => {
     try {
       await unwrapIpc(window.contextweave.app.openExternal(url))

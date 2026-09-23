@@ -1,4 +1,5 @@
 export const adminMessages = {
+  'kernel.backgroundDownloads': '后台下载',
   'kernel.provider': '内核类型',
   'kernel.officialReleases': '官方版本',
   'kernel.downloadLink': '下载链接',

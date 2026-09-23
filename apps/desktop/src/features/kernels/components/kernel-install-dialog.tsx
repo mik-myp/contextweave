@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
+import { KernelDownloadTasks } from './kernel-download-tasks'
 import { KernelCustomSourceFields, type KernelSourceDraft } from './kernel-custom-source-fields'
 
 export function KernelInstallDialog({
@@ -78,6 +79,11 @@ export function KernelInstallDialog({
     (pending && pending === release?.id) ||
     (state && ['downloading', 'verifying', 'extracting'].includes(state.phase)),
   )
+  const cancelInstall = (id: string) => {
+    void unwrapIpc(window.contextweave.kernel.cancelInstall(id)).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : t('admin.operationError'))
+    })
+  }
   const updateCatalog = async () => {
     setRefreshing(true)
     try {
@@ -331,15 +337,17 @@ export function KernelInstallDialog({
             </AlertDescription>
           </Alert>
         )}
+        <KernelDownloadTasks
+          releases={catalog.data?.releases ?? []}
+          selectedId={release?.id}
+          onCancel={cancelInstall}
+        />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t('common.close')}
           </Button>
           {installing && release ? (
-            <Button
-              variant="outline"
-              onClick={() => void window.contextweave.kernel.cancelInstall(release.id)}
-            >
+            <Button variant="outline" onClick={() => cancelInstall(release.id)}>
               {t('kernel.cancelInstall')}
             </Button>
           ) : (
@@ -348,7 +356,7 @@ export function KernelInstallDialog({
                 !!pending ||
                 (mode === 'official'
                   ? !release?.installable || release.installed
-                  : !draft.url.trim())
+                  : !draft.url.trim() || release?.installed)
               }
               onClick={() => void install()}
             >

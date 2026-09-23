@@ -15,6 +15,8 @@ export const lifecycleMessages = {
   'error.ARCHIVE_UNSAFE': '内核归档包含不安全的路径或异常内容，已拒绝解包。',
   'error.ARCHIVE_INVALID': '内核归档结构无效，请重新下载。',
   'error.EXECUTABLE_INVALID': '内核包缺少有效的可执行文件。',
+  'error.ARCHIVE_MOUNT_FAILED':
+    '无法挂载内核磁盘映像。请先推出已打开的同版本磁盘映像，再重试安装。',
   'error.ARCHITECTURE_MISMATCH': '内核架构与当前平台不匹配。',
   'error.INSTALL_FAILED': '内核安装失败，已有安装与环境数据保持不变，请重试。',
   'error.PROXY_TEST_FAILED': '代理认证或 HTTPS 请求失败，请检查代理设置。',

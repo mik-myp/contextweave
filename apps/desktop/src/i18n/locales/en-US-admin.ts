@@ -1,6 +1,7 @@
 import type { adminMessages as zhMessages } from './zh-CN-admin'
 
 export const adminMessages: Record<keyof typeof zhMessages, string> = {
+  'kernel.backgroundDownloads': 'Background downloads',
   'kernel.provider': 'Kernel type',
   'kernel.officialReleases': 'Official releases',
   'kernel.downloadLink': 'Download link',

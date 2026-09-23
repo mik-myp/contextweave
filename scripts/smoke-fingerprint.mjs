@@ -11,6 +11,7 @@ const require = createRequire(new URL('../apps/desktop/package.json', import.met
 const { _electron, chromium } = require('playwright-core')
 const { Server } = require('proxy-chain')
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
+const customSource = process.argv.includes('--custom-source')
 const suppliedProxy = process.env.CONTEXTWEAVE_SMOKE_PROXY
 const suppliedData = process.env.CONTEXTWEAVE_SMOKE_DATA
 const directory = suppliedData || (await mkdtemp(join(tmpdir(), 'cw-fingerprint-smoke-')))
@@ -52,7 +53,7 @@ try {
   assert(kernels.ok)
   const catalog = await page.evaluate(() => window.contextweave.kernel.catalog())
   assert(catalog.ok)
-  const provider = catalog.data.releases.find((item) => item.version === '148.0.7778.215')
+  let provider = catalog.data.releases.find((item) => item.version === '148.0.7778.215')
   if (!provider?.installable) {
     assert(
       !process.argv.includes('--require-provider'),
@@ -66,9 +67,28 @@ try {
       }),
     )
   } else {
+    if (customSource) {
+      const name =
+        process.platform === 'win32'
+          ? `ungoogled-chromium_${provider.version}-1.1_windows_x64.zip`
+          : `ungoogled-chromium_${provider.version}-1.1_macos.dmg`
+      const prepared = await page.evaluate(
+        (input) => window.contextweave.kernel.prepareCustom(input),
+        {
+          providerId: provider.provider,
+          url: `https://github.com/adryfish/fingerprint-chromium/releases/download/${provider.version}/${name}?download=1`,
+          version: provider.version,
+          sha256: provider.sha256,
+          trustedSource: true,
+        },
+      )
+      assert(prepared.ok, JSON.stringify(prepared))
+      assert.equal(prepared.data.sourceType, 'custom')
+      provider = prepared.data
+    }
     console.log(
       JSON.stringify({
-        stage: 'official-package-install',
+        stage: customSource ? 'custom-package-install' : 'official-package-install',
         platform: process.platform,
         arch: process.arch,
       }),
@@ -144,7 +164,15 @@ try {
       assert.equal(observation.cores, 8)
       assert.equal(observation.language, 'en-US')
       assert.equal(observation.timezone, 'Europe/London')
-      if (run) assert.equal(observation.retained, 'retained')
+      if (run) {
+        assert.equal(observation.retained, 'retained')
+        assert(
+          (await context.cookies()).some(
+            (cookie) => cookie.name === 'cw-cookie' && cookie.value === 'retained',
+          ),
+          'Cookie must survive a browser restart',
+        )
+      }
       await tab.evaluate(() => {
         localStorage.setItem('cw-acceptance', 'retained')
         document.cookie = 'cw-cookie=retained;max-age=3600;path=/'
@@ -211,7 +239,7 @@ try {
     }
     console.log(
       JSON.stringify({
-        officialInstall: 'passed',
+        ...(customSource ? { customInstall: 'passed' } : { officialInstall: 'passed' }),
         fingerprintLifecycle: 'passed',
         identityStable: true,
         dataRetained: true,

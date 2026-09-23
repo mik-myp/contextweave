@@ -157,6 +157,8 @@ pnpm test:desktop --require-native
 
 ```bash
 pnpm test:fingerprint --require-provider
+# 可选：使用已知发行包验证自定义下载链接路径
+pnpm test:fingerprint --require-provider --custom-source
 ```
 
 此测试会从官方来源下载指定的已核查发行包，在隔离用户目录中安装，验证实际启动、固定身份、页面存储、认证代理和回收恢复，结束后清理。Windows x64 与 macOS arm64 发布构建执行该测试；未支持的架构不得当作通过。

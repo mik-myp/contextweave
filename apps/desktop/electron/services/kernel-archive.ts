@@ -152,11 +152,16 @@ export async function extractBrowserArchive(
   if (manifest.platform === 'darwin') {
     const mount = join(stage, 'mount')
     await mkdir(mount)
-    await execute(
-      '/usr/bin/hdiutil',
-      ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, archive],
-      { signal, timeout: 60000 },
-    )
+    try {
+      await execute(
+        '/usr/bin/hdiutil',
+        ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, archive],
+        { signal, timeout: 60000 },
+      )
+    } catch {
+      signal.throwIfAborted()
+      throw new Error('ARCHIVE_MOUNT_FAILED')
+    }
     try {
       const app = join(mount, 'Chromium.app')
       if (!(await lstat(app)).isDirectory()) throw new Error('ARCHIVE_INVALID')

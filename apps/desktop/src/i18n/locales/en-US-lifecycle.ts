@@ -18,6 +18,8 @@ export const lifecycleMessages = {
   'error.ARCHIVE_UNSAFE': 'The archive contains unsafe paths or excessive content and was blocked.',
   'error.ARCHIVE_INVALID': 'Invalid browser archive structure. Download it again.',
   'error.EXECUTABLE_INVALID': 'The package does not contain a valid browser executable.',
+  'error.ARCHIVE_MOUNT_FAILED':
+    'Could not mount the kernel disk image. Eject any mounted image of the same version, then retry.',
   'error.ARCHITECTURE_MISMATCH': 'The browser architecture does not match this platform.',
   'error.INSTALL_FAILED':
     'Kernel installation failed. Existing installs and environment data are retained.',

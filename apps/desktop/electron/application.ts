@@ -9,7 +9,6 @@ import {
   environmentConfigSchema,
   updateEnvironmentInputSchema,
   saveProxyInputSchema,
-  proxyTestInputSchema,
   kernelCatalogInputSchema,
   customKernelSourceSchema,
   type DataDomain,
@@ -25,7 +24,11 @@ import {
   assertProxyMutable,
   resolveEnvironmentProxy,
 } from './environment-management'
-import { saveProxyConfiguration, toProxySummary } from './proxy-management'
+import {
+  resolveProxyTestConfiguration,
+  saveProxyConfiguration,
+  toProxySummary,
+} from './proxy-management'
 import { testProxyTransport } from './services/proxy-transport'
 import { createCredentialStore, type SecureStorage } from './services/credentials'
 import { kernelProviders, requireKernelProvider } from './services/kernel-providers'
@@ -70,7 +73,7 @@ export function createApplication(options: {
     preflight,
     changed: () => changed(['environments', 'activity', 'kernels']),
   })
-  const workers = createWorkerService(runtime, options.workerPath)
+  const workers = createWorkerService(runtime, options.workerPath, join(dataRoot, 'worker-results'))
   const commands = createCommandCoordinator(repository, () =>
     changed(['environments', 'operations', 'activity', 'storage']),
   )
@@ -153,21 +156,7 @@ export function createApplication(options: {
     },
     'storage:orphans': () => ok(environments.orphans()),
     'proxy:test': async (input) => {
-      const parsed = proxyTestInputSchema.parse(input)
-      const saved = parsed.proxyId ? repository.getProxy(parsed.proxyId) : undefined
-      if (parsed.proxyId && !saved) return fail('NOT_FOUND')
-      const config = 'config' in parsed ? parsed.config : saved!
-      let password = ''
-      if ('config' in parsed && parsed.password) password = parsed.password
-      else if (
-        config.username &&
-        saved?.credentialRef &&
-        !('clearPassword' in parsed && parsed.clearPassword)
-      ) {
-        const secret = credentials.read(saved.credentialRef)
-        if (secret === undefined) return fail('CREDENTIAL_UNAVAILABLE')
-        password = secret
-      }
+      const { config, password } = resolveProxyTestConfiguration(repository, input, credentials)
       return ok(await testProxyTransport(config, password))
     },
     'proxy:list': () => ok(repository.listProxies().map(toProxySummary)),

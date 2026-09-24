@@ -1,26 +1,30 @@
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
-import { workerTaskSchema, type WorkerResult } from '@contextweave/worker-protocol'
+import {
+  maxWorkerScreenshotBytes,
+  workerProcessRequestSchema,
+  workerScreenshotDescriptor,
+  type WorkerProcessRequest,
+  type WorkerProcessResult,
+} from '@contextweave/worker-protocol'
 
-type WorkerProxyCredentials = { username: string; password: string }
-type WorkerPayload = {
-  task: unknown
-  controlPort: number
-  proxyCredentials?: WorkerProxyCredentials
-}
+let request: WorkerProcessRequest | undefined
 
-async function readPayload(): Promise<WorkerPayload> {
+async function readPayload(): Promise<WorkerProcessRequest> {
   const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
-  const rawPayload = Buffer.concat(chunks).toString('utf8')
-  if (!rawPayload) throw new Error('Worker payload is missing')
-  return JSON.parse(rawPayload) as WorkerPayload
+  let size = 0
+  for await (const chunk of process.stdin) {
+    size += chunk.length
+    if (size > 1024 * 1024) throw new Error('WORKER_INPUT_LIMIT')
+    chunks.push(Buffer.from(chunk))
+  }
+  return workerProcessRequestSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
 }
 
-async function run(): Promise<WorkerResult> {
+async function run(): Promise<WorkerProcessResult> {
   const payload = await readPayload()
-  const task = workerTaskSchema.parse(payload.task)
+  request = payload
+  const task = payload.task
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${payload.controlPort}`)
   try {
     const context = browser.contexts()[0] ?? (await browser.newContext())
@@ -49,15 +53,16 @@ async function run(): Promise<WorkerResult> {
       timeout: task.input.timeoutMs,
     })
     const title = await page.title()
-    const screenshotPath = task.input.screenshotPath ?? join(tmpdir(), `${task.taskId}.png`)
-    await page.screenshot({ path: screenshotPath, fullPage: false })
+    // Never give Playwright a path derived from task input. Main opened this descriptor.
+    const screenshot = await page.screenshot({ type: 'png', fullPage: false })
+    if (screenshot.length > maxWorkerScreenshotBytes) throw new Error('WORKER_OUTPUT_LIMIT')
+    writeFileSync(workerScreenshotDescriptor, screenshot)
     return {
       protocolVersion: task.protocolVersion,
       taskId: task.taskId,
       environmentId: task.environmentId,
       ok: true,
       title,
-      screenshotPath,
     }
   } finally {
     // The CDP connection is detached with the browser connection below.
@@ -72,10 +77,10 @@ run()
   })
   .catch((error: unknown) => {
     const message = error instanceof Error ? error.message : 'Worker failed'
-    const result: WorkerResult = {
+    const result: WorkerProcessResult = {
       protocolVersion: 1,
-      taskId: 'unknown',
-      environmentId: 'unknown',
+      taskId: request?.task.taskId ?? 'unknown',
+      environmentId: request?.task.environmentId ?? 'unknown',
       ok: false,
       errorCode: 'WORKER_ERROR',
       errorMessage: message,

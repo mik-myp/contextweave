@@ -104,6 +104,8 @@ export const lifecycleMessages = {
     '旧运行进程仍存在。请先手动关闭该浏览器，再重试恢复；系统不会仅凭旧 PID 终止进程。',
   'error.RECOVERY_LOCK_UNREADABLE':
     '运行锁损坏或不完整，请在确认浏览器关闭后检查数据目录中的运行锁。',
+  'error.PROXY_CREDENTIAL_TARGET_CHANGED':
+    '代理协议、地址、端口或用户名已更改，请重新输入密码或明确清除已存密码后再测试或保存。',
   'error.PROXY_MISSING': '绑定的代理已不存在，请重新选择代理。',
   'error.PROXY_UNREACHABLE': '无法连接代理。请检查地址和网络；不会自动降级为直连。',
   'error.PROXY_IN_USE': '代理仍被环境或回收站中的环境引用，请先解除绑定。',

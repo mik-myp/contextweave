@@ -122,6 +122,8 @@ export const lifecycleMessages = {
     'A previous process is still alive. Close that browser manually and retry. Saved PIDs alone are not used to terminate processes.',
   'error.RECOVERY_LOCK_UNREADABLE':
     'The runtime lock is unreadable. Inspect it after confirming the browser is closed.',
+  'error.PROXY_CREDENTIAL_TARGET_CHANGED':
+    'The proxy protocol, host, port, or username changed. Re-enter the password or explicitly clear the saved password before testing or saving.',
   'error.PROXY_MISSING': 'The selected proxy no longer exists. Choose another proxy.',
   'error.PROXY_UNREACHABLE':
     'Cannot connect to the proxy. Check its address and network; direct fallback is disabled.',

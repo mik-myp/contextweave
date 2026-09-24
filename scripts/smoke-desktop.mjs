@@ -1,9 +1,11 @@
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, realpath } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import assert from 'node:assert/strict'
 // A trailing Windows backslash escapes the launcher's closing argument quote.
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
@@ -16,7 +18,7 @@ const desktop = await _electron.launch({
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
 })
-let id
+let id, fixtureServer
 try {
   const page = await desktop.firstWindow()
   await page.waitForFunction(
@@ -47,6 +49,16 @@ try {
       }),
     )
   } else {
+    fixtureServer = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'text/html')
+      response.end(
+        '<!doctype html><title>ContextWeave worker fixture</title><h1>Safe screenshot</h1>',
+      )
+    })
+    fixtureServer.listen(0, '127.0.0.1')
+    await once(fixtureServer, 'listening')
+    const fixtureUrl = `http://127.0.0.1:${fixtureServer.address().port}`
+    const screenshots = []
     const created = await page.evaluate(() =>
       window.contextweave.environment.create({
         name: 'Desktop smoke fixture',
@@ -60,6 +72,26 @@ try {
       const started = await page.evaluate((id) => window.contextweave.environment.start(id), id)
       assert(started.ok, JSON.stringify(started))
       assert.equal(started.data.status, 'running')
+      const screenshot = await page.evaluate(
+        ({ environmentId, url, run }) =>
+          window.contextweave.worker.runSmoke({
+            protocolVersion: 1,
+            taskId: `task-smoke-${run}`,
+            environmentId,
+            kind: 'browser-smoke',
+            input: { url, timeoutMs: 10000 },
+          }),
+        { environmentId: id, url: fixtureUrl, run },
+      )
+      assert(screenshot.ok && screenshot.data.ok, JSON.stringify(screenshot))
+      assert.equal(screenshot.data.title, 'ContextWeave worker fixture')
+      const screenshotPath = screenshot.data.screenshotPath
+      const outputRoot = await realpath(join(directory, 'contextweave', 'worker-results'))
+      assert.equal(dirname(dirname(screenshotPath)), outputRoot)
+      assert.equal(basename(screenshotPath), 'screenshot.png')
+      const png = await readFile(screenshotPath)
+      assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+      screenshots.push(screenshotPath)
       const duplicate = await page.evaluate((id) => window.contextweave.environment.start(id), id)
       assert(!duplicate.ok, 'Duplicate launch must not create a second session')
       const blocked = await page.evaluate((id) => window.contextweave.environment.delete(id), id)
@@ -68,6 +100,7 @@ try {
       assert(stopped.ok, JSON.stringify(stopped))
       assert.equal(stopped.data.status, 'stopped')
     }
+    assert.equal(new Set(screenshots).size, 2, 'Every task must have a separately allocated output')
     const sessions = await page.evaluate(() => window.contextweave.activity.list())
     assert(sessions.ok)
     assert.equal(sessions.data.length, 2)
@@ -101,6 +134,7 @@ try {
         trashRestore: 'passed',
         duplicateLaunch: 'blocked',
         runningDelete: 'blocked',
+        workerScreenshot: 'passed-main-owned-descriptor',
         sessions: sessions.data.length,
         platform: process.platform,
         arch: process.arch,
@@ -117,5 +151,6 @@ try {
     /* Preserve the original test error; application shutdown also stops owned children. */
   }
   await desktop.close()
+  if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }

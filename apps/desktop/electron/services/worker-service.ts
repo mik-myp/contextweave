@@ -1,13 +1,18 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
-  workerResultSchema,
+  workerProcessResultSchema,
+  workerProcessRequestSchema,
   workerTaskSchema,
   type WorkerResult,
 } from '@contextweave/worker-protocol'
-import type { RuntimeSupervisor } from './runtime-supervisor'
 import { terminateChild } from './runtime-supervisor'
 import { ok, fail } from './result'
-export function createWorkerService(runtime: RuntimeSupervisor, workerPath: string) {
+import { createWorkerOutput } from './worker-output'
+export function createWorkerService(
+  runtime: { session(id: string): { port: number } | undefined },
+  workerPath: string,
+  outputRoot: string,
+) {
   const workers = new Map<
     string,
     { child: ChildProcess; cancel: () => void; environmentId: string }
@@ -22,18 +27,32 @@ export function createWorkerService(runtime: RuntimeSupervisor, workerPath: stri
         workers.has(task.taskId)
       )
         return fail('WORKER_BUSY')
-      // The v0.1 smoke operation is bounded and cannot write to Renderer-supplied filesystem paths.
-      if (task.input.screenshotPath || !/^https?:\/\//i.test(task.input.url))
-        return fail('INVALID_TASK')
-      const child = spawn(process.execPath, [workerPath], {
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-      })
+      const request = workerProcessRequestSchema.parse({ task, controlPort: session.port })
+      let outputFile: ReturnType<typeof createWorkerOutput>
+      try {
+        outputFile = createWorkerOutput(outputRoot)
+      } catch {
+        return fail('WORKER_OUTPUT_UNAVAILABLE')
+      }
+      let child: ChildProcess
+      try {
+        child = spawn(process.execPath, [workerPath], {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          // Descriptor 3 is the only screenshot destination the worker receives.
+          stdio: ['pipe', 'pipe', 'pipe', outputFile.descriptor],
+          windowsHide: true,
+        })
+      } catch {
+        outputFile.discard()
+        return fail('WORKER_FAILED')
+      } finally {
+        outputFile.closeDescriptor()
+      }
       return new Promise<ReturnType<typeof ok<WorkerResult>> | ReturnType<typeof fail>>(
         (resolve) => {
           let output = '',
             settled = false
+          let stopResult: ReturnType<typeof fail> | undefined
           const finish = (
             result: ReturnType<typeof ok<WorkerResult>> | ReturnType<typeof fail>,
           ) => {
@@ -41,40 +60,57 @@ export function createWorkerService(runtime: RuntimeSupervisor, workerPath: stri
             settled = true
             clearTimeout(timer)
             workers.delete(task.taskId)
+            if (!result.ok || !result.data.ok) {
+              try {
+                outputFile.discard()
+              } catch {
+                resolve(fail('WORKER_OUTPUT_CLEANUP_FAILED'))
+                return
+              }
+            }
             resolve(result)
           }
-          const cancel = () => {
+          const stop = (code: string) => {
+            if (settled || stopResult) return
+            stopResult = fail(code)
             terminateChild(child, 'SIGKILL')
-            finish(fail('CANCELLED'))
+            // Retain ownership until close: the child may still hold the output fd on Windows.
           }
-          const timer = setTimeout(() => {
-            terminateChild(child, 'SIGKILL')
-            finish(fail('WORKER_TIMEOUT'))
-          }, task.input.timeoutMs + 5000)
+          const cancel = () => stop('CANCELLED')
+          const timer = setTimeout(() => stop('WORKER_TIMEOUT'), task.input.timeoutMs + 5000)
           workers.set(task.taskId, { child, cancel, environmentId: task.environmentId })
           child.stdout?.on('data', (chunk: Buffer) => {
+            if (stopResult) return
             output += String(chunk)
-            if (output.length > 1024 * 1024) {
-              terminateChild(child, 'SIGKILL')
-              finish(fail('WORKER_OUTPUT_LIMIT'))
-            }
+            if (output.length > 1024 * 1024) stop('WORKER_OUTPUT_LIMIT')
           })
           child.stderr?.resume()
-          child.once('error', () => finish(fail('WORKER_FAILED')))
-          child.once('exit', () => {
+          child.once('error', () => {
+            stopResult ??= fail('WORKER_FAILED')
+          })
+          child.once('close', (code) => {
+            if (settled) return
+            if (stopResult) {
+              finish(stopResult)
+              return
+            }
+            if (code !== 0) {
+              finish(fail('WORKER_FAILED'))
+              return
+            }
             try {
-              const result = workerResultSchema.parse(
+              const result = workerProcessResultSchema.parse(
                 JSON.parse(output.trim().split(/\r?\n/).at(-1) ?? ''),
               )
               if (result.taskId !== task.taskId || result.environmentId !== task.environmentId)
                 throw new Error('WORKER_RESULT_MISMATCH')
-              finish(ok(result))
+              finish(ok(result.ok ? { ...result, screenshotPath: outputFile.validate() } : result))
             } catch {
               finish(fail('WORKER_FAILED'))
             }
           })
-          child.stdin?.on('error', () => finish(fail('WORKER_FAILED')))
-          child.stdin?.end(JSON.stringify({ task, controlPort: session.port }))
+          child.stdin?.on('error', () => stop('WORKER_FAILED'))
+          child.stdin?.end(JSON.stringify(request))
         },
       )
     },

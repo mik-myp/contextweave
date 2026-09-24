@@ -36,10 +36,10 @@ describe('proxy credential lifecycle', () => {
       const reference = repository.getProxy(created.proxyId)!.credentialRef
       const kept = saveProxyConfiguration(
         repository,
-        { proxyId: created.proxyId, config: { ...config, port: 9090 } },
+        { proxyId: created.proxyId, config: { ...config, name: 'Renamed proxy' } },
         credentials,
       )
-      expect(kept.port).toBe(9090)
+      expect(kept.name).toBe('Renamed proxy')
       expect(repository.getProxy(created.proxyId)!.credentialRef).toBe(reference)
       saveProxyConfiguration(
         repository,

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
 import { get as getHttps } from 'node:https'
-import { get as getHttp } from 'node:http'
+import { get as getHttp, type IncomingMessage } from 'node:http'
 import { Server } from 'proxy-chain'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import type { ProxyConfig, ProxyTestResult } from '@contextweave/contracts'
@@ -57,38 +57,55 @@ const proxyProbes: readonly ProxyProbe[] = [
   { url: 'http://www.gstatic.com/generate_204', kind: 'connectivity', timeoutMs: 4000 },
 ]
 
-async function probeProxy(target: ProxyProbe, agent: HttpsProxyAgent<string>, signal: AbortSignal) {
+async function probeProxy(
+  target: ProxyProbe,
+  agent: HttpsProxyAgent<string>,
+  proxy: ProxyTransport['authentication'],
+  signal: AbortSignal,
+) {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(target.timeoutMs)])
   const body = await new Promise<string>((resolve, reject) => {
-    const request = (target.url.startsWith('https:') ? getHttps : getHttp)(
-      target.url,
-      {
-        agent,
-        signal: requestSignal,
-        headers: { Accept: target.kind === 'ip' ? 'application/json' : '*/*' },
-      },
-      (response) => {
-        let body = '',
-          bytes = 0
-        if (response.statusCode !== (target.kind === 'ip' ? 200 : 204)) {
+    const receive = (response: IncomingMessage): void => {
+      let body = '',
+        bytes = 0
+      if (response.statusCode !== (target.kind === 'ip' ? 200 : 204)) {
+        request.destroy(new Error('PROXY_TEST_FAILED'))
+        return
+      }
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => {
+        bytes += Buffer.byteLength(chunk)
+        if (bytes > 4096) {
           request.destroy(new Error('PROXY_TEST_FAILED'))
           return
         }
-        response.setEncoding('utf8')
-        response.on('data', (chunk: string) => {
-          bytes += Buffer.byteLength(chunk)
-          if (bytes > 4096) {
-            request.destroy(new Error('PROXY_TEST_FAILED'))
-            return
-          }
-          body += chunk
-        })
-        response.once('error', reject)
-        response.once('aborted', () => reject(new Error('PROXY_TEST_FAILED')))
-        response.once('end', () => resolve(body))
-      },
-    )
-    request.once('error', reject)
+        body += chunk
+      })
+      response.on('error', reject)
+      response.once('aborted', () => reject(new Error('PROXY_TEST_FAILED')))
+      response.once('end', () => resolve(body))
+    }
+    const headers = { Accept: target.kind === 'ip' ? 'application/json' : '*/*' }
+    const request = target.url.startsWith('https:')
+      ? getHttps(target.url, { agent, signal: requestSignal, headers }, receive)
+      : getHttp(
+          {
+            // HTTP-only proxies may reject CONNECT, including CONNECT to port 80.
+            // Send ordinary absolute-form HTTP exclusively to the private bridge.
+            hostname: proxy.host,
+            port: proxy.port,
+            path: target.url,
+            agent: false, // Do not pool sockets for short-lived, authenticated local bridges.
+            signal: requestSignal,
+            headers: {
+              ...headers,
+              Host: new URL(target.url).host,
+              'Proxy-Authorization': `Basic ${Buffer.from(`${proxy.username}:${proxy.password}`).toString('base64')}`,
+            },
+          },
+          receive,
+        )
+    request.on('error', reject)
   })
   if (target.kind === 'connectivity') return undefined
   const parsed: unknown = JSON.parse(body)
@@ -121,7 +138,7 @@ export async function testProxyTransport(
       signal.throwIfAborted()
       const probeStarted = Date.now()
       try {
-        const exitIp = await probeProxy(probe, agent, signal)
+        const exitIp = await probeProxy(probe, agent, auth, signal)
         return {
           success: true,
           exitIp,

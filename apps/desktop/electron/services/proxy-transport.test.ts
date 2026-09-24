@@ -189,24 +189,28 @@ it('times out stalled bodies and rejects oversized IP responses without leaking 
   expect(result).toMatchObject({ success: false, errorCode: 'PROXY_TEST_TIMEOUT' })
   expect(JSON.stringify(result)).not.toMatch(/fixture-user|fixture-secret/)
 })
-it('tests an authenticated HTTP CONNECT proxy without a direct-network fallback', async () => {
-  const requests: string[] = []
+it('uses ordinary HTTP forwarding for HTTP-only proxies and never bypasses rejected HTTPS tunnels', async () => {
+  const requests: string[] = [],
+    tunnels: string[] = []
   const sockets = new Set<Duplex>()
-  const proxy = httpServer()
-  proxy.on('connect', (request, socket) => {
+  const proxy = httpServer((request, response) => {
     requests.push(request.headers['proxy-authorization'] ?? '')
+    expect(request.url).toBe('http://no-local-dns.invalid/connected')
+    expect(request.headers.host).toBe('no-local-dns.invalid')
+    response.statusCode =
+      request.headers['proxy-authorization'] ===
+      `Basic ${Buffer.from('user:secret').toString('base64')}`
+        ? 204
+        : 407
+    response.end()
+  })
+  proxy.on('connect', (request, socket) => {
+    tunnels.push(request.url ?? '')
     sockets.add(socket)
     socket.once('close', () => sockets.delete(socket))
     socket.on('error', () => {})
-    if (
-      request.headers['proxy-authorization'] !==
-      `Basic ${Buffer.from('user:secret').toString('base64')}`
-    ) {
-      socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n')
-      return
-    }
-    socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
-    socket.once('data', () => socket.end('HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n'))
+    // Real HTTP-only proxies can allow absolute-form GET while forbidding CONNECT.
+    socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n')
   })
   proxy.listen(0, '127.0.0.1')
   await once(proxy, 'listening')
@@ -226,9 +230,16 @@ it('tests an authenticated HTTP CONNECT proxy without a direct-network fallback'
   const config = { type: 'http' as const, host: '127.0.0.1', port: address.port, username: 'user' }
   expect(
     await testProxyTransport(config, 'secret', AbortSignal.timeout(3000), probes),
-  ).toMatchObject({ success: true })
+  ).toMatchObject({ success: true, connectivity: 'http', exitIpUnavailable: true })
   expect(
     await testProxyTransport(config, 'wrong', AbortSignal.timeout(3000), probes),
   ).toMatchObject({ success: false })
   expect(requests).toHaveLength(2)
+  expect(tunnels).toEqual([])
+  expect(
+    await testProxyTransport(config, 'secret', AbortSignal.timeout(3000), [
+      { ...probes[0], url: 'https://no-local-dns.invalid/connected' },
+    ]),
+  ).toMatchObject({ success: false })
+  expect(tunnels).toEqual(['no-local-dns.invalid:443'])
 })

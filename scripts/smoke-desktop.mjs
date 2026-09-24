@@ -146,7 +146,11 @@ try {
           }),
         { environmentId: id, url: fixtureUrl, run },
       )
-      assert(screenshot.ok && screenshot.data.ok, JSON.stringify(screenshot))
+      assert(screenshot.ok && screenshot.data.ok, JSON.stringify({ run, screenshot }))
+      const capturedPage = context.pages().find((tab) => tab.url() === `${fixtureUrl}/`)
+      assert(capturedPage, 'The screenshot task must use an existing fixture page')
+      assert.equal(await capturedPage.evaluate(() => document.visibilityState), 'visible',
+        'The Worker must activate its own selected tab before taking a headful screenshot')
       assert.equal(screenshot.data.title, 'ContextWeave worker fixture')
       const screenshotPath = screenshot.data.screenshotPath
       const outputRoot = await realpath(join(directory, 'contextweave', 'worker-results'))

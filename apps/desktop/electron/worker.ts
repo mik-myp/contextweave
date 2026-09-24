@@ -48,13 +48,21 @@ async function run(): Promise<WorkerProcessResult> {
         },
       )
     }
+    // Restored sessions may contain multiple tabs. Headful Chromium can defer
+    // screenshot composition for a background tab, especially on Windows.
+    // Activate the page this Worker actually selected, not another CDP client's first page.
+    await page.bringToFront()
     await page.goto(task.input.url, {
       waitUntil: 'domcontentloaded',
       timeout: task.input.timeoutMs,
     })
     const title = await page.title()
     // Never give Playwright a path derived from task input. Main opened this descriptor.
-    const screenshot = await page.screenshot({ type: 'png', fullPage: false })
+    const screenshot = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+      timeout: task.input.timeoutMs,
+    })
     if (screenshot.length > maxWorkerScreenshotBytes) throw new Error('WORKER_OUTPUT_LIMIT')
     writeFileSync(workerScreenshotDescriptor, screenshot)
     return {

@@ -67,9 +67,6 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3)
       electron-log:
         specifier: ^5.4.4
         version: 5.4.4
@@ -291,9 +288,6 @@ importers:
       '@contextweave/contracts':
         specifier: workspace:*
         version: link:../contracts
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3)
     devDependencies:
       '@types/node':
         specifier: ^22.20.4
@@ -1649,9 +1643,6 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
-  '@types/better-sqlite3@7.6.13':
-    resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
-
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
 
@@ -1959,10 +1950,6 @@ packages:
     resolution: {integrity: sha512-gMmEShwwq7FJqMwvfRwvCl00v4kN+KOfJqXn+f4nrufak5gNHJOksd/60Dvjuz7sI8Y5WiSFBa8FEYr+zoyqCw==}
     engines: {node: '>=6.0.0'}
     hasBin: true
-
-  better-sqlite3@13.0.3:
-    resolution: {integrity: sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==}
-    engines: {node: '>=22'}
 
   bidi-js@1.1.0:
     resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
@@ -2390,98 +2377,6 @@ packages:
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
-
-  drizzle-orm@0.45.2:
-    resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
-    peerDependencies:
-      '@aws-sdk/client-rds-data': '>=3'
-      '@cloudflare/workers-types': '>=4'
-      '@electric-sql/pglite': '>=0.2.0'
-      '@libsql/client': '>=0.10.0'
-      '@libsql/client-wasm': '>=0.10.0'
-      '@neondatabase/serverless': '>=0.10.0'
-      '@op-engineering/op-sqlite': '>=2'
-      '@opentelemetry/api': ^1.4.1
-      '@planetscale/database': '>=1.13'
-      '@prisma/client': '*'
-      '@tidbcloud/serverless': '*'
-      '@types/better-sqlite3': '*'
-      '@types/pg': '*'
-      '@types/sql.js': '*'
-      '@upstash/redis': '>=1.34.7'
-      '@vercel/postgres': '>=0.8.0'
-      '@xata.io/client': '*'
-      better-sqlite3: '>=7'
-      bun-types: '*'
-      expo-sqlite: '>=14.0.0'
-      gel: '>=2'
-      knex: '*'
-      kysely: '*'
-      mysql2: '>=2'
-      pg: '>=8'
-      postgres: '>=3'
-      prisma: '*'
-      sql.js: '>=1'
-      sqlite3: '>=5'
-    peerDependenciesMeta:
-      '@aws-sdk/client-rds-data':
-        optional: true
-      '@cloudflare/workers-types':
-        optional: true
-      '@electric-sql/pglite':
-        optional: true
-      '@libsql/client':
-        optional: true
-      '@libsql/client-wasm':
-        optional: true
-      '@neondatabase/serverless':
-        optional: true
-      '@op-engineering/op-sqlite':
-        optional: true
-      '@opentelemetry/api':
-        optional: true
-      '@planetscale/database':
-        optional: true
-      '@prisma/client':
-        optional: true
-      '@tidbcloud/serverless':
-        optional: true
-      '@types/better-sqlite3':
-        optional: true
-      '@types/pg':
-        optional: true
-      '@types/sql.js':
-        optional: true
-      '@upstash/redis':
-        optional: true
-      '@vercel/postgres':
-        optional: true
-      '@xata.io/client':
-        optional: true
-      better-sqlite3:
-        optional: true
-      bun-types:
-        optional: true
-      expo-sqlite:
-        optional: true
-      gel:
-        optional: true
-      knex:
-        optional: true
-      kysely:
-        optional: true
-      mysql2:
-        optional: true
-      pg:
-        optional: true
-      postgres:
-        optional: true
-      prisma:
-        optional: true
-      sql.js:
-        optional: true
-      sqlite3:
-        optional: true
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -3480,10 +3375,6 @@ packages:
   node-abi@4.35.0:
     resolution: {integrity: sha512-ymk4aIzxdPopw2giv8Fs1Ec6vybGkjmyxUwVqhkI4MCy2tVfXdkOGGWieWVjL0THgH+7a8lRdevyupoYj3Js/Q==}
     engines: {node: '>=22.12.0'}
-
-  node-addon-api@8.9.2:
-    resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
-    engines: {node: ^18 || ^20 || >= 21}
 
   node-api-version@0.2.1:
     resolution: {integrity: sha512-2xP/IGGMmmSQpI1+O/k72jF/ykvZ89JeuKX3TLJAYPDVLUalrshrLHkeVcCCZqG/eEa635cr8IBYzgnDvM2O8Q==}
@@ -5807,11 +5698,6 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.8
 
-  '@types/better-sqlite3@7.6.13':
-    dependencies:
-      '@types/node': 22.20.4
-    optional: true
-
   '@types/cacheable-request@6.0.3':
     dependencies:
       '@types/http-cache-semantics': 4.2.0
@@ -6164,11 +6050,6 @@ snapshots:
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.11.25: {}
-
-  better-sqlite3@13.0.3:
-    dependencies:
-      node-addon-api: 8.9.2
-    optional: true
 
   bidi-js@1.1.0:
     dependencies:
@@ -6572,11 +6453,6 @@ snapshots:
   dotenv@16.6.1: {}
 
   dotenv@17.4.2: {}
-
-  drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3):
-    optionalDependencies:
-      '@types/better-sqlite3': 7.6.13
-      better-sqlite3: 13.0.3
 
   dunder-proto@1.0.1:
     dependencies:
@@ -7655,9 +7531,6 @@ snapshots:
   node-abi@4.35.0:
     dependencies:
       semver: 7.8.5
-
-  node-addon-api@8.9.2:
-    optional: true
 
   node-api-version@0.2.1:
     dependencies:

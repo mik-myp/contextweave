@@ -1,4 +1,5 @@
 export const adminMessages = {
+  'update.installing': '正在准备安装；完成后应用会自动退出并重新启动…',
   'settings.updates': '检查更新',
   'update.availableHelp': '新版已发布。安装前可查看发行说明，了解本次变更。',
   'update.description': '手动检查 ContextWeave 正式版本，下载适合本机的安装包。',
@@ -14,13 +15,13 @@ export const adminMessages = {
   'update.unsupported': '发现新版本，但此版本没有适合本机平台和架构的安装包。可查看发行说明。',
   'update.downloading': '正在下载并校验',
   'update.ready':
-    '安装包已通过 SHA-256 校验。请先停止运行环境，再打开安装包；开始安装前退出 ContextWeave，按系统提示完成更新。',
+    '安装包已通过 SHA-256 校验。请先停止运行环境，点击安装后应用将自动退出、安装并启动新版本。',
   'update.cancelDownload': '取消下载',
-  'update.openInstaller': '打开安装包',
-  'update.download': '下载安装包',
+  'update.openInstaller': '安装并重启',
+  'update.download': '下载、安装并重启',
   'update.releaseNotes': '发行说明',
   'update.manualHelp':
-    '仅在你点击时检查和下载，不自动安装或重启。macOS 打开 DMG 后替换“应用程序”中的 ContextWeave；Windows 运行安装程序。下载离开本页后仍会继续。',
+    '检查更新不会强制重启。确认更新后，应用会继续下载、校验、正常退出并自动安装和重启。请先停止所有环境；仅支持可写位置的 macOS 应用和 Windows 安装版，开发运行或 Windows 便携版需使用发行页安装包。',
 
   'table.moreActions': '更多操作',
   'env.stopBeforeTrash': '请先停止环境或完成运行恢复，再移入回收站。',
@@ -49,7 +50,7 @@ export const adminMessages = {
   'proxy.testTimeout': '请求超时，请检查代理是否可用',
   'proxy.testFailedHelp': '请检查地址、凭据和代理网络',
   'proxy.testDescription':
-    '通过此代理访问 HTTPS 出口检测服务，检查认证、网络和出口 IP。测试不会保存表单。',
+    '通过代理验证网络连通性，优先检测 HTTPS 与出口 IP；IP 服务不可用时尝试独立连通性目标。若仅 HTTP 成功会单独标注，不代表已验证 HTTPS。测试不会保存表单。',
   'proxy.connection': '连接测试',
   'kernel.platformUnsupported': '当前平台暂不支持',
   'kernel.platformHelp':

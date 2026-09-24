@@ -74,6 +74,8 @@ export function buildChromiumArgs(input: LaunchInput): string[] {
     '--remote-debugging-address=127.0.0.1',
     '--no-first-run',
     '--no-default-browser-check',
+    '--restore-last-session',
+    '--disable-background-mode',
     '--disable-features=Translate',
     ...input.proxyArgs,
     ...input.commonArgs,

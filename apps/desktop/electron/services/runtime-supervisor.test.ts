@@ -14,6 +14,7 @@ import {
   acquireRuntimeLock,
   runtimeLockPath,
 } from '@contextweave/storage'
+import type { connectBrowserSettings } from '../browser-settings'
 import { createRuntimeSupervisor } from './runtime-supervisor'
 import { createKernelService } from './kernel-service'
 import { createCommandCoordinator } from './command-coordinator'
@@ -71,12 +72,12 @@ function fixture(kernelVersion = 'local') {
     ready: vi
       .fn<(port: number, signal: AbortSignal) => Promise<string | undefined>>()
       .mockResolvedValue('Chrome/123.0.0.1'),
-    settings: vi.fn(async () => () => {}),
+    settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
   }
   const runtime = createRuntimeSupervisor({
     repository,
     kernels,
-    credentials: { save: vi.fn(), remove: vi.fn(), read: vi.fn() },
+    credentials: { cleanupTemporaryFiles: vi.fn(), save: vi.fn(), remove: vi.fn(), read: vi.fn() },
     preflight,
     changed: vi.fn(),
     driver,
@@ -133,6 +134,37 @@ describe('runtime supervisor', () => {
     expect(existsSync(dir)).toBe(true)
     expect(existsSync(runtimeLockPath(dir))).toBe(false)
     expect(repository.listRuntimeSessions()[0]?.endedAt).toBeTruthy()
+  })
+  it('treats CDP disconnect followed by a normal browser exit as stopped rather than crashed', async () => {
+    const { runtime, driver, child, repository, dir } = fixture()
+    expect((await runtime.start('env-a')).ok).toBe(true)
+    driver.settings.mock.calls[0][2]?.(new Error('CDP_DISCONNECTED'))
+    expect(repository.get('env-a')?.status).toBe('running')
+    Object.defineProperty(child, 'exitCode', { value: 0, configurable: true })
+    child.emit('exit', 0, null)
+    await Promise.resolve()
+    expect(repository.get('env-a')?.status).toBe('stopped')
+    expect(repository.listRuntimeSessions()[0]).toMatchObject({
+      status: 'stopped',
+      exitReason: 'BROWSER_CLOSED',
+    })
+    expect(child.kill).not.toHaveBeenCalled()
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+  })
+  it('automatically stops after the last browser page closes and records its actual cause', async () => {
+    const { runtime, driver, child, repository, dir } = fixture()
+    expect((await runtime.start('env-a')).ok).toBe(true)
+    driver.settings.mock.calls[0][4]?.()
+    expect(repository.get('env-a')?.status).toBe('stopping')
+    // Model the process exiting in response to Browser.close while stop owns cleanup.
+    child.kill()
+    expect((await runtime.stop('env-a')).ok).toBe(true)
+    expect(repository.listRuntimeSessions()[0]).toMatchObject({
+      status: 'stopped',
+      exitReason: 'BROWSER_CLOSED',
+    })
+    expect(repository.get('env-a')?.status).toBe('stopped')
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
   })
   it('cancels during startup and releases ownership only after the child exits', async () => {
     const { runtime, driver, repository, dir } = fixture()

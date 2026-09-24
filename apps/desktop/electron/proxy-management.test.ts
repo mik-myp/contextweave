@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
-import { saveProxyConfiguration, toProxySummary } from './proxy-management'
+import { drainCredentialCleanup, saveProxyConfiguration, toProxySummary } from './proxy-management'
 const directories: string[] = []
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
@@ -79,26 +79,27 @@ describe('proxy credential lifecycle', () => {
       database.close()
     }
   })
-  it('restores the prior configuration if removing its old credential fails', () => {
+  it('keeps the committed configuration and retries old credential cleanup without a database rollback', () => {
     const { database, repository, secrets, credentials } = setup()
     try {
       const created = saveProxyConfiguration(repository, { config, password: 'old' }, credentials)
-      const oldReference = repository.getProxy(created.proxyId)!.credentialRef
-      expect(() =>
-        saveProxyConfiguration(
-          repository,
-          { proxyId: created.proxyId, config: { ...config, port: 9090 }, password: 'new' },
-          {
-            ...credentials,
-            remove: (reference) => {
-              if (reference === oldReference) throw new Error('Credential vault read-only')
-              credentials.remove(reference)
-            },
+      const oldReference = repository.getProxy(created.proxyId)!.credentialRef!
+      saveProxyConfiguration(
+        repository,
+        { proxyId: created.proxyId, config: { ...config, port: 9090 }, password: 'new' },
+        {
+          ...credentials,
+          remove: () => {
+            throw new Error('Credential vault read-only')
           },
-        ),
-      ).toThrow('Credential vault read-only')
-      expect(repository.getProxy(created.proxyId)!.port).toBe(8080)
-      expect([...secrets.values()]).toEqual(['old'])
+        },
+      )
+      expect(repository.getProxy(created.proxyId)!.port).toBe(9090)
+      expect([...secrets.values()]).toEqual(['old', 'new'])
+      expect(repository.pendingCredentialCleanup()).toEqual([oldReference])
+      expect(drainCredentialCleanup(repository, credentials)).toBe(true)
+      expect([...secrets.values()]).toEqual(['new'])
+      expect(repository.pendingCredentialCleanup()).toEqual([])
     } finally {
       database.close()
     }
@@ -122,7 +123,7 @@ describe('proxy credential lifecycle', () => {
       expect(repository.listProxies()).toHaveLength(0)
       expect(() =>
         saveProxyConfiguration(repository, { proxyId: 'removed', config }, credentials),
-      ).toThrow('不存在')
+      ).toThrow('NOT_FOUND')
     } finally {
       database.close()
     }

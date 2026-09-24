@@ -161,6 +161,7 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
                     </Select>
                   )}
                 />
+                <FieldDescription>{t('proxy.typeHelp')}</FieldDescription>
               </Field>
               <div className="grid gap-4 sm:grid-cols-[1fr_7rem]">
                 <Field data-invalid={!!errors.host}>

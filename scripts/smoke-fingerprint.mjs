@@ -32,9 +32,20 @@ const upstream = new Server({
   host: '127.0.0.1',
   port: 0,
   verbose: false,
-  prepareRequestFunction: ({ username, password }) => {
+  prepareRequestFunction: ({ username, password, hostname, isHttp }) => {
     if (username === 'fixture-user' && password === 'fixture-password') forwarded++
-    return { requestAuthentication: username !== 'fixture-user' || password !== 'fixture-password' }
+    return {
+      requestAuthentication: username !== 'fixture-user' || password !== 'fixture-password',
+      ...(isHttp && hostname === 'remote-dns.contextweave.invalid'
+        ? {
+            customResponseFunction: () => ({
+              statusCode: 200,
+              headers: { 'content-type': 'text/html' },
+              body: '<title>Remote DNS fixture</title>',
+            }),
+          }
+        : {}),
+    }
   },
 })
 upstream.on('requestFailed', () => {})
@@ -140,6 +151,33 @@ try {
       )
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
       const context = browser.contexts()[0]
+      if (run) {
+        const deadline = Date.now() + 10000
+        while (
+          !context.pages().some((tab) => tab.url() === fixtureUrl + '/') &&
+          Date.now() < deadline
+        )
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        assert(
+          context.pages().some((tab) => tab.url() === fixtureUrl + '/'),
+          'Fingerprint Chromium must restore the previous tab',
+        )
+      }
+      const diagnostic = await context.newPage()
+      await diagnostic.goto('chrome://version')
+      const versionText = await diagnostic.locator('body').innerText()
+      assert(
+        !versionText.includes('--host-resolver-rules'),
+        'Do not pass the unsupported resolver flag',
+      )
+      assert(!versionText.includes('--test-type'), 'Do not hide security warnings with test mode')
+      await diagnostic.goto('http://remote-dns.contextweave.invalid')
+      assert.equal(
+        await diagnostic.title(),
+        'Remote DNS fixture',
+        'HTTP proxy must resolve destinations without a local DNS result',
+      )
+      await diagnostic.close()
       const tab = await context.newPage()
       await tab.goto(fixtureUrl)
       const observation = await tab.evaluate(() => {
@@ -178,7 +216,23 @@ try {
         document.cookie = 'cw-cookie=retained;max-age=3600;path=/'
       })
       assert((await context.cookies()).some((cookie) => cookie.name === 'cw-cookie'))
-      assert((await page.evaluate((id) => window.contextweave.environment.stop(id), id)).ok)
+      if (run === 0) {
+        const control = await browser.newBrowserCDPSession()
+        await control.send('Browser.close').catch(() => {})
+      } else {
+        for (const tab of context.pages()) await tab.close().catch(() => {})
+      }
+      let stopped
+      const closeDeadline = Date.now() + 15000
+      do {
+        stopped = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+        if (stopped.ok && stopped.data.status === 'stopped') break
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      } while (Date.now() < closeDeadline)
+      assert(
+        stopped.ok && stopped.data.status === 'stopped',
+        'Closing the browser must stop the environment without a manual stop command',
+      )
     }
     const identity = ({ retained: _retained, ...value }) => value
     assert.deepEqual(
@@ -244,6 +298,9 @@ try {
         identityStable: true,
         dataRetained: true,
         authenticatedProxy: 'passed',
+        restoredTabs: 'passed',
+        browserCloseStops: 'passed',
+        remoteDnsWithoutUnsafeFlag: 'passed',
         trashRestore: 'passed',
         kernelVersion: installed.data.version,
         platform: process.platform,

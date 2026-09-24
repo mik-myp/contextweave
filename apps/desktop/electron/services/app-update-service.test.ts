@@ -30,7 +30,7 @@ const roots: string[] = []
 async function fixture(overrides: Partial<Parameters<typeof createAppUpdateService>[0]> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'contextweave-update-test-'))
   roots.push(root)
-  const openPath = vi.fn(async () => '')
+  const installPackage = vi.fn(async () => {})
   const openExternal = vi.fn(async () => {})
   const fetchRelease = vi.fn(async () => metadata)
   const download: typeof downloadVerifiedFile = (info, path, signal, report) =>
@@ -40,22 +40,22 @@ async function fixture(overrides: Partial<Parameters<typeof createAppUpdateServi
     currentVersion: '0.1.0',
     platform: 'darwin',
     arch: 'arm64',
-    openPath,
+    installPackage,
     openExternal,
     fetchRelease,
     download,
     hasActiveEnvironments: () => false,
     ...overrides,
   })
-  return { root, service, openPath, openExternal, fetchRelease }
+  return { root, service, installPackage, openExternal, fetchRelease }
 }
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-describe('manual application updates', () => {
+describe('verified application updates', () => {
   it('does nothing until requested, downloads once, verifies bytes and opens only on explicit command', async () => {
-    const { service, fetchRelease, openPath, root } = await fixture()
+    const { service, fetchRelease, installPackage, root } = await fixture()
     expect(service.getState().phase).toBe('idle')
     expect(fetchRelease).not.toHaveBeenCalled()
     const check = service.check()
@@ -66,26 +66,43 @@ describe('manual application updates', () => {
     expect(service.download()).toBe(downloading)
     expect((await downloading).phase).toBe('ready')
     expect(await readdir(root)).toEqual([fileName])
-    expect(openPath).not.toHaveBeenCalled()
-    expect((await service.openInstaller()).phase).toBe('ready')
-    expect(openPath).toHaveBeenCalledWith(join(root, fileName))
+    expect(installPackage).not.toHaveBeenCalled()
+    expect((await service.openInstaller()).phase).toBe('installing')
+    expect(installPackage).toHaveBeenCalledWith(
+      join(root, fileName),
+      expect.objectContaining({ version: '0.2.0' }),
+      expect.any(AbortSignal),
+    )
+  })
+  it('does not start a second download or installation after handing off to the installer', async () => {
+    const { service, installPackage, fetchRelease } = await fixture()
+    await service.check()
+    await service.install()
+    expect((await service.check()).phase).toBe('installing')
+    expect((await service.download()).phase).toBe('installing')
+    expect((await service.install()).phase).toBe('installing')
+    expect(installPackage).toHaveBeenCalledTimes(1)
+    expect(fetchRelease).toHaveBeenCalledTimes(1)
   })
   it('does not open while environments are active and allows retry after stopping them', async () => {
     let active = true
-    const { service, openPath } = await fixture({ hasActiveEnvironments: () => active })
+    const { service, installPackage } = await fixture({ hasActiveEnvironments: () => active })
     await service.check()
     await service.download()
     expect(await service.openInstaller()).toMatchObject({
       phase: 'ready',
       errorCode: 'UPDATE_ENVIRONMENTS_ACTIVE',
     })
-    expect(openPath).not.toHaveBeenCalled()
+    expect(installPackage).not.toHaveBeenCalled()
     active = false
-    expect(await service.openInstaller()).toMatchObject({ phase: 'ready', errorCode: undefined })
-    expect(openPath).toHaveBeenCalledTimes(1)
+    expect(await service.openInstaller()).toMatchObject({
+      phase: 'installing',
+      errorCode: undefined,
+    })
+    expect(installPackage).toHaveBeenCalledTimes(1)
   })
   it('rejects tampering between download and open, then allows a new verified download', async () => {
-    const { service, openPath, root } = await fixture()
+    const { service, installPackage, root } = await fixture()
     await service.check()
     await service.download()
     await writeFile(join(root, fileName), Buffer.alloc(bytes.length))
@@ -93,17 +110,17 @@ describe('manual application updates', () => {
       phase: 'error',
       errorCode: 'PACKAGE_HASH_MISMATCH',
     })
-    expect(openPath).not.toHaveBeenCalled()
+    expect(installPackage).not.toHaveBeenCalled()
     expect((await service.download()).phase).toBe('ready')
     await service.openInstaller()
-    expect(openPath).toHaveBeenCalledTimes(1)
+    expect(installPackage).toHaveBeenCalledTimes(1)
   })
   it('cancels an in-flight download, removes partial files and keeps the release available for retry', async () => {
     let started!: () => void
     const begun = new Promise<void>((resolve) => {
       started = resolve
     })
-    const { service, root, openPath } = await fixture({
+    const { service, root, installPackage } = await fixture({
       download: async (_info, path, signal, report) => {
         await writeFile(path, 'partial')
         report(7, bytes.length)
@@ -124,10 +141,10 @@ describe('manual application updates', () => {
     })
     await download
     expect(await readdir(root)).toEqual([])
-    expect(openPath).not.toHaveBeenCalled()
+    expect(installPackage).not.toHaveBeenCalled()
   })
   it('cleans failed hash checks and never opens failed downloads', async () => {
-    const { service, root, openPath } = await fixture({
+    const { service, root, installPackage } = await fixture({
       download: (info, path, signal, report) =>
         downloadVerifiedFile(
           info,
@@ -144,7 +161,7 @@ describe('manual application updates', () => {
     })
     expect(await readdir(root)).toEqual([])
     await expect(service.openInstaller()).rejects.toThrow('UPDATE_NOT_READY')
-    expect(openPath).not.toHaveBeenCalled()
+    expect(installPackage).not.toHaveBeenCalled()
   })
   it('validates IPC payloads and releases and returns recoverable errors', async () => {
     const { service, openExternal } = await fixture()
@@ -182,5 +199,24 @@ describe('manual application updates', () => {
       errorCode: 'UPDATE_CHECK_FAILED',
       release: undefined,
     })
+  })
+})
+
+it('downloads, verifies, installs and requests restart as one explicit update command', async () => {
+  const { service, installPackage } = await fixture()
+  await service.check()
+  expect(await service.install()).toMatchObject({ phase: 'installing', errorCode: undefined })
+  expect(installPackage).toHaveBeenCalledOnce()
+})
+it('retains the verified package for retry when installation preparation is denied', async () => {
+  const { service } = await fixture({
+    installPackage: async () => {
+      throw new Error('UPDATE_INSTALL_PERMISSION')
+    },
+  })
+  await service.check()
+  expect(await service.install()).toMatchObject({
+    phase: 'ready',
+    errorCode: 'UPDATE_INSTALL_PERMISSION',
   })
 })

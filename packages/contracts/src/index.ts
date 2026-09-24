@@ -206,6 +206,14 @@ export const proxySummarySchema = proxyConfigSchema.omit({ credentialRef: true }
 })
 export type ProxySummary = z.infer<typeof proxySummarySchema>
 
+export const credentialCleanupStatusSchema = z
+  .object({
+    pendingCount: z.number().int().nonnegative(),
+    temporaryFilesPending: z.boolean(),
+  })
+  .strict()
+export type CredentialCleanupStatus = z.infer<typeof credentialCleanupStatusSchema>
+
 export const saveProxyInputSchema = z
   .object({
     proxyId: z.string().trim().min(1).optional(),
@@ -230,6 +238,43 @@ export const saveProxyInputSchema = z
   })
 export type SaveProxyInput = z.infer<typeof saveProxyInputSchema>
 
+export const importProxiesInputSchema = z.object({
+  text: z.string().min(1).max(65536).refine((text) => text.split(/\r?\n/).length <= 200),
+  defaultType: proxyTypeSchema.default('http'),
+}).strict()
+export type ImportProxiesInput = z.infer<typeof importProxiesInputSchema>
+export const importProxyRowSchema = z.object({
+  line: z.number().int().min(1).max(200),
+  status: z.enum(['created', 'skipped', 'error']),
+  proxyId: z.string().min(1).optional(),
+  code: z.enum(['INVALID_PROXY_LINE', 'PROXY_ALREADY_EXISTS', 'CREDENTIAL_UNAVAILABLE', 'PROXY_SAVE_FAILED']).optional(),
+}).strict()
+export const importProxiesResultSchema = z.array(importProxyRowSchema).max(200)
+export type ImportProxiesResult = z.infer<typeof importProxiesResultSchema>
+
+/** Parse one bounded import line. Callers must never expose raw parser errors or the source URI. */
+export function parseProxyLine(line: string, defaultType: ProxyType = 'http'): SaveProxyInput {
+  const text = line.trim()
+  if (!text || /[\s\u0000-\u001f\u007f]/.test(text)) throw new Error('INVALID_PROXY_LINE')
+  const scheme = /^([a-z0-9]+):\/\//i.exec(text)
+  const protocol = (scheme?.[1] ?? defaultType).toLowerCase()
+  const type = proxyTypeSchema.parse(['socket5', 'socks5h'].includes(protocol) ? 'socks5' : protocol)
+  const address = scheme ? text.slice(scheme[0].length) : text
+  const legacy = /^(\[[^\]]+\]|[^:@/?#]+):(\d+)(?::([^:]+):(.+))?$/.exec(address)
+  if (legacy) return saveProxyInputSchema.parse({
+    config: { type, host: legacy[1], port: Number(legacy[2]), username: legacy[3] },
+    password: legacy[4],
+  })
+  const url = new URL(`${type}://${address}`)
+  const explicitPort = /:(\d+)\/?$/.exec(address.split('@').at(-1) ?? '')?.[1]
+  if (!explicitPort || !['', '/'].includes(url.pathname) || url.search || url.hash)
+    throw new Error('INVALID_PROXY_LINE')
+  return saveProxyInputSchema.parse({
+    config: { type, host: url.hostname, port: Number(explicitPort), username: decodeURIComponent(url.username) || undefined },
+    password: decodeURIComponent(url.password) || undefined,
+  })
+}
+
 export const proxyTestInputSchema = z.union([
   z.object({ proxyId: z.string().min(1) }).strict(),
   saveProxyInputSchema,
@@ -240,6 +285,8 @@ export const proxyTestResultSchema = z.object({
   latencyMs: z.number().nonnegative(),
   checkedAt: z.string().datetime(),
   exitIp: z.string().optional(),
+  exitIpUnavailable: z.boolean().optional(),
+  connectivity: z.enum(['http', 'https']).optional(),
   errorCode: z.enum(['PROXY_TEST_FAILED', 'PROXY_TEST_TIMEOUT', 'CREDENTIAL_UNAVAILABLE']).optional(),
 })
 export type ProxyTestResult = z.infer<typeof proxyTestResultSchema>

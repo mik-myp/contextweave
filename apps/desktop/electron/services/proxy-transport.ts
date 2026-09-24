@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
-import { get } from 'node:https'
+import { get as getHttps } from 'node:https'
+import { get as getHttp } from 'node:http'
 import { Server } from 'proxy-chain'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import type { ProxyConfig, ProxyTestResult } from '@contextweave/contracts'
@@ -41,17 +42,69 @@ export async function openProxyTransport(config: ProxyConfig, password = '') {
     args: [
       `--proxy-server=http://127.0.0.1:${server.port}`,
       '--proxy-bypass-list=<-loopback>',
-      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost',
+      '--dns-prefetch-disable',
+      '--disable-background-networking',
       '--disable-quic',
     ],
     close: () => (closed ??= server.close(true)),
   }
 }
 export type ProxyTransport = Awaited<ReturnType<typeof openProxyTransport>>
+type ProxyProbe = { url: string; kind: 'ip' | 'connectivity'; timeoutMs: number }
+const proxyProbes: readonly ProxyProbe[] = [
+  { url: 'https://api.ipify.org?format=json', kind: 'ip', timeoutMs: 5000 },
+  { url: 'https://www.gstatic.com/generate_204', kind: 'connectivity', timeoutMs: 5000 },
+  { url: 'http://www.gstatic.com/generate_204', kind: 'connectivity', timeoutMs: 4000 },
+]
+
+async function probeProxy(target: ProxyProbe, agent: HttpsProxyAgent<string>, signal: AbortSignal) {
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(target.timeoutMs)])
+  const body = await new Promise<string>((resolve, reject) => {
+    const request = (target.url.startsWith('https:') ? getHttps : getHttp)(
+      target.url,
+      {
+        agent,
+        signal: requestSignal,
+        headers: { Accept: target.kind === 'ip' ? 'application/json' : '*/*' },
+      },
+      (response) => {
+        let body = '',
+          bytes = 0
+        if (response.statusCode !== (target.kind === 'ip' ? 200 : 204)) {
+          request.destroy(new Error('PROXY_TEST_FAILED'))
+          return
+        }
+        response.setEncoding('utf8')
+        response.on('data', (chunk: string) => {
+          bytes += Buffer.byteLength(chunk)
+          if (bytes > 4096) {
+            request.destroy(new Error('PROXY_TEST_FAILED'))
+            return
+          }
+          body += chunk
+        })
+        response.once('error', reject)
+        response.once('aborted', () => reject(new Error('PROXY_TEST_FAILED')))
+        response.once('end', () => resolve(body))
+      },
+    )
+    request.once('error', reject)
+  })
+  if (target.kind === 'connectivity') return undefined
+  const parsed: unknown = JSON.parse(body)
+  const ip =
+    typeof parsed === 'object' && parsed !== null && 'ip' in parsed && typeof parsed.ip === 'string'
+      ? parsed.ip
+      : undefined
+  if (!ip || !isIP(ip)) throw new Error('PROXY_TEST_FAILED')
+  return ip
+}
+
 export async function testProxyTransport(
   config: ProxyConfig,
   password: string,
   signal = AbortSignal.timeout(15000),
+  probes: readonly ProxyProbe[] = proxyProbes,
 ): Promise<ProxyTestResult> {
   const started = Date.now()
   let transport: ProxyTransport | undefined
@@ -64,43 +117,25 @@ export async function testProxyTransport(
     url.username = auth.username
     url.password = auth.password
     agent = new HttpsProxyAgent(url)
-    const body = await new Promise<string>((resolve, reject) => {
-      const request = get(
-        'https://api.ipify.org?format=json',
-        { agent, signal, headers: { Accept: 'application/json' } },
-        (response) => {
-          let body = ''
-          if (response.statusCode !== 200) {
-            response.resume()
-            reject(new Error('PROXY_TEST_FAILED'))
-            return
-          }
-          response.setEncoding('utf8')
-          response.on('data', (chunk: string) => {
-            body += chunk
-            if (body.length > 4096) request.destroy(new Error('PROXY_TEST_FAILED'))
-          })
-          response.once('error', reject)
-          response.once('end', () => resolve(body))
-        },
-      )
-      request.once('error', reject)
-    })
-    const parsed: unknown = JSON.parse(body)
-    const ip =
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'ip' in parsed &&
-      typeof parsed.ip === 'string'
-        ? parsed.ip
-        : undefined
-    if (!ip || !isIP(ip)) throw new Error('PROXY_TEST_FAILED')
-    return {
-      success: true,
-      exitIp: ip,
-      latencyMs: Date.now() - started,
-      checkedAt: new Date().toISOString(),
+    for (const probe of probes) {
+      signal.throwIfAborted()
+      const probeStarted = Date.now()
+      try {
+        const exitIp = await probeProxy(probe, agent, signal)
+        return {
+          success: true,
+          exitIp,
+          exitIpUnavailable: !exitIp,
+          connectivity: probe.url.startsWith('https:') ? 'https' : 'http',
+          latencyMs: Date.now() - probeStarted,
+          checkedAt: new Date().toISOString(),
+        }
+      } catch {
+        // A blocked IP provider is not proof that the proxy cannot carry traffic.
+        // Every fallback still goes through the authenticated bridge, with TLS verification on.
+      }
     }
+    throw new Error('PROXY_TEST_FAILED')
   } catch {
     return {
       success: false,

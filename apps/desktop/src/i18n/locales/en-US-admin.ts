@@ -1,6 +1,7 @@
 import type { adminMessages as zhMessages } from './zh-CN-admin'
 
 export const adminMessages: Record<keyof typeof zhMessages, string> = {
+  'update.installing': 'Preparing installation; the app will close and restart automatically…',
   'table.moreActions': 'More actions',
   'env.stopBeforeTrash': 'Stop the environment or complete recovery before moving it to trash.',
   'proxy.unlinkBeforeDelete': 'Unlink this proxy from all environments before deleting it.',
@@ -21,13 +22,13 @@ export const adminMessages: Record<keyof typeof zhMessages, string> = {
     'A newer release is available, but it has no installer for this platform and architecture. See the release notes.',
   'update.downloading': 'Downloading and verifying',
   'update.ready':
-    'SHA-256 verified. Stop running environments before opening the installer. Quit ContextWeave before installing, then follow the system instructions.',
+    'The installer passed SHA-256 verification. Stop all environments; installation will close the app and restart the updated version automatically.',
   'update.cancelDownload': 'Cancel download',
-  'update.openInstaller': 'Open installer',
-  'update.download': 'Download installer',
+  'update.openInstaller': 'Install and restart',
+  'update.download': 'Download, install and restart',
   'update.releaseNotes': 'Release notes',
   'update.manualHelp':
-    'Checks and downloads start only when you click. Installation and restart are manual. On macOS, open the DMG and replace ContextWeave in Applications; on Windows, run the installer. Downloads continue when you leave this page.',
+    'Checking does not force a restart. Once you confirm an update, download, verification, shutdown, installation and restart are automatic. Stop all environments first. Supports writable macOS app locations and Windows installed editions; development and Windows portable editions use the release downloads.',
 
   'kernel.backgroundDownloads': 'Background downloads',
   'kernel.versionInstallHelp':
@@ -54,7 +55,7 @@ export const adminMessages: Record<keyof typeof zhMessages, string> = {
   'proxy.testTimeout': 'The request timed out. Check proxy availability.',
   'proxy.testFailedHelp': 'Check the address, credentials and proxy network.',
   'proxy.testDescription':
-    'Request an HTTPS IP check through this proxy to test authentication, connectivity and exit IP. Testing does not save the form.',
+    'Checks connectivity through the proxy, preferring HTTPS and exit IP lookup. Independent probes are tried if the IP service is unavailable. HTTP-only success does not verify HTTPS. Testing does not save the form.',
   'proxy.connection': 'Connection test',
   'kernel.platformUnsupported': 'Platform not supported',
   'kernel.platformHelp':

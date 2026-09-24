@@ -30,7 +30,7 @@ export function SettingsUpdatesPage() {
   const { state, command, loading, error, openRelease } = useAppUpdate()
   const phase = state?.phase ?? 'idle'
   const release = state?.release
-  const busy = ['checking', 'downloading'].includes(phase) || command.isPending
+  const busy = ['checking', 'downloading', 'installing'].includes(phase) || command.isPending
   const progress = state?.totalBytes
     ? Math.min(100, Math.round((state.receivedBytes / state.totalBytes) * 100))
     : 0
@@ -121,6 +121,7 @@ export function SettingsUpdatesPage() {
                 </p>
               </div>
             )}
+            {phase === 'installing' && <p role="status">{t('update.installing')}</p>}
             {phase === 'ready' && (
               <Alert>
                 <AlertDescription>{t('update.ready')}</AlertDescription>
@@ -143,7 +144,7 @@ export function SettingsUpdatesPage() {
               </Button>
             ) : (
               release.asset && (
-                <Button disabled={busy} onClick={() => command.mutate('download')}>
+                <Button disabled={busy} onClick={() => command.mutate('install')}>
                   <DownloadIcon data-icon="inline-start" />
                   {t('update.download')}
                 </Button>

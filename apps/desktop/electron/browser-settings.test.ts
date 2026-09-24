@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { connectBrowserSettings, prepareBrowserLanguage } from './browser-settings'
+import { connectBrowserSettings, prepareBrowserProfile } from './browser-settings'
 
 type Command = { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
 class MockSocket extends EventTarget {
@@ -71,12 +71,14 @@ describe('browser settings runtime', () => {
         browser: { check_default_browser: false },
       }),
     )
-    prepareBrowserLanguage(directory, 'en-GB')
+    prepareBrowserProfile(directory, 'en-GB')
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       intl: { selected_languages: 'original', accept_languages: 'en-GB,en' },
       browser: { check_default_browser: false },
+      session: { restore_on_startup: 1 },
+      background_mode: { enabled: false },
     })
-    prepareBrowserLanguage(directory, 'system')
+    prepareBrowserProfile(directory, 'system')
     expect(JSON.parse(readFileSync(path, 'utf8')).intl).toEqual({ selected_languages: 'original' })
   })
   it('leaves system settings to the browser without opening a control connection', async () => {
@@ -172,4 +174,46 @@ it('only supplies credentials to the configured proxy, never an origin, and canc
     { response: 'CancelAuth' },
   ])
   close()
+})
+
+it('stops only after the last top-level page disappears, not during a short tab replacement', async () => {
+  mockCdp()
+  const original = MockSocket.prototype.send
+  let targets = [{ targetId: 'tab-a', type: 'page' }]
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Target.getTargets') {
+      queueMicrotask(() => this.emit({ id: command.id, result: { targetInfos: targets } }))
+      return
+    }
+    original.call(this, text)
+  })
+  const empty = vi.fn(),
+    fail = vi.fn()
+  const close = await connectBrowserSettings(
+    9222,
+    { ...settings, language: 'system', timezone: 'system' },
+    fail,
+    undefined,
+    empty,
+  )
+  try {
+    const socket = MockSocket.instance
+    targets = []
+    socket.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-a' } })
+    targets = [{ targetId: 'tab-b', type: 'page' }]
+    socket.emit({ method: 'Target.targetCreated', params: { targetInfo: targets[0] } })
+    await new Promise((resolve) => setTimeout(resolve, 850))
+    expect(empty).not.toHaveBeenCalled()
+    targets = []
+    socket.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-b' } })
+    await vi.waitFor(() => expect(empty).toHaveBeenCalledOnce(), { timeout: 1500 })
+    expect(fail).not.toHaveBeenCalled()
+  } finally {
+    close()
+    vi.restoreAllMocks()
+  }
 })

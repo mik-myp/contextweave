@@ -1,20 +1,23 @@
-import { createServer as httpServer, get } from 'node:http'
-import { createServer as tcpServer, createConnection, type Socket } from 'node:net'
+import { createServer as httpServer, get, type RequestListener } from 'node:http'
+import { createServer as tcpServer, createConnection } from 'node:net'
 import { once } from 'node:events'
+import type { Duplex } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
-import { openProxyTransport } from './proxy-transport'
+import { openProxyTransport, testProxyTransport } from './proxy-transport'
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
-async function fixture(rejectAuth = false) {
-  const target = httpServer((_request, response) => response.end('through-authenticated-proxy'))
+async function fixture(rejectAuth = false, handler?: RequestListener) {
+  const target = httpServer(
+    handler ?? ((_request, response) => response.end('through-authenticated-proxy')),
+  )
   target.listen(0, '127.0.0.1')
   await once(target, 'listening')
   const targetAddress = target.address()
   if (!targetAddress || typeof targetAddress === 'string') throw new Error('fixture address')
   const requests: { username: string; password: string; hostname: string }[] = []
-  const sockets = new Set<Socket>()
+  const sockets = new Set<Duplex>()
   const proxy = tcpServer((socket) => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
@@ -135,4 +138,97 @@ describe('private authenticated proxy transport', () => {
     expect(result.body).not.toContain('incorrect')
     expect(upstream.requests).toEqual([])
   })
+})
+
+it('separates connectivity from an unavailable IP endpoint and retains remote DNS with no warning flag', async () => {
+  const upstream = await fixture(false, (request, response) => {
+    response.statusCode = request.url === '/ip' ? 503 : 204
+    response.end()
+  })
+  const config = {
+    type: 'socks5' as const,
+    host: '127.0.0.1',
+    port: upstream.port,
+    username: 'fixture-user',
+  }
+  const result = await testProxyTransport(config, 'fixture-secret', AbortSignal.timeout(3000), [
+    { url: 'http://remote-dns.invalid/ip', kind: 'ip', timeoutMs: 1000 },
+    { url: 'http://remote-dns.invalid/connected', kind: 'connectivity', timeoutMs: 1000 },
+  ])
+  expect(result).toMatchObject({ success: true, connectivity: 'http', exitIpUnavailable: true })
+  expect(result.exitIp).toBeUndefined()
+  expect(upstream.requests).toHaveLength(2)
+  const transport = await openProxyTransport(config, 'fixture-secret')
+  cleanups.push(transport.close)
+  expect(transport.args).not.toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(
+        /host-resolver-rules|disable-web-security|test-type|ignore-certificate/,
+      ),
+    ]),
+  )
+  expect(transport.args).toContain('--dns-prefetch-disable')
+})
+it('times out stalled bodies and rejects oversized IP responses without leaking credentials', async () => {
+  const upstream = await fixture(false, (request, response) => {
+    if (request.url === '/large') response.end('x'.repeat(5000))
+    else {
+      response.writeHead(200)
+      response.write('{')
+    }
+  })
+  const result = await testProxyTransport(
+    { type: 'socks5', host: '127.0.0.1', port: upstream.port, username: 'fixture-user' },
+    'fixture-secret',
+    AbortSignal.timeout(250),
+    [
+      { url: 'http://remote-dns.invalid/large', kind: 'ip', timeoutMs: 100 },
+      { url: 'http://remote-dns.invalid/stall', kind: 'ip', timeoutMs: 1000 },
+    ],
+  )
+  expect(result).toMatchObject({ success: false, errorCode: 'PROXY_TEST_TIMEOUT' })
+  expect(JSON.stringify(result)).not.toMatch(/fixture-user|fixture-secret/)
+})
+it('tests an authenticated HTTP CONNECT proxy without a direct-network fallback', async () => {
+  const requests: string[] = []
+  const sockets = new Set<Duplex>()
+  const proxy = httpServer()
+  proxy.on('connect', (request, socket) => {
+    requests.push(request.headers['proxy-authorization'] ?? '')
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+    socket.on('error', () => {})
+    if (
+      request.headers['proxy-authorization'] !==
+      `Basic ${Buffer.from('user:secret').toString('base64')}`
+    ) {
+      socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n')
+      return
+    }
+    socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+    socket.once('data', () => socket.end('HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n'))
+  })
+  proxy.listen(0, '127.0.0.1')
+  await once(proxy, 'listening')
+  const address = proxy.address()
+  if (!address || typeof address === 'string') throw new Error('fixture address')
+  cleanups.push(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise<void>((resolve) => proxy.close(() => resolve()))
+  })
+  const probes = [
+    {
+      url: 'http://no-local-dns.invalid/connected',
+      kind: 'connectivity' as const,
+      timeoutMs: 1000,
+    },
+  ]
+  const config = { type: 'http' as const, host: '127.0.0.1', port: address.port, username: 'user' }
+  expect(
+    await testProxyTransport(config, 'secret', AbortSignal.timeout(3000), probes),
+  ).toMatchObject({ success: true })
+  expect(
+    await testProxyTransport(config, 'wrong', AbortSignal.timeout(3000), probes),
+  ).toMatchObject({ success: false })
+  expect(requests).toHaveLength(2)
 })

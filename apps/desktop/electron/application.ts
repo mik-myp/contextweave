@@ -6,9 +6,9 @@ import {
   environmentIdSchema,
   readThemeConfig,
   themeConfigSchema,
-  environmentConfigSchema,
   updateEnvironmentInputSchema,
   saveProxyInputSchema,
+  credentialCleanupStatusSchema,
   kernelCatalogInputSchema,
   customKernelSourceSchema,
   type DataDomain,
@@ -21,12 +21,13 @@ import {
   getEnvironmentDetails,
   removeEnvironment,
   updateEnvironment,
-  assertProxyMutable,
-  resolveEnvironmentProxy,
 } from './environment-management'
 import {
+  importProxyConfigurations,
   resolveProxyTestConfiguration,
   saveProxyConfiguration,
+  deleteProxyConfiguration,
+  drainCredentialCleanup,
   toProxySummary,
 } from './proxy-management'
 import { testProxyTransport } from './services/proxy-transport'
@@ -51,6 +52,22 @@ export function createApplication(options: {
 }) {
   const { repository, dataRoot, platform, arch, changed } = options
   const credentials = createCredentialStore(join(dataRoot, 'credentials.json'), options.secure)
+  let temporaryFilesPending = false
+  const cleanupStatus = () =>
+    credentialCleanupStatusSchema.parse({
+      pendingCount: repository.pendingCredentialCleanup().length,
+      temporaryFilesPending,
+    })
+  const retryCredentialCleanup = () => {
+    try {
+      credentials.cleanupTemporaryFiles()
+      temporaryFilesPending = false
+    } catch {
+      temporaryFilesPending = true
+    }
+    drainCredentialCleanup(repository, credentials)
+  }
+  retryCredentialCleanup()
   const kernels = createKernelService(repository, platform, arch, join(dataRoot, 'kernels'), () =>
     changed(['kernels']),
   )
@@ -78,6 +95,7 @@ export function createApplication(options: {
     changed(['environments', 'operations', 'activity', 'storage']),
   )
   let closing = false
+  let updating = false
   const id = (input: unknown) => environmentIdSchema.parse(input)
   const handlers: Record<
     string,
@@ -160,31 +178,44 @@ export function createApplication(options: {
       return ok(await testProxyTransport(config, password))
     },
     'proxy:list': () => ok(repository.listProxies().map(toProxySummary)),
+    'proxy:import': (input) => {
+      try {
+        return ok(importProxyConfigurations(repository, input, credentials))
+      } finally {
+        retryCredentialCleanup()
+        changed(['proxies'])
+      }
+    },
     'proxy:save': (input) => {
       const parsed = saveProxyInputSchema.parse(input)
       const refs = repository.listAll().filter((record) => record.proxyId === parsed.proxyId)
       if (refs.some((record) => commands.busy(record.environmentId)))
         return fail('OPERATION_IN_PROGRESS')
-      const result = saveProxyConfiguration(repository, parsed, credentials)
-      for (const record of refs)
-        repository.updateConfig(
-          resolveEnvironmentProxy(
-            repository,
-            environmentConfigSchema.parse(JSON.parse(record.configJson)),
-          ),
-        )
-      changed(['proxies', 'environments'])
-      return ok(result)
+      try {
+        return ok(saveProxyConfiguration(repository, parsed, credentials))
+      } finally {
+        retryCredentialCleanup()
+        changed(['proxies', 'environments'])
+      }
     },
     'proxy:delete': (input) => {
-      const proxyId = id(input),
-        proxy = repository.getProxy(proxyId)
-      if (!proxy) return fail('NOT_FOUND')
-      assertProxyMutable(repository, proxyId, true)
-      credentials.remove(proxy.credentialRef)
-      repository.deleteProxy(proxyId)
+      try {
+        deleteProxyConfiguration(repository, id(input), credentials)
+        return ok(true)
+      } finally {
+        retryCredentialCleanup()
+        changed(['proxies'])
+      }
+    },
+    'proxy:cleanup-status': (input) => {
+      z.undefined().parse(input)
+      return ok(cleanupStatus())
+    },
+    'proxy:retry-cleanup': (input) => {
+      z.undefined().parse(input)
+      retryCredentialCleanup()
       changed(['proxies'])
-      return ok(true)
+      return ok(cleanupStatus())
     },
     'settings:get-theme': () => ok(readThemeConfig(repository.getSetting<unknown>('theme'))),
     'settings:set-theme': (input) => {
@@ -197,8 +228,20 @@ export function createApplication(options: {
   }
   return {
     channels: Object.keys(handlers),
+    setUpdating(value: boolean) {
+      updating = value
+    },
+    hasActiveEnvironments: () =>
+      repository
+        .listAll()
+        .some(
+          (record) =>
+            commands.busy(record.environmentId) ||
+            ['running', 'starting', 'stopping', 'needs-recovery'].includes(record.status),
+        ),
     async invoke(channel: string, input?: unknown): Promise<IpcResult<unknown>> {
       if (closing) return fail('APP_CLOSING')
+      if (updating) return fail('APP_UPDATING')
       try {
         return (await handlers[channel]?.(input)) ?? fail('UNKNOWN_COMMAND')
       } catch (error) {

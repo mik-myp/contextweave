@@ -26,6 +26,7 @@ export const appUpdateStateSchema = z
       'unsupported',
       'downloading',
       'ready',
+      'installing',
       'cancelled',
       'error',
     ]),

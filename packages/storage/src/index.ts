@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
+import { environmentConfigSchema } from '@contextweave/contracts'
 import type {
   EnvironmentConfig,
   OperationKind,
@@ -304,15 +305,27 @@ export class EnvironmentRepository {
     return this.get(environmentId)
   }
 
+  private transactionDepth = 0
   private transaction<T>(run: () => T): T {
-    this.sqlite.exec('BEGIN IMMEDIATE')
+    const nested = this.transactionDepth > 0
+    const savepoint = `repository_${this.transactionDepth}`
+    this.sqlite.exec(nested ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE')
+    this.transactionDepth++
     try {
       const result = run()
-      this.sqlite.exec('COMMIT')
+      this.sqlite.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT')
       return result
     } catch (error) {
-      this.sqlite.exec('ROLLBACK')
+      try {
+        this.sqlite.exec(nested ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK')
+        if (nested) this.sqlite.exec(`RELEASE SAVEPOINT ${savepoint}`)
+      } catch (rollbackError) {
+        // SQLite may already have rolled back on an I/O error; retain both causes.
+        throw new AggregateError([error, rollbackError], 'TRANSACTION_ROLLBACK_FAILED')
+      }
       throw error
+    } finally {
+      this.transactionDepth--
     }
   }
 
@@ -499,6 +512,68 @@ export class EnvironmentRepository {
       credentialRef: record.credentialRef ?? null,
     })
     return record
+  }
+
+  /** The proxy, current environment snapshots, revisions and retirement journal commit together. */
+  saveProxyWithEnvironments(proxyId: string, config: ProxyConfig): ProxyRecord {
+    return this.transaction(() => {
+      const previous = this.getProxy(proxyId)
+      const proxy = this.saveProxy(proxyId, config)
+      for (const record of this.listAll()) {
+        if (record.proxyId !== proxyId || record.lifecycle !== 'active') continue
+        const stored = environmentConfigSchema.parse(JSON.parse(record.configJson))
+        if (stored.environmentId !== record.environmentId || stored.proxyId !== proxyId)
+          throw new Error('CONFIG_INVALID')
+        this.updateConfig(environmentConfigSchema.parse({ ...stored, proxy }), record.revision)
+      }
+      if (config.credentialRef) this.completeCredentialCleanup(config.credentialRef)
+      if (previous?.credentialRef && previous.credentialRef !== config.credentialRef)
+        this.scheduleCredentialCleanup(previous.credentialRef)
+      return proxy
+    })
+  }
+
+  deleteProxyWithCleanup(proxyId: string): void {
+    this.transaction(() => {
+      const previous = this.getProxy(proxyId)
+      this.deleteProxy(proxyId)
+      if (previous?.credentialRef) this.scheduleCredentialCleanup(previous.credentialRef)
+    })
+  }
+
+  scheduleCredentialCleanup(reference: string): void {
+    this.sqlite
+      .prepare('INSERT OR IGNORE INTO credential_cleanup (credential_ref, created_at) VALUES (?, ?)')
+      .run(reference, new Date().toISOString())
+  }
+
+  completeCredentialCleanup(reference: string): void {
+    this.sqlite.prepare('DELETE FROM credential_cleanup WHERE credential_ref = ?').run(reference)
+  }
+
+  pendingCredentialCleanup(): string[] {
+    return this.sqlite
+      .prepare('SELECT credential_ref FROM credential_cleanup ORDER BY created_at, credential_ref')
+      .all()
+      .map((row) => stringValue(row, 'credential_ref'))
+  }
+
+  isCredentialReferenced(reference: string): boolean {
+    const proxies = this.listProxies()
+    if (proxies.some((proxy) => proxy.credentialRef === reference)) return true
+    // Linked snapshots (including trash/history) resolve through the current proxy at use time.
+    // Legacy inline configurations remain authoritative and must never lose their credentials.
+    return this.listAll().some((record) => {
+      const config = environmentConfigSchema.parse(JSON.parse(record.configJson))
+      if (
+        config.environmentId !== record.environmentId ||
+        (config.proxyId ?? null) !== record.proxyId
+      )
+        throw new Error('CONFIG_INVALID')
+      const resolvesThroughProxy =
+        config.proxyId && proxies.some((proxy) => proxy.proxyId === config.proxyId)
+      return !resolvesThroughProxy && config.proxy?.credentialRef === reference
+    })
   }
 
   deleteProxy(proxyId: string): void {

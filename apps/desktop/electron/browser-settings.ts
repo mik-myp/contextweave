@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { BrowserSettings } from '@contextweave/contracts'
 
 // Chromium reads Accept-Language/navigator.languages from the profile on every platform.
-export function prepareBrowserLanguage(dataDir: string, language: string) {
+export function prepareBrowserProfile(dataDir: string, language: string, useProxy = false) {
   const profile = join(dataDir, 'Default')
   const path = join(profile, 'Preferences')
   const object = z.record(z.string(), z.unknown())
@@ -14,7 +14,22 @@ export function prepareBrowserLanguage(dataDir: string, language: string) {
   else intl.accept_languages = [...new Set([language, language.split('-')[0]])].join(',')
   mkdirSync(profile, { recursive: true })
   const temporary = `${path}.contextweave-tmp`
-  writeFileSync(temporary, JSON.stringify({ ...preferences, intl }), { mode: 0o600 })
+  writeFileSync(
+    temporary,
+    JSON.stringify({
+      ...preferences,
+      intl,
+      session: { ...object.parse(preferences.session ?? {}), restore_on_startup: 1 },
+      background_mode: { ...object.parse(preferences.background_mode ?? {}), enabled: false },
+      ...(useProxy
+        ? {
+            network_prediction_options: 2,
+            dns_prefetching: { ...object.parse(preferences.dns_prefetching ?? {}), enabled: false },
+          }
+        : {}),
+    }),
+    { mode: 0o600 },
+  )
   renameSync(temporary, path)
 }
 
@@ -49,8 +64,10 @@ export async function connectBrowserSettings(
   settings: BrowserSettings,
   onFailure: (error: Error) => void,
   proxy?: { username: string; password: string; host: string; port: number },
+  onNoPages?: () => void,
 ): Promise<() => void> {
-  if (!proxy && settings.language === 'system' && settings.timezone === 'system') return () => {}
+  if (!proxy && !onNoPages && settings.language === 'system' && settings.timezone === 'system')
+    return () => {}
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
     signal: AbortSignal.timeout(5000),
   })
@@ -74,8 +91,32 @@ export async function connectBrowserSettings(
   let closed = false
   let ready = false
   let failure: Error | undefined
+  const pages = new Set<string>()
+  let sawPage = false
+  let emptyTimer: ReturnType<typeof setTimeout> | undefined
+  const targetSchema = z.object({
+    targetId: z.string(),
+    type: z.string(),
+    subtype: z.string().optional(),
+  })
+  const isPage = (target: z.infer<typeof targetSchema>) =>
+    target.type === 'page' && target.subtype !== 'prerender'
+  const checkEmpty = () => {
+    clearTimeout(emptyTimer)
+    if (!onNoPages || !ready || !sawPage || pages.size || closed) return
+    emptyTimer = setTimeout(() => {
+      void send('Target.getTargets', {})
+        .then((result) => {
+          if (closed || pages.size) return
+          const targets = z.object({ targetInfos: z.array(targetSchema) }).parse(result).targetInfos
+          if (!targets.some(isPage)) onNoPages()
+        })
+        .catch(fail)
+    }, 750)
+  }
   const close = () => {
     closed = true
+    clearTimeout(emptyTimer)
     socket.close()
     for (const command of pending.values()) {
       clearTimeout(command.timer)
@@ -135,6 +176,20 @@ export async function connectBrowserSettings(
         pending.delete(message.id)
         if (message.error) command.reject(new Error(message.error.message))
         else command.resolve(message.result ?? {})
+      } else if (
+        onNoPages &&
+        ['Target.targetCreated', 'Target.targetInfoChanged'].includes(message.method ?? '')
+      ) {
+        const { targetInfo } = z.object({ targetInfo: targetSchema }).parse(message.params)
+        if (isPage(targetInfo)) {
+          pages.add(targetInfo.targetId)
+          sawPage = true
+          clearTimeout(emptyTimer)
+        }
+      } else if (onNoPages && message.method === 'Target.targetDestroyed') {
+        const { targetId } = z.object({ targetId: z.string() }).parse(message.params)
+        pages.delete(targetId)
+        checkEmpty()
       } else if (message.method === 'Target.attachedToTarget') {
         const target = attachedSchema.parse(message.params)
         attached.add(target.sessionId)
@@ -227,10 +282,25 @@ export async function connectBrowserSettings(
         { once: true },
       )
     })
+    if (onNoPages) {
+      await send('Target.setDiscoverTargets', {
+        discover: true,
+        filter: [{ type: 'page' }, { exclude: true }],
+      })
+      const result = z
+        .object({ targetInfos: z.array(targetSchema) })
+        .parse(await send('Target.getTargets', {}))
+      for (const target of result.targetInfos)
+        if (isPage(target)) {
+          pages.add(target.targetId)
+          sawPage = true
+        }
+    }
     await send('Target.setAutoAttach', autoAttach)
     while (initializing.size) await Promise.all([...initializing])
     if (failure) throw failure
     ready = true
+    checkEmpty()
     return close
   } catch (cause) {
     close()

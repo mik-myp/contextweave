@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 
 const initialSchema = `
 CREATE TABLE IF NOT EXISTS environments (
@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 2
+export const databaseVersion = 3
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -70,16 +70,15 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='environments'")
     .get()
   if (existing && filePath !== ':memory:') {
-    const backupPath = `${filePath}.before-v${databaseVersion}-${Date.now()}.bak`
-    if (existsSync(backupPath)) throw new Error('Migration backup already exists')
+    const backupPath = `${filePath}.before-v${databaseVersion}-${Date.now()}-${randomUUID()}.bak`
     // VACUUM INTO takes a consistent SQLite snapshot, including committed WAL pages.
     sqlite.prepare('VACUUM INTO ?').run(backupPath)
   }
   sqlite.exec('BEGIN IMMEDIATE')
   try {
     if (version < 1) {
-    sqlite.exec(initialSchema)
-    sqlite.exec(`
+      sqlite.exec(initialSchema)
+      sqlite.exec(`
       ALTER TABLE environments ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
       ALTER TABLE environments ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active';
       ALTER TABLE environments ADD COLUMN trashed_at TEXT;
@@ -102,14 +101,27 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       PRAGMA user_version = 1;
     `)
     }
-    if (version < 2) sqlite.exec(`
+    if (version < 2)
+      sqlite.exec(`
       ALTER TABLE proxies ADD COLUMN name TEXT NOT NULL DEFAULT '';
       UPDATE proxies SET name = host || ':' || port WHERE name = '';
       PRAGMA user_version = 2;
     `)
+    if (version < 3)
+      sqlite.exec(`
+      CREATE TABLE credential_cleanup (
+        credential_ref TEXT PRIMARY KEY NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 3;
+    `)
     sqlite.exec('COMMIT')
   } catch (error) {
-    sqlite.exec('ROLLBACK')
+    try {
+      sqlite.exec('ROLLBACK')
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'MIGRATION_ROLLBACK_FAILED')
+    }
     throw error
   }
 }

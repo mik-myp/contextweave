@@ -16,6 +16,12 @@ export function ProxyTestResult({ result }: { result?: TestResult }) {
         </span>
       )}
       <span className="text-xs text-muted-foreground tabular-nums">{result.latencyMs} ms</span>
+      {result.success && result.connectivity === 'http' && (
+        <span className="text-xs text-muted-foreground">{t('proxy.httpOnly')}</span>
+      )}
+      {result.success && result.exitIpUnavailable && (
+        <span className="text-xs text-muted-foreground">{t('proxy.ipUnavailable')}</span>
+      )}
       {result.errorCode && (
         <span className="text-xs text-muted-foreground">
           {t(

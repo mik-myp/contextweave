@@ -7,6 +7,7 @@ import { dataChangedSchema, platformSchema, architectureSchema } from '@contextw
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
 import { createAppUpdateService } from './services/app-update-service'
+import { prepareAppInstaller, readInstallerFailure } from './services/app-update-installer'
 import { createAppUpdateHandlers } from './app-update-ipc'
 import { createAppLogService } from './services/app-log-service'
 import { createAppLogHandlers } from './app-log-ipc'
@@ -73,14 +74,33 @@ if (hasInstanceLock)
         platform: targetPlatform,
         arch: targetArch,
         root: join(dataRoot, 'updates'),
-        openPath: (path) => shell.openPath(path),
+        initialError: readInstallerFailure(join(dataRoot, 'updates')),
+        installPackage: async (path, release, signal) => {
+          const prepared = await prepareAppInstaller({
+            platform: targetPlatform,
+            arch: targetArch,
+            isPackaged: app.isPackaged,
+            executablePath: process.execPath,
+            portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
+            root: join(dataRoot, 'updates'),
+            path,
+            release,
+            signal,
+          })
+          try {
+            signal.throwIfAborted()
+            if (application?.hasActiveEnvironments()) throw new Error('UPDATE_ENVIRONMENTS_ACTIVE')
+            application?.setUpdating(true)
+            await prepared.launch()
+            setImmediate(() => app.quit())
+          } catch (error) {
+            application?.setUpdating(false)
+            await prepared.cleanup()
+            throw error
+          }
+        },
         openExternal: (url) => shell.openExternal(url),
-        hasActiveEnvironments: () =>
-          repository
-            .list()
-            .some((record) =>
-              ['running', 'starting', 'stopping', 'needs-recovery'].includes(record.status),
-            ),
+        hasActiveEnvironments: () => application?.hasActiveEnvironments() ?? false,
       })
       application = createApplication({
         repository,

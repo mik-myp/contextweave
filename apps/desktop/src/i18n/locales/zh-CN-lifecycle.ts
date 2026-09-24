@@ -1,4 +1,46 @@
 export const lifecycleMessages = {
+  'proxy.typeHelp':
+    'HTTP 代理也可通过 CONNECT 访问 HTTPS 网站；这里的 HTTPS 指连接代理服务器本身使用 TLS，必须与服务商提供的协议一致。',
+  'error.UPDATE_SIGNATURE_INVALID': '无法可靠验证应用签名，已停止自动更新。',
+  'error.UPDATE_UNMOUNT_FAILED': '安装镜像未能安全卸载，更新已停止；请检查文件占用后重试。',
+  'error.APP_UPDATING': '应用正在准备更新，请稍后重试。',
+  'error.UPDATE_DEVELOPMENT_MODE': '开发运行不能自动替换应用，请使用正式安装版。',
+  'error.UPDATE_PORTABLE_UNSUPPORTED': 'Windows 便携版暂不支持自动替换，请从发行页安装新版。',
+  'error.UPDATE_INSTALL_LOCATION':
+    '当前应用不在支持的安装位置，请使用 Windows 安装版或将 macOS 应用安装到可写目录。',
+  'error.UPDATE_INSTALL_PERMISSION':
+    '安装目录不可写或空间不足，更新未替换当前应用。请检查权限和磁盘空间。',
+  'error.UPDATE_INSTALL_INVALID': '安装包中的应用身份、版本或结构不符合要求，已停止安装。',
+  'error.UPDATE_SIGNATURE_MISMATCH': '新版本的签名身份与已安装应用不一致，已拒绝更新。',
+  'error.UPDATE_QUIT_TIMEOUT': '等待旧应用退出超时，原应用没有被替换。',
+  'error.UPDATE_REPLACE_FAILED': '替换失败，已保留或恢复原应用。请检查安装目录权限后重试。',
+  'error.UPDATE_ROLLBACK_FAILED':
+    '替换与自动恢复未完成。原应用保留在安装目录的 .contextweave-update-* 内，请勿删除该备份，可从发行页重新安装。',
+  'error.UPDATE_RESTART_FAILED':
+    '新版已放入安装位置，但系统未能启动它。请按系统提示处理权限或验证问题；旧应用备份仍保留。',
+  'proxy.httpOnly': 'HTTP 连通；HTTPS 尚未验证',
+  'proxy.ipUnavailable': '出口 IP 查询不可用，不影响本次连通结果',
+  'proxy.import.title': '批量新增代理',
+  'proxy.import.description': '一行一个代理，支持 HTTP、HTTPS 和 SOCKS5。',
+  'proxy.import.defaultType': '无协议时使用',
+  'proxy.import.lines': '代理列表',
+  'proxy.import.help':
+    '支持 scheme://user:password@host:port 与 host:port:username:password。每次最多 200 行；URI 凭据中的 @、#、% 等特殊字符需百分号编码。相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖。',
+  'proxy.import.limit': '请填写代理，最多 200 行、65,536 个字符。',
+  'proxy.import.summary':
+    '新增 {created} 项，跳过 {skipped} 项，失败 {failed} 项。失败行已保留，可修正后重试。',
+  'proxy.import.line': '第 {line} 行',
+  'proxy.import.duplicate': '该连接已存在，已跳过',
+  'proxy.import.invalid': '格式无效，请检查协议、主机、端口或凭据',
+  'proxy.import.secureUnavailable': '系统安全存储不可用，密码未保存',
+  'proxy.import.saveFailed': '保存失败，未保存的行可以重试',
+  'proxy.import.submit': '导入代理',
+  'proxy.cleanup.title': '凭据清理尚未完成',
+  'proxy.cleanup.description':
+    '有 {count} 项凭据等待安全清理。已提交的代理配置保持有效；仍被使用的凭据不会删除。可修复存储权限后重试，应用下次启动也会重试。',
+  'proxy.cleanup.temporary': '还有遗留临时文件未能清理，请检查应用数据目录的权限或文件占用。',
+  'proxy.cleanup.retry': '重试清理',
+  'proxy.cleanup.failed': '无法读取或执行凭据维护，请检查存储状态后重试。',
   'error.UPDATE_RELEASE_INVALID': '发行信息无效或不是可用的正式版本，请稍后重试。',
   'error.UPDATE_CHECKSUM_UNAVAILABLE':
     '此安装包缺少可信 SHA-256，暂不能下载。请等待发布者补全发行信息。',
@@ -9,7 +51,7 @@ export const lifecycleMessages = {
   'error.UPDATE_NOT_AVAILABLE': '请先检查更新并选择可用的本机安装包。',
   'error.UPDATE_NOT_READY': '安装包尚未准备好，请先完成下载和校验。',
   'error.UPDATE_FILE_INVALID': '已下载的安装包丢失或被修改，请重新下载。',
-  'error.UPDATE_ENVIRONMENTS_ACTIVE': '请先停止正在运行的环境并完成异常恢复，然后再打开安装包。',
+  'error.UPDATE_ENVIRONMENTS_ACTIVE': '请先停止正在运行的环境并完成异常恢复，再进行自动更新。',
   'error.UPDATE_OPEN_FAILED': '系统无法打开安装包或发行说明，请重试。',
 
   'error.KERNEL_VERSION_MISMATCH':

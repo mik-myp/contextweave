@@ -20,7 +20,7 @@ import {
   type EnvironmentRepository,
 } from '@contextweave/storage'
 import type { LaunchPlan } from '@contextweave/kernel-core'
-import { prepareBrowserLanguage, connectBrowserSettings } from '../browser-settings'
+import { prepareBrowserProfile, connectBrowserSettings } from '../browser-settings'
 import { resolveEnvironmentProxy } from '../environment-management'
 import type { KernelService } from './kernel-service'
 import type { CredentialStore } from './credentials'
@@ -31,6 +31,7 @@ type Session = {
   port: number
   sessionId: string
   dataDir: string
+  stopReason?: 'USER_STOPPED' | 'BROWSER_CLOSED'
   stopRequested: boolean
   startFailed: boolean
   closeProxy?: () => Promise<void>
@@ -149,6 +150,9 @@ export function createRuntimeSupervisor(options: {
     id: string,
     phase: (value: string) => void = () => {},
   ): Promise<IpcResult<EnvironmentSummary>> {
+    // Automatic last-window shutdown can still be releasing resources after the exit event.
+    const pendingStop = stopping.get(id)
+    if (pendingStop) await pendingStop
     if (starting.has(id) || sessions.has(id)) return fail('ALREADY_RUNNING')
     const controller = new AbortController()
     starting.set(id, controller)
@@ -196,7 +200,7 @@ export function createRuntimeSupervisor(options: {
       }
       controller.signal.throwIfAborted()
       const plan = kernels.buildLaunchPlan(record, config, port, transport?.args)
-      prepareBrowserLanguage(record.dataDir, config.commonConfig.language)
+      prepareBrowserProfile(record.dataDir, config.commonConfig.language, Boolean(config.proxy))
       const child = driver.launch(plan)
       child.once('error', () => {
         controller.abort()
@@ -248,7 +252,7 @@ export function createRuntimeSupervisor(options: {
           session.startFailed
             ? 'START_FAILED'
             : session.stopRequested
-              ? 'USER_STOPPED'
+              ? (session.stopReason ?? 'USER_STOPPED')
               : signal
                 ? 'PROCESS_SIGNAL'
                 : code === 0
@@ -277,11 +281,20 @@ export function createRuntimeSupervisor(options: {
         port,
         config.commonConfig,
         () => {
-          if (!isChildRunning(child) || session.stopRequested) return
-          session.startFailed = true
-          terminateChild(child)
+          // Closing the browser normally disconnects CDP before the OS reports process exit.
+          void waitForChildExit(child, 3000).then((exited) => {
+            if (exited || session.stopRequested) return
+            session.startFailed = true
+            terminateChild(child)
+          })
         },
         transport?.authentication,
+        () => {
+          void stop(id, 'BROWSER_CLOSED').catch(() => {
+            session.startFailed = true
+            terminateChild(child)
+          })
+        },
       )
       controller.signal.throwIfAborted()
       if (!isChildRunning(child)) throw new Error('START_FAILED')
@@ -329,18 +342,22 @@ export function createRuntimeSupervisor(options: {
       starting.delete(id)
     }
   }
-  async function stopImpl(id: string): Promise<IpcResult<EnvironmentSummary>> {
+  async function stopImpl(
+    id: string,
+    reason: 'USER_STOPPED' | 'BROWSER_CLOSED',
+  ): Promise<IpcResult<EnvironmentSummary>> {
     const record = repository.get(id)
     if (!record) return fail('NOT_FOUND')
     const session = sessions.get(id)
     if (!session) return recover(id)
     session.stopRequested = true
+    session.stopReason = reason
     repository.updateStatus(id, 'stopping')
     repository.updateRuntimeSession(session.sessionId, 'stopping')
     changed()
     session.closeSettings?.()
     await driver.close?.(session.port)
-    if (isChildRunning(session.child)) await waitForChildExit(session.child, 500)
+    if (isChildRunning(session.child)) await waitForChildExit(session.child, 3000)
     terminateChild(session.child)
     if (!(await waitForChildExit(session.child))) {
       terminateChild(session.child, 'SIGKILL')
@@ -353,15 +370,15 @@ export function createRuntimeSupervisor(options: {
     await session.closeProxy?.()
     sessions.delete(id)
     releaseRuntimeLock(record.dataDir, session.sessionId)
-    repository.updateRuntimeSession(session.sessionId, 'stopped', 'USER_STOPPED')
+    repository.updateRuntimeSession(session.sessionId, 'stopped', reason)
     repository.updateStatus(id, 'stopped')
     changed()
     return ok(toSummary(repository.get(id)!))
   }
-  function stop(id: string) {
+  function stop(id: string, reason: 'USER_STOPPED' | 'BROWSER_CLOSED' = 'USER_STOPPED') {
     const pending = stopping.get(id)
     if (pending) return pending
-    const operation = stopImpl(id).finally(() => stopping.delete(id))
+    const operation = stopImpl(id, reason).finally(() => stopping.delete(id))
     stopping.set(id, operation)
     return operation
   }
@@ -399,7 +416,7 @@ export function createRuntimeSupervisor(options: {
     session: (id: string) => sessions.get(id),
     async shutdown() {
       for (const controller of starting.values()) controller.abort()
-      await Promise.all([...sessions.keys()].map(stop))
+      await Promise.all([...sessions.keys()].map((id) => stop(id)))
     },
   }
 }

@@ -22,6 +22,7 @@ export function createAppUpdateHandlers(service: ReturnType<typeof createAppUpda
     'update:state': stateAction(service.getState),
     'update:check': stateAction(service.check),
     'update:download': stateAction(service.download),
+    'update:install': stateAction(service.install),
     'update:cancel': stateAction(service.cancel),
     'update:open-installer': stateAction(service.openInstaller),
     'update:open-release': async (input: unknown) => {

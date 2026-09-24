@@ -1,4 +1,53 @@
 export const lifecycleMessages = {
+  'proxy.typeHelp':
+    'HTTP proxies can carry HTTPS sites via CONNECT. HTTPS here means TLS to the proxy server itself; match the protocol supplied by your provider.',
+  'error.UPDATE_SIGNATURE_INVALID':
+    'The application signature could not be verified; automatic installation stopped.',
+  'error.UPDATE_UNMOUNT_FAILED':
+    'The installer image could not be safely detached. Check file usage and retry.',
+  'error.APP_UPDATING': 'The app is preparing an update; try again later.',
+  'error.UPDATE_DEVELOPMENT_MODE': 'Automatic installation is unavailable in development mode.',
+  'error.UPDATE_PORTABLE_UNSUPPORTED':
+    'Windows portable editions require the release download for updating.',
+  'error.UPDATE_INSTALL_LOCATION':
+    'This installation location is unsupported; use an installed Windows edition or a writable macOS app directory.',
+  'error.UPDATE_INSTALL_PERMISSION':
+    'The installation directory is not writable or lacks space. The current app was not replaced.',
+  'error.UPDATE_INSTALL_INVALID':
+    'The application identity, version or bundle structure is invalid; installation stopped.',
+  'error.UPDATE_SIGNATURE_MISMATCH':
+    'The update signing identity differs from the installed app; update rejected.',
+  'error.UPDATE_QUIT_TIMEOUT': 'Timed out waiting for the old app to exit; it was not replaced.',
+  'error.UPDATE_REPLACE_FAILED':
+    'Replacement failed; the original app was retained or restored. Check installation permissions.',
+  'error.UPDATE_ROLLBACK_FAILED':
+    'Replacement and rollback could not complete. The old app is retained inside .contextweave-update-* next to the install; keep that backup and reinstall from the release page.',
+  'error.UPDATE_RESTART_FAILED':
+    'The update was placed in the install location but the OS could not launch it. Follow OS verification/permission prompts; the previous app backup is retained.',
+  'proxy.httpOnly': 'HTTP reachable; HTTPS is not verified',
+  'proxy.ipUnavailable': 'Exit IP lookup unavailable; connectivity was verified separately',
+  'proxy.import.title': 'Import proxies',
+  'proxy.import.description': 'One proxy per line. Supports HTTP, HTTPS and SOCKS5.',
+  'proxy.import.defaultType': 'Default protocol',
+  'proxy.import.lines': 'Proxy list',
+  'proxy.import.help':
+    'Use scheme://user:password@host:port or host:port:username:password. Up to 200 lines; percent-encode special characters such as @, # and % in URI credentials. Existing protocol/host/port/username combinations are skipped without replacing passwords.',
+  'proxy.import.limit': 'Enter up to 200 lines and 65,536 characters.',
+  'proxy.import.summary':
+    'Created {created}, skipped {skipped}, failed {failed}. Failed lines are retained for correction and retry.',
+  'proxy.import.line': 'Line {line}',
+  'proxy.import.duplicate': 'Connection already exists; skipped',
+  'proxy.import.invalid': 'Invalid protocol, host, port or credentials',
+  'proxy.import.secureUnavailable': 'System secure storage is unavailable; password was not saved',
+  'proxy.import.saveFailed': 'Save failed; retry the remaining lines',
+  'proxy.import.submit': 'Import proxies',
+  'proxy.cleanup.title': 'Credential cleanup is pending',
+  'proxy.cleanup.description':
+    '{count} credentials await safe cleanup. Committed proxy settings remain valid; credentials still in use will not be removed. Retry after fixing storage access, or on the next app launch.',
+  'proxy.cleanup.temporary':
+    'Some temporary files could not be removed. Check permissions and file locks in the app data directory.',
+  'proxy.cleanup.retry': 'Retry cleanup',
+  'proxy.cleanup.failed': 'Credential maintenance is unavailable. Check storage access and retry.',
   'error.UPDATE_RELEASE_INVALID':
     'Release information is invalid or is not a usable stable release. Try again later.',
   'error.UPDATE_CHECKSUM_UNAVAILABLE':

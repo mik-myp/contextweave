@@ -15,7 +15,9 @@ import { BatchResult } from '@/components/batch-result'
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
 import { isEnvironmentReadOnly } from '@/features/environments/environment-service'
 import { proxyColumns } from '../proxy-columns'
+import { CredentialCleanupNotice } from '../components/credential-cleanup-notice'
 import { ProxyDialog } from '../components/proxy-dialog'
+import { ProxyImportDialog } from '../components/proxy-import-dialog'
 const getRowId = (row: ProxySummary) => row.proxyId
 
 export function ProxiesPage() {
@@ -24,6 +26,7 @@ export function ProxiesPage() {
     'proxies',
     'environments',
   ])
+  const [importing, setImporting] = useState(false)
   const [editor, setEditor] = useState<{ proxy?: ProxySummary }>()
   const [targets, setTargets] = useState<ProxySummary[]>([])
   const batch = useBatchMutation(['proxies', 'environments'])
@@ -115,12 +118,20 @@ export function ProxiesPage() {
   return (
     <>
       <h1 className="sr-only">{t('proxy.list')}</h1>
+      <CredentialCleanupNotice />
       <BatchResult failures={batch.failures} />
       <DataTable
         table={table}
         label={t('proxy.list')}
         searchPlaceholder={t('proxy.search')}
-        actions={add}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              {t('proxy.import.title')}
+            </Button>
+            {add}
+          </>
+        }
         loading={loading}
         error={proxyError}
         onRetry={() => void refresh()}
@@ -184,6 +195,7 @@ export function ProxiesPage() {
           />
         }
       />
+      {importing && <ProxyImportDialog onClose={() => setImporting(false)} />}
       {editor && <ProxyDialog proxy={editor.proxy} onClose={() => setEditor(undefined)} />}
       <ConfirmActionDialog
         open={targets.length > 0}

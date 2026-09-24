@@ -19,6 +19,10 @@ import {
   themeConfigSchema,
   type DataDomain,
   proxySummarySchema,
+  credentialCleanupStatusSchema,
+  importProxiesInputSchema,
+  importProxiesResultSchema,
+  type ImportProxiesInput,
   proxyTestInputSchema,
   proxyTestResultSchema,
   type ProxyTestInput,
@@ -79,6 +83,8 @@ const api = {
       ipcResultSchema(appLogSnapshotSchema).parse(await ipcRenderer.invoke('logs:clear')),
   },
   update: {
+    install: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:install')),
     getState: async () =>
       ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:state')),
     check: async () =>
@@ -160,6 +166,18 @@ const api = {
       ),
   },
   proxy: {
+    import: async (input: ImportProxiesInput) =>
+      ipcResultSchema(importProxiesResultSchema).parse(
+        await ipcRenderer.invoke('proxy:import', importProxiesInputSchema.parse(input)),
+      ),
+    cleanupStatus: async () =>
+      ipcResultSchema(credentialCleanupStatusSchema).parse(
+        await ipcRenderer.invoke('proxy:cleanup-status'),
+      ),
+    retryCleanup: async () =>
+      ipcResultSchema(credentialCleanupStatusSchema).parse(
+        await ipcRenderer.invoke('proxy:retry-cleanup'),
+      ),
     test: async (input: ProxyTestInput) =>
       ipcResultSchema(proxyTestResultSchema).parse(
         await ipcRenderer.invoke('proxy:test', proxyTestInputSchema.parse(input)),

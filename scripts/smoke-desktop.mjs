@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 // A trailing Windows backslash escapes the launcher's closing argument quote.
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
-const { _electron } = require('playwright-core')
+const { _electron, chromium } = require('playwright-core')
 const directory = await mkdtemp(join(tmpdir(), 'cw-desktop-smoke-'))
 const desktop = await _electron.launch({
   executablePath: require('electron'),
@@ -26,6 +26,33 @@ try {
     undefined,
     { timeout: 10000 },
   )
+  for (const method of ['cleanupStatus', 'retryCleanup']) {
+    const status = await page.evaluate((method) => window.contextweave.proxy[method](), method)
+    assert.deepEqual(
+      status,
+      { ok: true, data: { pendingCount: 0, temporaryFilesPending: false } },
+      'Credential maintenance must cross the validated bridge',
+    )
+  }
+  const imported = await page.evaluate(() =>
+    window.contextweave.proxy.import({
+      text: [
+        'http://127.0.0.1:18101',
+        'https://127.0.0.1:18102',
+        'socket5://127.0.0.1:18103',
+        'http://127.0.0.1:18101',
+        'invalid-proxy',
+      ].join('\n'),
+      defaultType: 'http',
+    }),
+  )
+  assert(imported.ok, 'Batch import must cross the validated bridge')
+  assert.deepEqual(imported.data.map((row) => row.status), [
+    'created', 'created', 'created', 'skipped', 'error',
+  ])
+  const proxies = await page.evaluate(() => window.contextweave.proxy.list())
+  assert(proxies.ok)
+  assert.deepEqual(proxies.data.map((proxy) => proxy.type).sort(), ['http', 'https', 'socks5'])
   const kernels = await page.evaluate(() => window.contextweave.kernel.list())
   assert(kernels.ok, 'Kernel list must cross the sandboxed IPC bridge')
   assert(
@@ -43,6 +70,8 @@ try {
     console.log(
       JSON.stringify({
         bridge: 'passed',
+        credentialMaintenance: 'passed',
+        batchProxyImport: 'passed',
         nativeLifecycle: 'not-run-no-local-browser',
         platform: process.platform,
         arch: process.arch,
@@ -70,8 +99,42 @@ try {
     id = created.data.id
     for (let run = 0; run < 2; run++) {
       const started = await page.evaluate((id) => window.contextweave.environment.start(id), id)
-      assert(started.ok, JSON.stringify(started))
+      assert(
+        started.ok,
+        JSON.stringify({
+          run,
+          started,
+          environment: await page.evaluate((id) => window.contextweave.environment.get(id), id),
+        }),
+      )
       assert.equal(started.data.status, 'running')
+      const lock = JSON.parse(
+        await readFile(
+          join(directory, 'contextweave', 'environments', id, '.runtime.lock', 'owner.json'),
+          'utf8',
+        ),
+      )
+      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
+      const context = browser.contexts()[0]
+      const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]
+      if (run === 0) {
+        await (context.pages()[0] ?? (await context.newPage())).goto(expectedTabs[0])
+        await (await context.newPage()).goto(expectedTabs[1])
+      } else {
+        const deadline = Date.now() + 10000
+        while (
+          !expectedTabs.every((url) => context.pages().some((tab) => tab.url() === url)) &&
+          Date.now() < deadline
+        )
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        assert(
+          expectedTabs.every((url) => context.pages().some((tab) => tab.url() === url)),
+          JSON.stringify({
+            message: 'Both tabs must be restored natively after closing the browser',
+            urls: context.pages().map((tab) => tab.url()),
+          }),
+        )
+      }
       const screenshot = await page.evaluate(
         ({ environmentId, url, run }) =>
           window.contextweave.worker.runSmoke({
@@ -95,13 +158,45 @@ try {
       const png = await readFile(screenshotPath)
       assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
       screenshots.push(screenshotPath)
+      // Independent CDP clients can enumerate pages in different orders. The smoke
+      // worker navigates its first page, which is not necessarily our first page.
+      // Normalize both existing pages before testing persistence (do not create replacements).
+      if (run === 0) {
+        const savedPages = context.pages()
+        assert.equal(savedPages.length, expectedTabs.length)
+        for (const [index, tab] of savedPages.entries()) await tab.goto(expectedTabs[index])
+      }
       const duplicate = await page.evaluate((id) => window.contextweave.environment.start(id), id)
       assert(!duplicate.ok, 'Duplicate launch must not create a second session')
       const blocked = await page.evaluate((id) => window.contextweave.environment.delete(id), id)
       assert(!blocked.ok, 'A running profile cannot move to trash')
-      const stopped = await page.evaluate((id) => window.contextweave.environment.stop(id), id)
-      assert(stopped.ok, JSON.stringify(stopped))
-      assert.equal(stopped.data.status, 'stopped')
+      if (run === 0) {
+        const control = await browser.newBrowserCDPSession()
+        await control.send('Browser.close').catch(() => {})
+      } else {
+        const tabs = context.pages()
+        await tabs[0].close()
+        const stillRunning = await page.evaluate(
+          (id) => window.contextweave.environment.get(id),
+          id,
+        )
+        assert(
+          stillRunning.ok && stillRunning.data.status === 'running',
+          'Closing one tab must not stop other tabs',
+        )
+        for (const tab of context.pages()) await tab.close().catch(() => {})
+      }
+      let stopped
+      const closeDeadline = Date.now() + 15000
+      do {
+        stopped = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+        if (stopped.ok && stopped.data.status === 'stopped') break
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      } while (Date.now() < closeDeadline)
+      assert(
+        stopped.ok && stopped.data.status === 'stopped',
+        'Closing the browser must stop the environment without a manual stop command',
+      )
     }
     assert.equal(new Set(screenshots).size, 2, 'Every task must have a separately allocated output')
     const sessions = await page.evaluate(() => window.contextweave.activity.list())
@@ -132,8 +227,12 @@ try {
     console.log(
       JSON.stringify({
         bridge: 'passed',
+        credentialMaintenance: 'passed',
+        batchProxyImport: 'passed',
         nativeLifecycle: 'passed',
         reopen: 'passed',
+        restoredTabs: 'passed',
+        browserCloseStops: 'passed',
         trashRestore: 'passed',
         duplicateLaunch: 'blocked',
         runningDelete: 'blocked',

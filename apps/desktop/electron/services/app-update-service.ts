@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import {
   appUpdateStateSchema,
   type AppUpdateState,
+  type AppUpdateRelease,
   type TargetPlatform,
   type TargetArchitecture,
 } from '@contextweave/contracts'
@@ -16,14 +17,16 @@ export function createAppUpdateService(options: {
   platform: TargetPlatform
   arch: TargetArchitecture
   root: string
-  openPath: (path: string) => Promise<string>
+  installPackage: (path: string, release: AppUpdateRelease, signal: AbortSignal) => Promise<void>
+  initialError?: string
   openExternal: (url: string) => Promise<void>
   hasActiveEnvironments: () => boolean
   fetchRelease?: typeof fetchAppRelease
   download?: typeof downloadVerifiedFile
 }) {
   let state: AppUpdateState = {
-    phase: 'idle',
+    phase: options.initialError ? 'error' : 'idle',
+    errorCode: options.initialError,
     currentVersion: options.currentVersion,
     receivedBytes: 0,
     totalBytes: 0,
@@ -69,10 +72,11 @@ export function createAppUpdateService(options: {
       })
     return job
   }
-  return {
+  const service = {
     getState: snapshot,
     check() {
       if (job) return job
+      if (state.phase === 'installing') return Promise.resolve(snapshot())
       readyPath = undefined
       state = { ...state, release: undefined, receivedBytes: 0, totalBytes: 0 }
       return run('checking', async (signal) => {
@@ -96,6 +100,7 @@ export function createAppUpdateService(options: {
     },
     download() {
       if (job) return job
+      if (state.phase === 'installing') return Promise.resolve(snapshot())
       const asset = state.release?.asset
       if (!asset) return Promise.reject(new Error('UPDATE_NOT_AVAILABLE'))
       if (state.phase === 'ready' && readyPath) return Promise.resolve(snapshot())
@@ -137,14 +142,20 @@ export function createAppUpdateService(options: {
       if (state.phase === 'downloading' || state.phase === 'checking') controller?.abort()
       return (await job) ?? snapshot()
     },
+    async install(): Promise<AppUpdateState> {
+      if (options.hasActiveEnvironments()) throw new Error('UPDATE_ENVIRONMENTS_ACTIVE')
+      const result = await service.download()
+      return result.phase === 'ready' ? service.openInstaller() : result
+    },
     openInstaller() {
       if (job) return job
       const path = readyPath
-      const asset = state.release?.asset
-      if (!path || !asset || state.phase !== 'ready')
+      const release = state.release
+      const asset = release?.asset
+      if (!path || !asset || !release || state.phase !== 'ready')
         return Promise.reject(new Error('UPDATE_NOT_READY'))
       return run(
-        'ready',
+        'installing',
         async (signal) => {
           if (options.hasActiveEnvironments()) throw new Error('UPDATE_ENVIRONMENTS_ACTIVE')
           const file = await lstat(path).catch(() => undefined)
@@ -162,7 +173,7 @@ export function createAppUpdateService(options: {
           }
           signal.throwIfAborted()
           if (options.hasActiveEnvironments()) throw new Error('UPDATE_ENVIRONMENTS_ACTIVE')
-          if (await options.openPath(path)) throw new Error('UPDATE_OPEN_FAILED')
+          await options.installPackage(path, release, signal)
         },
         'ready',
       ).then((result) => {
@@ -189,4 +200,5 @@ export function createAppUpdateService(options: {
       await job
     },
   }
+  return service
 }

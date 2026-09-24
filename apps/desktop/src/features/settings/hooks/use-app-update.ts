@@ -6,7 +6,7 @@ import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
 
 const updateKey = ['local', 'app-update'] as const
-type UpdateCommand = 'check' | 'download' | 'cancel' | 'openInstaller'
+type UpdateCommand = 'check' | 'download' | 'install' | 'cancel' | 'openInstaller'
 
 export function useAppUpdate() {
   const { t } = useI18n()
@@ -16,7 +16,9 @@ export function useAppUpdate() {
     queryKey: updateKey,
     queryFn: () => unwrapIpc(window.contextweave.update.getState()),
     refetchInterval: (query) =>
-      ['checking', 'downloading'].includes(query.state.data?.phase ?? '') ? 500 : false,
+      ['checking', 'downloading', 'installing'].includes(query.state.data?.phase ?? '')
+        ? 500
+        : false,
   })
   const command = useMutation({
     mutationFn: (action: UpdateCommand) => unwrapIpc(window.contextweave.update[action]()),
@@ -24,7 +26,7 @@ export function useAppUpdate() {
       await client.cancelQueries({ queryKey: updateKey })
       setLinkError(undefined)
       const current = client.getQueryData<AppUpdateState>(updateKey)
-      if (current && (action === 'check' || action === 'download')) {
+      if (current && (action === 'check' || action === 'download' || action === 'install')) {
         client.setQueryData(updateKey, {
           ...current,
           phase: action === 'check' ? 'checking' : 'downloading',

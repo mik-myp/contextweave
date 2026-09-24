@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { z } from 'zod'
 export type SecureStorage = {
   isEncryptionAvailable(): boolean
@@ -18,10 +28,35 @@ export function createCredentialStore(filePath: string, secure: SecureStorage) {
   }
   function writeFile(value: Record<string, string>) {
     const temporaryPath = `${filePath}.${randomUUID()}.tmp`
-    writeFileSync(temporaryPath, JSON.stringify(value), { mode: 0o600 })
-    renameSync(temporaryPath, filePath)
+    // Exclusive open happens outside cleanup: a collision is not our file to remove.
+    const fd = openSync(temporaryPath, 'wx', 0o600)
+    try {
+      try {
+        writeFileSync(fd, JSON.stringify(value))
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
+      renameSync(temporaryPath, filePath)
+    } catch (error) {
+      try {
+        rmSync(temporaryPath, { force: true })
+      } catch {
+        // Startup/explicit maintenance retries cleanup without masking the write failure.
+      }
+      throw error
+    }
   }
   return {
+    cleanupTemporaryFiles() {
+      const prefix = `${basename(filePath)}.`
+      for (const name of readdirSync(dirname(filePath))) {
+        if (!name.startsWith(prefix)) continue
+        const suffix = name.slice(prefix.length)
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(suffix))
+          rmSync(join(dirname(filePath), name), { force: true })
+      }
+    },
     save(reference: string, value: string) {
       if (!secure.isEncryptionAvailable()) throw new Error('CREDENTIAL_UNAVAILABLE')
       const data = readFile()

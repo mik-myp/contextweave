@@ -202,7 +202,10 @@ try {
       const context = browser.contexts()[0]
       const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]
       if (run === 0) {
-        await (context.pages()[0] ?? (await context.newPage())).goto(expectedTabs[0])
+        // CDP can be ready before Chromium creates its initial tab (notably on Windows).
+        // Creating a replacement here races that native tab and makes a three-tab fixture.
+        const first = context.pages()[0] ?? (await context.waitForEvent('page', { timeout: 10000 }))
+        await first.goto(expectedTabs[0])
         await (await context.newPage()).goto(expectedTabs[1])
       } else {
         const deadline = Date.now() + 10000
@@ -254,7 +257,11 @@ try {
       // Normalize both existing pages before testing persistence (do not create replacements).
       if (run === 0) {
         const savedPages = context.pages()
-        assert.equal(savedPages.length, expectedTabs.length)
+        assert.equal(
+          savedPages.length,
+          expectedTabs.length,
+          JSON.stringify({ urls: savedPages.map((tab) => tab.url()) }),
+        )
         for (const [index, tab] of savedPages.entries()) await tab.goto(expectedTabs[index])
       }
       const duplicate = await page.evaluate((id) => window.contextweave.environment.start(id), id)

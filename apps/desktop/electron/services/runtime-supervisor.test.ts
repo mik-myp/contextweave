@@ -1,3 +1,4 @@
+import { createIpLocaleService, parseIpLocale } from './ip-locale'
 import { ChildProcess } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,7 +24,11 @@ const cleanup: (() => void)[] = []
 afterEach(() => {
   for (const clean of cleanup.splice(0).reverse()) clean()
 })
-function fixture(kernelVersion = 'local') {
+function fixture(
+  kernelVersion = 'local',
+  automatic = false,
+  proxyType?: 'http' | 'https' | 'socks5',
+) {
   const root = mkdtempSync(join(tmpdir(), 'cw-supervisor-')),
     dir = join(root, 'env-a')
   mkdirSync(dir)
@@ -39,7 +44,11 @@ function fixture(kernelVersion = 'local') {
       name: 'A',
       kernelId: 'standard-chromium',
       kernelVersion,
-      commonConfig: { language: 'system', timezone: 'system' },
+      commonConfig: {
+        language: automatic ? 'auto' : 'system',
+        timezone: automatic ? 'auto' : 'system',
+      },
+      proxy: proxyType ? { type: proxyType, host: 'proxy.example.invalid', port: 1080 } : undefined,
     }),
     dataDir: dir,
     platform: 'darwin',
@@ -74,7 +83,20 @@ function fixture(kernelVersion = 'local') {
       .mockResolvedValue('Chrome/123.0.0.1'),
     settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
   }
+  const locale = createIpLocaleService()
+  const detect = vi.spyOn(locale, 'detect').mockResolvedValue(
+    parseIpLocale(
+      JSON.stringify({
+        success: true,
+        ip: '203.0.113.1',
+        country_code: 'JP',
+        timezone: { id: 'Asia/Tokyo' },
+      }),
+      proxyType ? 'proxy' : 'direct',
+    ),
+  )
   const runtime = createRuntimeSupervisor({
+    locale,
     repository,
     kernels,
     credentials: { cleanupTemporaryFiles: vi.fn(), save: vi.fn(), remove: vi.fn(), read: vi.fn() },
@@ -82,9 +104,75 @@ function fixture(kernelVersion = 'local') {
     changed: vi.fn(),
     driver,
   })
-  return { dir, repository, child, runtime, driver, preflight }
+  return { dir, repository, child, runtime, driver, preflight, detect, kernels }
 }
 describe('runtime supervisor', () => {
+  it('does not use the network for existing system/manual settings', async () => {
+    const f = fixture()
+    expect((await f.runtime.start('env-a')).ok).toBe(true)
+    expect(f.detect).not.toHaveBeenCalled()
+    await f.runtime.stop('env-a')
+  })
+  it.each([undefined, 'http', 'https', 'socks5'] as const)(
+    'resolves automatic settings before launch through %s, retaining the stored choice',
+    async (type) => {
+      const f = fixture('local', true, type)
+      expect((await f.runtime.start('env-a')).ok).toBe(true)
+      const configuration = vi.mocked(f.kernels.buildLaunchPlan).mock.calls[0]![1]
+      expect(configuration.commonConfig).toMatchObject({
+        language: 'ja-JP',
+        timezone: 'Asia/Tokyo',
+      })
+      expect(f.driver.settings).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.objectContaining({ language: 'ja-JP', timezone: 'Asia/Tokyo' }),
+        expect.any(Function),
+        type ? expect.objectContaining({ host: '127.0.0.1' }) : undefined,
+        expect.any(Function),
+      )
+      expect(f.detect).toHaveBeenCalledWith(
+        type
+          ? expect.objectContaining({
+              host: '127.0.0.1',
+              username: expect.any(String),
+              password: expect.any(String),
+            })
+          : undefined,
+        expect.any(AbortSignal),
+      )
+      expect(JSON.parse(f.repository.get('env-a')!.configJson).commonConfig).toMatchObject({
+        language: 'auto',
+        timezone: 'auto',
+      })
+      await f.runtime.stop('env-a')
+    },
+  )
+  it('fails before spawning and releases the profile lock when detection fails', async () => {
+    const f = fixture('local', true)
+    f.detect.mockRejectedValue(new Error('IP_LOCALE_RATE_LIMITED'))
+    expect(await f.runtime.start('env-a')).toMatchObject({
+      ok: false,
+      code: 'IP_LOCALE_RATE_LIMITED',
+    })
+    expect(f.driver.launch).not.toHaveBeenCalled()
+    expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+    expect(f.repository.get('env-a')!.status).toBe('error')
+  })
+  it('aborts detection before launch when the environment start is cancelled', async () => {
+    const f = fixture('local', true)
+    f.detect.mockImplementation(
+      (_proxy, signal) =>
+        new Promise((_resolve, reject) => {
+          signal!.addEventListener('abort', () => reject(new Error('CANCELLED')), { once: true })
+        }),
+    )
+    const starting = f.runtime.start('env-a')
+    await vi.waitFor(() => expect(f.detect).toHaveBeenCalled())
+    f.runtime.cancelStart('env-a')
+    expect(await starting).toMatchObject({ ok: false, code: 'CANCELLED' })
+    expect(f.driver.launch).not.toHaveBeenCalled()
+    expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+  })
   it('rejects a binary whose CDP version differs from the pinned package', async () => {
     const { runtime, driver, child, repository, dir } = fixture('148.0.7778.215')
     expect(await runtime.start('env-a')).toMatchObject({

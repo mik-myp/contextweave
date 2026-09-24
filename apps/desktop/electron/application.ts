@@ -1,3 +1,5 @@
+import { createIpLocaleService } from './services/ip-locale'
+import { createIpLocalePreview } from './services/ip-locale-preview'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -83,7 +85,10 @@ export function createApplication(options: {
     if (!record) throw new Error('NOT_FOUND')
     return checkEnvironment(record, repository, kernels, credentials)
   }
+  const locale = createIpLocaleService()
+  const localePreview = createIpLocalePreview(repository, credentials, locale)
   const runtime = createRuntimeSupervisor({
+    locale,
     repository,
     kernels,
     credentials,
@@ -113,6 +118,8 @@ export function createApplication(options: {
     'kernel:install': (input) =>
       commands.run('install', null, async () => ok(await kernels.install(id(input)))),
     'kernel:cancel-install': (input) => ok(kernels.cancelInstall(id(input))),
+    'environment:detect-locale': async (input) => ok(await localePreview.detect(input)),
+    'environment:cancel-locale': (input) => ok(localePreview.cancel(input)),
     'environment:list': () => ok(repository.list().map(toSummary)),
     'environment:trash-list': () => ok(repository.listTrash().map(toSummary)),
     'environment:get': (input) => ok(getEnvironmentDetails(repository, id(input))),
@@ -259,6 +266,7 @@ export function createApplication(options: {
       workers.shutdown()
       kernels.cancelAll()
       runtime.cancelStarts()
+      await Promise.all([localePreview.shutdown(), locale.shutdown()])
       await commands.drain()
       await runtime.shutdown()
     },

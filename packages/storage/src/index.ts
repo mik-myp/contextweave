@@ -13,7 +13,7 @@ import type {
   TargetPlatform,
 } from '@contextweave/contracts'
 
-import { migrateDatabase } from './migrations'
+import { migrateDatabase, databaseVersion } from './migrations'
 
 type Row = Record<string, unknown>
 
@@ -25,8 +25,12 @@ export type LocalDatabase = {
 export function openLocalDatabase(filePath: string): LocalDatabase {
   mkdirSync(dirname(filePath), { recursive: true })
   const sqlite = new DatabaseSync(filePath)
-  sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
   try {
+    const integrity = sqlite.prepare('PRAGMA quick_check(1)').get()
+    if (integrity?.quick_check !== 'ok') throw new Error('DATABASE_CORRUPT')
+    if (Number(sqlite.prepare('PRAGMA user_version').get()?.user_version) > databaseVersion)
+      throw new Error('This database requires a newer ContextWeave version')
+    sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
     migrateDatabase(sqlite, filePath)
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {

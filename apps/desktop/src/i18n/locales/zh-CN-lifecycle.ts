@@ -1,4 +1,23 @@
 export const lifecycleMessages = {
+  'env.ipLocaleAuto': '跟随出口 IP（每次启动获取）',
+  'env.ipLocaleTitle': '根据出口 IP 获取语言与时区',
+  'env.ipLocaleDescription':
+    '选择“跟随出口 IP”后，每次启动会通过当前直连或代理访问 IPWho.is；也可检测一次后填入固定值。第三方会看到出口 IP，不会收到环境名称或代理密码。语言只是地区推荐，可手动覆盖；代理失败不会改走直连，检测失败会阻止自动模式启动。',
+  'env.ipLocaleDetect': '检测当前线路',
+  'env.ipLocaleDetecting': '正在检测…',
+  'env.ipLocaleFailed': '无法获取出口 IP 地区',
+  'env.ipLocaleProxy': '代理出口检测结果',
+  'env.ipLocaleDirect': '直连出口检测结果',
+  'env.ipLocaleResultHint':
+    '这是本次请求的地区推荐，并非实际语言识别。多语言地区或轮换代理请人工核对；“填入固定值”后需保存环境才生效。',
+  'env.ipLocaleApply': '填入固定语言与时区',
+  'error.IP_LOCALE_FAILED':
+    '无法通过当前线路获取 IP 地区，请检查网络或代理后重试，或手动选择语言/时区。未改用直连或系统设置。',
+  'error.IP_LOCALE_TIMEOUT': '获取 IP 地区超时，请重试或改为手动设置。',
+  'error.IP_LOCALE_RATE_LIMITED': 'IP 地区服务已限流，请稍后重试，或改为手动设置。',
+  'error.IP_LOCALE_INVALID_RESPONSE': 'IP 地区服务未返回有效的语言/时区信息，请重试或手动设置。',
+  'error.IP_LOCALE_BUSY': '已有 IP 地区检测正在执行，请等待完成或取消后重试。',
+
   'proxy.typeHelp':
     'HTTP 代理也可通过 CONNECT 访问 HTTPS 网站；这里的 HTTPS 指连接代理服务器本身使用 TLS，必须与服务商提供的协议一致。',
   'error.UPDATE_SIGNATURE_INVALID': '无法可靠验证应用签名，已停止自动更新。',

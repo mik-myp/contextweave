@@ -106,7 +106,7 @@ export const browserLanguageSchema = z
   .string()
   .trim()
   .refine((value) => {
-    if (value === 'system') return true
+    if (value === 'system' || value === 'auto') return true
     try {
       return Intl.getCanonicalLocales(value).length === 1
     } catch {
@@ -118,7 +118,7 @@ export const browserTimezoneSchema = z
   .string()
   .trim()
   .refine((value) => {
-    if (value === 'system') return true
+    if (value === 'system' || value === 'auto') return true
     try {
       new Intl.DateTimeFormat('en', { timeZone: value })
       return value.length > 0
@@ -126,6 +126,24 @@ export const browserTimezoneSchema = z
       return false
     }
   }, 'Invalid timezone')
+
+// Preview accepts a saved proxy identity, never an arbitrary endpoint or a secret.
+export const ipLocaleRequestSchema = z.discriminatedUnion('connection', [
+  z.object({ requestId: z.string().uuid(), connection: z.literal('direct') }).strict(),
+  z.object({ requestId: z.string().uuid(), connection: z.literal('proxy'), proxyId: z.string().trim().min(1).max(200) }).strict(),
+])
+export type IpLocaleRequest = z.infer<typeof ipLocaleRequestSchema>
+export const ipLocaleCancelSchema = z.string().uuid()
+export const ipLocaleResultSchema = z.object({
+  ip: z.union([z.ipv4(), z.ipv6()]),
+  countryCode: z.string().regex(/^[A-Z]{2}$/),
+  language: browserLanguageSchema.refine((value) => !['auto', 'system'].includes(value)),
+  timezone: browserTimezoneSchema.refine((value) => !['auto', 'system'].includes(value)),
+  connection: z.enum(['direct', 'proxy']),
+  provider: z.literal('ipwho.is'),
+  checkedAt: z.string().datetime(),
+}).strict()
+export type IpLocaleResult = z.infer<typeof ipLocaleResultSchema>
 
 const browserWindowSchema = z
   .object({

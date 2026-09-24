@@ -5,6 +5,7 @@ import type { BrowserSettings } from '@contextweave/contracts'
 
 // Chromium reads Accept-Language/navigator.languages from the profile on every platform.
 export function prepareBrowserProfile(dataDir: string, language: string, useProxy = false) {
+  if (language === 'auto') throw new Error('IP_LOCALE_FAILED')
   const profile = join(dataDir, 'Default')
   const path = join(profile, 'Preferences')
   const object = z.record(z.string(), z.unknown())
@@ -66,6 +67,8 @@ export async function connectBrowserSettings(
   proxy?: { username: string; password: string; host: string; port: number },
   onNoPages?: () => void,
 ): Promise<() => void> {
+  if (settings.language === 'auto' || settings.timezone === 'auto')
+    throw new Error('IP_LOCALE_FAILED')
   const needsOverrides = !!proxy || settings.language !== 'system' || settings.timezone !== 'system'
   if (!needsOverrides && !onNoPages) return () => {}
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {

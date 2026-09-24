@@ -1,3 +1,4 @@
+import { applyIpLocale, type IpLocaleService } from './ip-locale'
 import { openProxyTransport, type ProxyTransport } from './proxy-transport'
 import { closeBrowserGracefully } from './browser-close'
 import { randomUUID } from 'node:crypto'
@@ -115,6 +116,7 @@ export function createRuntimeSupervisor(options: {
   credentials: CredentialStore
   preflight(id: string): Promise<PreflightReport>
   changed(): void
+  locale?: IpLocaleService
   driver?: RuntimeDriver
 }) {
   const { repository, kernels, credentials, preflight, changed } = options
@@ -199,6 +201,14 @@ export function createRuntimeSupervisor(options: {
         transport = await openProxyTransport(config.proxy, password)
       }
       controller.signal.throwIfAborted()
+      if (config.commonConfig.language === 'auto' || config.commonConfig.timezone === 'auto') {
+        phase('configure')
+        if (!options.locale) throw new Error('IP_LOCALE_FAILED')
+        const locale = await options.locale.detect(transport?.authentication, controller.signal)
+        controller.signal.throwIfAborted()
+        config.commonConfig = applyIpLocale(config.commonConfig, locale)
+        phase('launch')
+      }
       const plan = kernels.buildLaunchPlan(record, config, port, transport?.args)
       prepareBrowserProfile(record.dataDir, config.commonConfig.language, Boolean(config.proxy))
       const child = driver.launch(plan)
@@ -325,6 +335,11 @@ export function createRuntimeSupervisor(options: {
       repository.updateStatus(id, cancelled ? 'stopped' : 'error')
       changed()
       const known = [
+        'IP_LOCALE_FAILED',
+        'IP_LOCALE_TIMEOUT',
+        'IP_LOCALE_BUSY',
+        'IP_LOCALE_RATE_LIMITED',
+        'IP_LOCALE_INVALID_RESPONSE',
         'CREDENTIAL_UNAVAILABLE',
         'CONTROL_TIMEOUT',
         'SPAWN_FAILED',

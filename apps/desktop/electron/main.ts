@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell, dialog } from 'electron'
 import log from 'electron-log/main'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { dataChangedSchema, platformSchema, architectureSchema } from '@contextweave/contracts'
@@ -11,6 +11,8 @@ import { prepareAppInstaller, readInstallerFailure } from './services/app-update
 import { createAppUpdateHandlers } from './app-update-ipc'
 import { createAppLogService } from './services/app-log-service'
 import { createAppLogHandlers } from './app-log-ipc'
+import { createWindowLifecycle } from './services/window-lifecycle'
+import { classifyStartupError, recoverStartup } from './services/startup-recovery'
 import { ok, fail } from './services/result'
 if (!app.isPackaged && process.env.CONTEXTWEAVE_USER_DATA)
   app.setPath('userData', resolve(process.env.CONTEXTWEAVE_USER_DATA))
@@ -25,13 +27,66 @@ const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
 let application: ReturnType<typeof createApplication> | undefined
 let updates: ReturnType<typeof createAppUpdateService> | undefined
-let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 const hasInstanceLock = app.requestSingleInstanceLock()
 if (!hasInstanceLock) app.quit()
 
+let recoveringStartup = false
+const windows = createWindowLifecycle({
+  create: createWindow,
+  load: (window) =>
+    DEV_SERVER_URL
+      ? window.loadURL(DEV_SERVER_URL)
+      : window.loadFile(join(APP_ROOT, 'dist', 'index.html')),
+  failed: () => {
+    void handleStartupFailure(new Error('UI_LOAD_FAILED'))
+  },
+})
+async function handleStartupFailure(error: unknown) {
+  if (recoveringStartup || isQuitting) return
+  recoveringStartup = true
+  windows.destroy()
+  log.error('Application initialization failed', { code: classifyStartupError(error) })
+  await Promise.allSettled([application?.shutdown(), updates?.shutdown()])
+  application = undefined
+  updates = undefined
+  try {
+    database?.close()
+  } catch {
+    /* The process exits; never replace unreadable data. */
+  }
+  database = undefined
+  const outcome = await recoverStartup({
+    error,
+    locale: app.getLocale(),
+    show: async (message, folderFailed) =>
+      (
+        await dialog.showMessageBox({
+          ...message,
+          type: 'error',
+          defaultId: 2,
+          cancelId: 2,
+          noLink: true,
+          detail:
+            message.detail +
+            (folderFailed
+              ? app.getLocale().startsWith('zh')
+                ? '\n无法打开目录，请检查目录权限。'
+                : '\nUnable to open the folder. Check directory permissions.'
+              : ''),
+        })
+      ).response,
+    openDataFolder: async () => {
+      const root = join(app.getPath('userData'), 'contextweave')
+      return (await shell.openPath(existsSync(root) ? root : app.getPath('userData'))) === ''
+    },
+  })
+  if (outcome === 'restart') app.relaunch()
+  app.quit()
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1120,
@@ -46,15 +101,13 @@ function createWindow() {
       webSecurity: true,
     },
   })
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
-  mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event) => event.preventDefault())
+  window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
     callback(false),
   )
-  mainWindow.webContents.session.setPermissionCheckHandler(() => false)
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
-  if (DEV_SERVER_URL) void mainWindow.loadURL(DEV_SERVER_URL)
-  else void mainWindow.loadFile(join(APP_ROOT, 'dist', 'index.html'))
+  window.webContents.session.setPermissionCheckHandler(() => false)
+  return window
 }
 if (hasInstanceLock)
   app
@@ -128,7 +181,8 @@ if (hasInstanceLock)
               }
             }
           }
-          if (mainWindow && !mainWindow.isDestroyed())
+          const mainWindow = windows.get()
+          if (mainWindow)
             mainWindow.webContents.send('data:changed', dataChangedSchema.parse({ domains }))
         },
       })
@@ -165,7 +219,13 @@ if (hasInstanceLock)
       }
       for (const channel of [...application.channels, ...Object.keys(localHandlers)])
         ipcMain.handle(channel, (event, input: unknown) => {
-          if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame)
+          const mainWindow = windows.get()
+          if (
+            isQuitting ||
+            recoveringStartup ||
+            !mainWindow ||
+            event.senderFrame !== mainWindow.webContents.mainFrame
+          )
             return fail('FORBIDDEN')
           return applicationLogs.invoke(channel, input, () =>
             localHandlers[channel]
@@ -173,25 +233,18 @@ if (hasInstanceLock)
               : application!.invoke(channel, input),
           )
         })
-      createWindow()
-      app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow()
-      })
+      windows.ready()
     })
-    .catch((error) => {
-      log.error('Failed to initialize local application', error)
-      app.quit()
-    })
-app.on('second-instance', () => {
-  mainWindow?.show()
-  mainWindow?.focus()
-})
+    .catch((error: unknown) => handleStartupFailure(error))
+app.on('activate', () => windows.show())
+app.on('second-instance', () => windows.show())
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (!recoveringStartup && process.platform !== 'darwin') app.quit()
 })
 app.on('before-quit', (event) => {
   if (isQuitting) return
   isQuitting = true
+  windows.stop()
   applicationLogs.record({ level: 'info', source: 'app', event: 'app-stopping', fields: {} })
   event.preventDefault()
   void Promise.allSettled([application?.shutdown(), updates?.shutdown()]).finally(() => app.quit())

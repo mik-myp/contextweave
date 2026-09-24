@@ -569,3 +569,14 @@ pnpm exec prettier --config .prettierrc.json --check ../../docs/project-plan.md 
 
 - **安装失败清理：** DMG attach 报错或取消后也尝试 detach；挂载点只使用非递归目录删除，卸载失败不遍历或删除仍挂载的内容。helper 准备成功并握手后才退出旧应用，安装交接后不接受重复下载/安装。macOS 成功替换会保留安装目录旁 `.contextweave-update-*` 内的 `previous.app`，作为人工排障副本；目前不自动清理这一副本，不含用户数据，也不是数据库降级机制。确认新版本正常后可人工删除对应暂存目录，后续磁盘维护再统一收敛。
 - **首次升级与验证边界：** `v0.1.2 → v0.1.3` 仍由旧客户端更新器执行；本版的自动安装能力在运行 `v0.1.3` 后生效。验证包含安装服务/系统命令故障测试、真实 shell 文件交换与失败回滚、真实 ARM64 DMG 的只读挂载/身份与架构校验/暂存/卸载。没有在维护者真实已安装应用或真实数据上执行替换，也不把这些测试写成 Windows/macOS 三平台安装升级端到端验收。
+
+## 17. v0.1.4 窗口恢复与出口 IP 地区设置
+
+- 主窗口由独立生命周期控制器管理；取消加载可能先于原生窗口销毁通知，加载失败延后一轮事件循环复核归属，避免误报；持有的 BrowserWindow 在 `closed` 后清空，`ready-to-show` / 加载失败回调绑定具体实例。第二实例与 macOS activate 共用安全显示入口，初始化前和退出期间禁止创建窗口。
+- 初始化错误只展示白名单错误类别；原生对话框提供重启重试、打开数据目录和退出。清理部分初始化的服务/数据库后再重试，不注册重复 IPC、不记录原始数据库内容、凭据或底层堆栈；不提供自动清库修复。数据库 PRAGMA 或迁移失败也关闭已打开的连接。
+- 环境 language/timezone 在现有 `system`/具体值外新增 `auto`，两项可分别选择。运行时在内核启动前解析成具体值，不把 `auto` 传入 Chromium 参数、Preferences 或 CDP；只替换本次启动的内存配置，保存的自动选择不改变。默认和旧环境不触发查询。
+- 预览 IPC 只接受明确的直连或已保存 proxyId，不接受任意 URL、地址、密码或文件路径。Main 按目标读取安全存储，以与环境一致的代理桥访问固定 `https://ipwho.is/?fields=success,ip,country_code,timezone.id`；TLS 校验开启，禁止重定向与直连 fallback。设置总超时、最大响应、并发/取消边界，退出取消请求并关闭桥。
+- 仅校验并返回 IP、ISO 风格国家代码、有效 IANA 时区、推荐 BCP47 语言和检测时间；不保留原始响应/坐标/ISP，错误不给 Renderer 返回上游 body 或 URL。自动检测失败阻止启动，手动或系统模式不受影响；HTTP-only 且拒绝 CONNECT 的代理不降级到明文定位接口；预览失败不改写表单。
+- 推荐语言通过 Node/Electron 的 `Intl.Locale('und-国家代码').maximize()`（ICU/CLDR likely-subtags）得到，不额外维护全球语言表或引入依赖；这是地区默认推荐，不是对真实用户语言的断言，多语言地区、漫游/隧道/轮换代理均可能不准确。
+- IPWho.is 是用户客户端直接访问的第三方服务，不是项目自营后端。官方文档在本版核验时允许 Free endpoint 商业使用，标明每出口 IP 每日 1,000 请求且无 SLA；额度/条款可能变化，不承诺永久免费/可用。只有显式选择自动或点击检测才访问；不添加后台遥测，不跨环境缓存结果。网络能力复用 Node HTTPS、现有 `https-proxy-agent` 与 `proxy-chain`，无新增依赖。
+- 官方依据：[IPWhois 文档](https://ipwhois.io/documentation)、[Electron BrowserWindow](https://www.electronjs.org/docs/latest/api/browser-window)、[Electron dialog](https://www.electronjs.org/docs/latest/api/dialog)。自动模式是新的配置取值，数据库 schema 无需变更；使用后若降级须先转成固定值或跟随系统。

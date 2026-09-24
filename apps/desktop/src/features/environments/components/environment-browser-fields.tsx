@@ -1,3 +1,4 @@
+import { EnvironmentLocaleDetection } from './environment-locale-detection'
 import { useState } from 'react'
 import { Controller, useFormContext, useWatch } from 'react-hook-form'
 import { useI18n } from '@/i18n'
@@ -68,10 +69,15 @@ export function EnvironmentBrowserFields({
     control,
     name: ['language', 'timezone', 'width', 'height'],
   })
-  const languageItems = [{ value: 'system', label: t('env.system') }, ...languages]
+  const languageItems = [
+    { value: 'auto', label: t('env.ipLocaleAuto') },
+    { value: 'system', label: t('env.system') },
+    ...languages,
+  ]
   if (!languageItems.some((item) => item.value === language))
     languageItems.push({ value: language, label: language })
   const zoneItems = [
+    { value: 'auto', label: t('env.ipLocaleAuto') },
     { value: 'system', label: t('env.system') },
     ...timezones.map((zone) => ({ value: zone, label: zone })),
   ]
@@ -100,7 +106,10 @@ export function EnvironmentBrowserFields({
                   '{language}',
                   languageItems.find((item) => item.value === language)?.label ?? language,
                 )
-                .replace('{timezone}', timezone === 'system' ? t('env.system') : timezone)
+                .replace(
+                  '{timezone}',
+                  zoneItems.find((item) => item.value === timezone)?.label ?? timezone,
+                )
                 .replace('{size}', `${width || '—'} × ${height || '—'}`)}
             </span>
           </span>
@@ -108,6 +117,7 @@ export function EnvironmentBrowserFields({
         <AccordionContent keepMounted>
           <FieldGroup className="max-w-2xl pt-(--form-field-gap)">
             <FieldDescription>{t('env.browserDescription')}</FieldDescription>
+            <EnvironmentLocaleDetection disabled={disabled} />
             <FieldGroup className="sm:flex-row">
               <Controller
                 name="language"

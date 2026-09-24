@@ -1,3 +1,4 @@
+import type { IpLocaleRequest } from '@contextweave/contracts'
 import {
   toCreateEnvironmentInput,
   toUpdateEnvironmentInput,
@@ -7,6 +8,10 @@ import {
 import { unwrapIpc as unwrap } from '@/shared/lib/ipc'
 
 export const environmentService = {
+  detectLocale: (input: IpLocaleRequest) =>
+    unwrap(window.contextweave.environment.detectLocale(input)),
+  cancelLocale: (requestId: string) =>
+    unwrap(window.contextweave.environment.cancelLocale(requestId)),
   delete: (id: string) => unwrap(window.contextweave.environment.delete(id)),
   get: (id: string) => unwrap(window.contextweave.environment.get(id)),
   save: (values: EnvironmentFormValues, id?: string, expectedRevision?: number) =>

@@ -1,4 +1,5 @@
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
+import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm, readFile, realpath } from 'node:fs/promises'
@@ -18,7 +19,7 @@ const desktop = await _electron.launch({
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
 })
-let id, fixtureServer
+let id, fixtureServer, localeProxy
 try {
   const page = await desktop.firstWindow()
   await page.waitForFunction(
@@ -47,12 +48,55 @@ try {
     }),
   )
   assert(imported.ok, 'Batch import must cross the validated bridge')
-  assert.deepEqual(imported.data.map((row) => row.status), [
-    'created', 'created', 'created', 'skipped', 'error',
-  ])
+  assert.deepEqual(
+    imported.data.map((row) => row.status),
+    ['created', 'created', 'created', 'skipped', 'error'],
+  )
   const proxies = await page.evaluate(() => window.contextweave.proxy.list())
   assert(proxies.ok)
   assert.deepEqual(proxies.data.map((proxy) => proxy.type).sort(), ['http', 'https', 'socks5'])
+  // No public network dependency: a local rejecting proxy must see the IP request,
+  // and a failure must not retry the provider over the host's direct route.
+  const tunnels = []
+  localeProxy = createServer((_request, response) => {
+    response.writeHead(404)
+    response.end()
+  })
+  localeProxy.on('connect', (request, socket) => {
+    tunnels.push(request.url)
+    socket.on('error', () => {})
+    socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n')
+  })
+  localeProxy.listen(0, '127.0.0.1')
+  await once(localeProxy, 'listening')
+  const proxy = await page.evaluate(
+    (port) =>
+      window.contextweave.proxy.save({
+        config: { type: 'http', host: '127.0.0.1', port },
+      }),
+    localeProxy.address().port,
+  )
+  assert(proxy.ok)
+  const detected = await page.evaluate(
+    (proxyId) =>
+      window.contextweave.environment.detectLocale({
+        requestId: crypto.randomUUID(),
+        connection: 'proxy',
+        proxyId,
+      }),
+    proxy.data.proxyId,
+  )
+  assert.deepEqual(detected, { ok: false, code: 'IP_LOCALE_FAILED', message: 'IP_LOCALE_FAILED' })
+  assert.deepEqual(tunnels, ['ipwho.is:443'])
+  assert(
+    (
+      await page.evaluate(
+        (proxyId) => window.contextweave.proxy.delete(proxyId),
+        proxy.data.proxyId,
+      )
+    ).ok,
+  )
+  console.log(JSON.stringify({ ipLocaleProxyBoundary: 'passed-no-direct-fallback' }))
   const kernels = await page.evaluate(() => window.contextweave.kernel.list())
   assert(kernels.ok, 'Kernel list must cross the sandboxed IPC bridge')
   assert(
@@ -97,6 +141,46 @@ try {
     )
     assert(created.ok, JSON.stringify(created))
     id = created.data.id
+    const automatic = await page.evaluate(
+      ({ environmentId, expectedRevision }) =>
+        window.contextweave.environment.update({
+          version: 1,
+          environmentId,
+          expectedRevision,
+          name: 'Desktop smoke fixture',
+          proxyId: null,
+          browserSettings: {
+            language: 'auto',
+            timezone: 'auto',
+            window: { width: 1440, height: 900 },
+          },
+        }),
+      { environmentId: id, expectedRevision: created.data.revision },
+    )
+    assert(automatic.ok, JSON.stringify(automatic))
+    const automaticDetail = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+    assert(
+      automaticDetail.ok &&
+        automaticDetail.data.browserSettings.language === 'auto' &&
+        automaticDetail.data.browserSettings.timezone === 'auto',
+    )
+    const manual = await page.evaluate(
+      ({ environmentId, expectedRevision }) =>
+        window.contextweave.environment.update({
+          version: 1,
+          environmentId,
+          expectedRevision,
+          name: 'Desktop smoke fixture',
+          proxyId: null,
+          browserSettings: {
+            language: 'system',
+            timezone: 'system',
+            window: { width: 1440, height: 900 },
+          },
+        }),
+      { environmentId: id, expectedRevision: automatic.data.revision },
+    )
+    assert(manual.ok, JSON.stringify(manual))
     for (let run = 0; run < 2; run++) {
       const started = await page.evaluate((id) => window.contextweave.environment.start(id), id)
       assert(
@@ -149,8 +233,11 @@ try {
       assert(screenshot.ok && screenshot.data.ok, JSON.stringify({ run, screenshot }))
       const capturedPage = context.pages().find((tab) => tab.url() === `${fixtureUrl}/`)
       assert(capturedPage, 'The screenshot task must use an existing fixture page')
-      assert.equal(await capturedPage.evaluate(() => document.visibilityState), 'visible',
-        'The Worker must activate its own selected tab before taking a headful screenshot')
+      assert.equal(
+        await capturedPage.evaluate(() => document.visibilityState),
+        'visible',
+        'The Worker must activate its own selected tab before taking a headful screenshot',
+      )
       assert.equal(screenshot.data.title, 'ContextWeave worker fixture')
       const screenshotPath = screenshot.data.screenshotPath
       const outputRoot = await realpath(join(directory, 'contextweave', 'worker-results'))
@@ -208,7 +295,8 @@ try {
     assert.equal(sessions.data.length, 2)
     assert(
       sessions.data.every(
-        (session) => session.endedAt && session.revision === 1 && session.executableVersion,
+        (session) =>
+          session.endedAt && session.revision === manual.data.revision && session.executableVersion,
       ),
     )
     const before = await readFile(
@@ -247,6 +335,26 @@ try {
       }),
     )
   }
+  if (process.platform === 'darwin') {
+    await page.close()
+    const reopened = desktop.waitForEvent('window', { timeout: 15000 })
+    const second = spawn(require('electron'), [appRoot], {
+      env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
+      stdio: 'ignore',
+    })
+    const exited = once(second, 'exit')
+    const next = await reopened
+    await next.waitForFunction(() => Boolean(window.contextweave))
+    assert.equal((await exited)[0], 0)
+    assert((await next.evaluate(() => window.contextweave.app.getInfo())).ok)
+    await next.close()
+    const activated = desktop.waitForEvent('window', { timeout: 15000 })
+    await desktop.evaluate(({ app }) => app.emit('activate'))
+    const active = await activated
+    await active.waitForFunction(() => Boolean(window.contextweave))
+    assert((await active.evaluate(() => window.contextweave.environment.list())).ok)
+    console.log(JSON.stringify({ destroyedWindowSecondInstance: 'passed', macActivate: 'passed' }))
+  }
 } finally {
   try {
     if (id) {
@@ -257,6 +365,10 @@ try {
     /* Preserve the original test error; application shutdown also stops owned children. */
   }
   await desktop.close()
+  if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
   if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
+
+// Native dialog invocation and original-data preservation under actual Electron startup failures.
+await import('./smoke-startup.mjs')

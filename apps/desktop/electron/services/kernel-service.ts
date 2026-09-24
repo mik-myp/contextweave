@@ -245,6 +245,8 @@ export function createKernelService(
     port: number,
     proxyArgs?: string[],
   ): LaunchPlan {
+    if (config.commonConfig.language === 'auto' || config.commonConfig.timezone === 'auto')
+      throw new Error('IP_LOCALE_FAILED')
     const adapter = registry.get(record.kernelId)
     const executablePath = executableFor(record)
     if (!executablePath) throw new Error('KERNEL_UNAVAILABLE')

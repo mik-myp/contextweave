@@ -47,6 +47,17 @@ describe('environment configuration form', () => {
     expect(input.proxyId).toBe('proxy-a')
     expect(input).not.toHaveProperty('kernelId')
   })
+  it('keeps automatic choices independent when saving and editing', () => {
+    const automatic = { ...values, language: 'auto', timezone: 'UTC' }
+    expect(createEnvironmentFormSchema(t).safeParse(automatic).success).toBe(true)
+    expect(toCreateEnvironmentInput(automatic).commonConfig).toMatchObject({
+      language: 'auto',
+      timezone: 'UTC',
+    })
+    expect(
+      toUpdateEnvironmentInput('env-a', { ...values, timezone: 'auto' }).browserSettings,
+    ).toMatchObject({ language: 'system', timezone: 'auto' })
+  })
   it('reports errors on the fields that need correction', () => {
     const result = createEnvironmentFormSchema(t).safeParse({
       ...values,

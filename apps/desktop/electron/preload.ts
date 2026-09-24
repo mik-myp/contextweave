@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  ipLocaleRequestSchema,
+  ipLocaleResultSchema,
+  ipLocaleCancelSchema,
+  type IpLocaleRequest,
   appLogEntrySchema,
   appLogSnapshotSchema,
   appUpdateStateSchema,
@@ -194,6 +198,17 @@ const api = {
       ),
   },
   environment: {
+    detectLocale: async (input: IpLocaleRequest) =>
+      ipcResultSchema(ipLocaleResultSchema).parse(
+        await ipcRenderer.invoke('environment:detect-locale', ipLocaleRequestSchema.parse(input)),
+      ),
+    cancelLocale: async (requestId: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke(
+          'environment:cancel-locale',
+          ipLocaleCancelSchema.parse(requestId),
+        ),
+      ),
     preflight: async (id: string) =>
       ipcResultSchema(preflightReportSchema).parse(
         await ipcRenderer.invoke('environment:preflight', environmentIdSchema.parse(id)),

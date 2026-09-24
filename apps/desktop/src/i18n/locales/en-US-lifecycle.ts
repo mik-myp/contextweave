@@ -1,4 +1,26 @@
 export const lifecycleMessages = {
+  'env.ipLocaleAuto': 'Follow exit IP (on each launch)',
+  'env.ipLocaleTitle': 'Language and timezone from exit IP',
+  'env.ipLocaleDescription':
+    'Automatic mode queries IPWho.is through the selected direct or proxy route before each launch. You can also detect once and fill fixed values. The provider sees your exit IP, not environment names or proxy passwords. Language is a regional recommendation and can be overridden. Proxy failures never fall back to direct access; failed detection blocks automatic-mode launches.',
+  'env.ipLocaleDetect': 'Detect current route',
+  'env.ipLocaleDetecting': 'Detecting…',
+  'env.ipLocaleFailed': 'Could not detect IP region',
+  'env.ipLocaleProxy': 'Proxy exit result',
+  'env.ipLocaleDirect': 'Direct exit result',
+  'env.ipLocaleResultHint':
+    'This is a regional recommendation for this request, not language identification. Check multilingual regions or rotating proxies manually. Save the environment after filling fixed values.',
+  'env.ipLocaleApply': 'Fill fixed language and timezone',
+  'error.IP_LOCALE_FAILED':
+    'Could not detect the IP region through this route. Check the network or proxy and retry, or choose language/timezone manually. No direct or system fallback was used.',
+  'error.IP_LOCALE_TIMEOUT': 'IP region detection timed out. Retry or use manual settings.',
+  'error.IP_LOCALE_RATE_LIMITED':
+    'The IP region provider rate-limited this request. Retry later or use manual settings.',
+  'error.IP_LOCALE_INVALID_RESPONSE':
+    'The provider did not return valid language/timezone data. Retry or set values manually.',
+  'error.IP_LOCALE_BUSY':
+    'IP region detection is already running. Wait for completion or cancel and retry.',
+
   'proxy.typeHelp':
     'HTTP proxies can carry HTTPS sites via CONNECT. HTTPS here means TLS to the proxy server itself; match the protocol supplied by your provider.',
   'error.UPDATE_SIGNATURE_INVALID':

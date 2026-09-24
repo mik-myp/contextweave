@@ -66,8 +66,8 @@ export async function connectBrowserSettings(
   proxy?: { username: string; password: string; host: string; port: number },
   onNoPages?: () => void,
 ): Promise<() => void> {
-  if (!proxy && !onNoPages && settings.language === 'system' && settings.timezone === 'system')
-    return () => {}
+  const needsOverrides = !!proxy || settings.language !== 'system' || settings.timezone !== 'system'
+  if (!needsOverrides && !onNoPages) return () => {}
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
     signal: AbortSignal.timeout(5000),
   })
@@ -296,8 +296,12 @@ export async function connectBrowserSettings(
           sawPage = true
         }
     }
-    await send('Target.setAutoAttach', autoAttach)
-    while (initializing.size) await Promise.all([...initializing])
+    // A lifecycle-only observer must not attach/pause page execution or interfere
+    // with independent Worker/Playwright CDP clients. Discovery alone is sufficient.
+    if (needsOverrides) {
+      await send('Target.setAutoAttach', autoAttach)
+      while (initializing.size) await Promise.all([...initializing])
+    }
     if (failure) throw failure
     ready = true
     checkEmpty()

@@ -202,6 +202,8 @@ it('stops only after the last top-level page disappears, not during a short tab 
   )
   try {
     const socket = MockSocket.instance
+    expect(socket.commands.some((command) => command.method === 'Target.setAutoAttach')).toBe(false)
+    expect(socket.commands.some((command) => command.method.startsWith('Emulation.'))).toBe(false)
     targets = []
     socket.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-a' } })
     targets = [{ targetId: 'tab-b', type: 'page' }]

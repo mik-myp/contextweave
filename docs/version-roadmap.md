@@ -487,11 +487,12 @@
 - **Worker 安全修复：** 任务 ID 限制为 1～128 位安全字符；只接受 HTTP(S) 任务，拒绝路径、目录和未声明字段。Main 分配随机私有目录并独占创建文件，Worker 通过继承的文件描述符写入截图，Main 校验文件身份、类型与大小后返回路径。失败、无效结果、输出超限、取消和超时清理目录；取消/超时等待进程关闭，不能提前释放任务占用。截图上限 32 MiB。
 - **影响边界：** Main 的代理/Worker 服务、Worker 协议与执行器、两种语言错误提示、桌面 smoke；所有 8 个 workspace 包版本统一为 `0.1.2`。没有依赖升级、数据库 schema/migration 变化或用户数据迁移。成功截图不再放在系统临时目录，而是应用数据根下的 `worker-results/run-*/screenshot.png`；外部输入不能指定这一位置。
 - **自动检查（本机 macOS 26.6.2 / ARM64，Node.js 22.23.3，pnpm 10.26.2）：**
-  - `pnpm check`：格式、lint、TypeScript 和 **37 个测试文件 / 212 项测试**全部通过。
+  - `pnpm check`：格式、lint、TypeScript 和 **37 个测试文件 / 213 项测试**全部通过。
   - `pnpm --filter @contextweave/desktop exec electron-vite build`：通过。
   - `pnpm test:desktop --require-native`：真实 Electron 桥接、浏览器两次启停、两次 PNG 截图、随机输出目录隔离、回收站恢复和运行态拒绝操作均通过；未跳过 native 链路。
   - `pnpm test:fingerprint --require-provider`：Apple Silicon 上的上游 `148.0.7778.215` 安装、启动、重开身份稳定、数据保留、认证代理和回收站恢复通过。
 - **回归证据：** 修复前新增用例复现代理秘密误用和不安全 Worker 输入；修复后覆盖新目标拒绝、先保存绕过拒绝、显式替换/清除密码、正常代理、真实子进程 fd 写入、路径穿越、symlink/junction、文件替换、无效/超大输出、取消、超时及失败清理。
+- **跨平台修正：** 首轮 Windows CI 暴露 Node.js 22.15 的路径 stat 与句柄 fstat 卷标识差异，导致合法产物误拒绝。身份校验改为两端都使用句柄 fstat，并用 BigInt 精确比较 64 位身份；保留 symlink/junction、hard link、单链接文件替换、类型和大小的拒绝测试，不通过跳过 Windows 校验规避问题。
 - **手动与跨平台验收：** 上述为自动化集成测试，不冒充人工操作验收。Windows x64 / Intel Mac 的本轮验证交由 CI，结果发布时补录；Intel Mac 指纹内核提供方缺口仍存在，三平台应用构建不等于三平台指纹能力已验收。
 - **明确不包含：** `v0.1.3～v0.1.7` 的事务全面整改、窗口恢复、进程锁/长响应收敛、完整发布审计；也不新增远程存储、备份或外部 API。原有 README 改动和 BUGS 报告不纳入本轮提交。
 - **发布与下一步：** 本地通过不提前登记“已发布”。待三平台检查通过后创建 `v0.1.2`，由 Release workflow 生成安装包、校验文件和 SBOM，再登记实际发布证据；随后等待维护者确认。

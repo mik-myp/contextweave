@@ -24,7 +24,7 @@ export function createWorkerOutput(root: string) {
   try {
     // Exclusive creation refuses pre-existing files and symlinks; the inherited fd pins the inode.
     descriptor = openSync(screenshotPath, 'wx', 0o600)
-    const identity = fstatSync(descriptor)
+    const identity = fstatSync(descriptor, { bigint: true })
     return {
       directory,
       screenshotPath,
@@ -42,15 +42,27 @@ export function createWorkerOutput(root: string) {
           parent.isSymbolicLink() ||
           realpathSync(directory) !== directory ||
           !file.isFile() ||
-          file.isSymbolicLink() ||
-          file.nlink !== 1 ||
-          file.dev !== identity.dev ||
-          file.ino !== identity.ino ||
-          file.size === 0 ||
-          file.size > maxWorkerScreenshotBytes
+          file.isSymbolicLink()
         )
           throw new Error('WORKER_OUTPUT_INVALID')
-        return screenshotPath
+        const verificationDescriptor = openSync(screenshotPath, 'r')
+        try {
+          // Compare handle stats on both sides: Windows path stats can report a different
+          // volume ID from fstat. BigInts retain the exact 64-bit file identity.
+          const current = fstatSync(verificationDescriptor, { bigint: true })
+          if (
+            !current.isFile() ||
+            current.nlink !== 1n ||
+            current.dev !== identity.dev ||
+            current.ino !== identity.ino ||
+            current.size === 0n ||
+            current.size > BigInt(maxWorkerScreenshotBytes)
+          )
+            throw new Error('WORKER_OUTPUT_INVALID')
+          return screenshotPath
+        } finally {
+          closeSync(verificationDescriptor)
+        }
       },
       discard() {
         this.closeDescriptor()

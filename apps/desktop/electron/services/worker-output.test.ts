@@ -88,23 +88,27 @@ describe('Main-owned worker output', () => {
     expect(readdirSync(outside)).toEqual([])
   })
 
-  it('rejects a replaced output file and never writes through a replacement hard link', () => {
-    const root = setup()
-    const outside = join(root, 'protected.txt')
-    writeFileSync(outside, 'unchanged')
-    const output = createWorkerOutput(join(root, 'results'))
-    try {
-      // Close the parent copy first, as production does immediately after spawning.
-      output.closeDescriptor()
-      renameSync(output.screenshotPath, join(output.directory, 'original.png'))
-      linkSync(outside, output.screenshotPath)
-      expect(() => output.validate()).toThrow('WORKER_OUTPUT_INVALID')
+  it.each(['hard link', 'regular file'])(
+    'rejects an output replaced by another %s',
+    (replacement) => {
+      const root = setup()
+      const outside = join(root, 'protected.txt')
+      writeFileSync(outside, 'unchanged')
+      const output = createWorkerOutput(join(root, 'results'))
+      try {
+        // Close the parent copy first, as production does immediately after spawning.
+        output.closeDescriptor()
+        renameSync(output.screenshotPath, join(output.directory, 'original.png'))
+        if (replacement === 'hard link') linkSync(outside, output.screenshotPath)
+        else writeFileSync(output.screenshotPath, 'replacement')
+        expect(() => output.validate()).toThrow('WORKER_OUTPUT_INVALID')
+        expect(readFileSync(outside, 'utf8')).toBe('unchanged')
+      } finally {
+        output.discard()
+      }
       expect(readFileSync(outside, 'utf8')).toBe('unchanged')
-    } finally {
-      output.discard()
-    }
-    expect(readFileSync(outside, 'utf8')).toBe('unchanged')
-  })
+    },
+  )
 
   it('closes the parent descriptor exactly once', () => {
     const output = createWorkerOutput(setup())

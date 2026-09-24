@@ -68,7 +68,7 @@ export function HeaderSearch() {
       {
         url: appRoutes.activity,
         labelKey: 'nav.activity',
-        keywords: 'activity runtime 运行记录',
+        keywords: 'activity runtime logs 日志查看 运行记录 操作记录',
         icon: <SearchIcon />,
       },
       {

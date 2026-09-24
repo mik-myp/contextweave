@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { ReactTable, RowData } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
 import { DataTableColumnHeader } from './data-table-column-header'
@@ -16,6 +16,7 @@ import type { DataTableFeatures } from './data-table-features'
 
 export function DataTableBody<TData extends RowData>({
   table,
+  scrollRef,
   label,
   loading,
   selectedRowId,
@@ -25,6 +26,7 @@ export function DataTableBody<TData extends RowData>({
 }: {
   table: ReactTable<DataTableFeatures, TData>
   label: string
+  scrollRef: RefObject<HTMLDivElement | null>
   loading?: boolean
   selectedRowId?: string
   emptyTitle: string
@@ -36,11 +38,20 @@ export function DataTableBody<TData extends RowData>({
   return (
     <div
       data-slot="data-table-surface"
-      className="overflow-hidden rounded-lg border bg-background"
+      className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-background"
       aria-busy={loading}
     >
-      <Table aria-label={label}>
-        <TableHeader>
+      <Table
+        aria-label={label}
+        containerProps={{
+          ref: scrollRef,
+          tabIndex: 0,
+          role: 'region',
+          'aria-label': label,
+          className: 'min-h-0 overflow-auto scroll-pt-10 focus-visible:outline-ring',
+        }}
+      >
+        <TableHeader className="sticky top-0 z-10 bg-background">
           {table.getHeaderGroups().map((group) => (
             <TableRow key={group.id}>
               {group.headers.map((header) => {

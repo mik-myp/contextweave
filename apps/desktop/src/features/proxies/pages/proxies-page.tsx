@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { proxyTypeSchema } from '@contextweave/contracts'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -167,16 +167,21 @@ export function ProxiesPage() {
         }
         countLabel={(count) => t('proxy.total').replace('{count}', String(count))}
         bulkActions={
-          <DataTableBulkActions table={table} disabled={batch.pending}>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={batch.pending || !selected.length}
-              onClick={() => setTargets(selected)}
-            >
-              {t('admin.delete')} ({selected.length})
-            </Button>
-          </DataTableBulkActions>
+          <DataTableBulkActions
+            table={table}
+            disabled={batch.pending}
+            actions={[
+              {
+                id: 'delete',
+                label: `${t('admin.delete')} (${selected.length})`,
+                icon: Trash2Icon,
+                destructive: true,
+                disabled: !selected.length,
+                pending: batch.pending,
+                onClick: () => setTargets(selected),
+              },
+            ]}
+          />
         }
       />
       {editor && <ProxyDialog proxy={editor.proxy} onClose={() => setEditor(undefined)} />}

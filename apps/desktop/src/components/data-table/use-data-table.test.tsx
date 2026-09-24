@@ -178,11 +178,15 @@ describe('shared data table state', () => {
     await render('environments', [])
     expect(table.state.pagination.pageIndex).toBe(0)
   })
-  it('restores scroll after returning from a shorter page and waiting for data', async () => {
+  it('restores the table viewport after loading without changing the surrounding page scroll', async () => {
     function ScrollList({ loading }: { loading: boolean }) {
       const ref = useRef<HTMLDivElement>(null)
       useDataTableScroll(ref, 'scroll-list', loading)
-      return <div ref={ref}>List</div>
+      return (
+        <div ref={ref} data-table-scroll>
+          List
+        </div>
+      )
     }
     const renderScroll = async (active: boolean, loading = false) => {
       await act(async () =>
@@ -196,16 +200,19 @@ describe('shared data table state', () => {
       )
     }
     await renderScroll(true)
-    const scroller = container.querySelector<HTMLElement>('[data-scroll-restoration]')!
+    const scroller = container.querySelector<HTMLElement>('[data-table-scroll]')!
+    const pageScroller = container.querySelector<HTMLElement>('[data-scroll-restoration]')!
     scroller.scrollTop = 400
     scroller.dispatchEvent(new Event('scroll'))
     await renderScroll(false)
-    // A shorter destination clamps the shared viewport. This must not replace the list offset.
-    scroller.scrollTop = 0
-    scroller.dispatchEvent(new Event('scroll'))
+    // A detail page has its own offset; it must not replace the list's saved offset.
+    pageScroller.scrollTop = 50
+    pageScroller.dispatchEvent(new Event('scroll'))
     await renderScroll(true, true)
-    expect(scroller.scrollTop).toBe(0)
+    const restoredScroller = container.querySelector<HTMLElement>('[data-table-scroll]')!
+    expect(restoredScroller.scrollTop).toBe(0)
     await renderScroll(true)
-    expect(scroller.scrollTop).toBe(400)
+    expect(restoredScroller.scrollTop).toBe(400)
+    expect(pageScroller.scrollTop).toBe(50)
   })
 })

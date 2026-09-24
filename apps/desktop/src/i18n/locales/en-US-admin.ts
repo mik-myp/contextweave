@@ -1,20 +1,37 @@
 import type { adminMessages as zhMessages } from './zh-CN-admin'
 
 export const adminMessages: Record<keyof typeof zhMessages, string> = {
-  'kernel.backgroundDownloads': 'Background downloads',
-  'kernel.provider': 'Kernel type',
-  'kernel.officialReleases': 'Official releases',
-  'kernel.downloadLink': 'Download link',
-  'kernel.downloadUrl': 'HTTPS download URL',
-  'kernel.customLinkHelp':
-    'Official release links are recognized automatically. Other links require a full version and a trusted SHA-256. Use ZIP for Windows or DMG for macOS.',
-  'kernel.trustSource':
-    'I trust this download source and have confirmed that this distribution complies with the selected kernel license.',
-  'kernel.customInputError':
-    'Enter a valid HTTPS URL, a four-part version and a 64-character hexadecimal SHA-256.',
+  'table.moreActions': 'More actions',
+  'env.stopBeforeTrash': 'Stop the environment or complete recovery before moving it to trash.',
+  'proxy.unlinkBeforeDelete': 'Unlink this proxy from all environments before deleting it.',
+  'settings.updates': 'Check for updates',
+  'update.availableHelp': 'A new version is available. Review the release notes before installing.',
+  'update.description':
+    'Manually check stable ContextWeave releases and download the installer for this device.',
+  'update.currentVersion': 'Current version',
+  'update.check': 'Check for updates',
+  'update.checking': 'Checking…',
+  'update.current': 'No newer stable release is available.',
+  'update.idle': 'Not checked yet. Click “Check for updates” to connect to GitHub Releases.',
+  'update.cancelled': 'Download cancelled. You can download it again.',
+  'update.lastChecked': 'Last successful check',
+  'update.stable': 'Stable',
+  'update.published': 'Published',
+  'update.unsupported':
+    'A newer release is available, but it has no installer for this platform and architecture. See the release notes.',
+  'update.downloading': 'Downloading and verifying',
+  'update.ready':
+    'SHA-256 verified. Stop running environments before opening the installer. Quit ContextWeave before installing, then follow the system instructions.',
+  'update.cancelDownload': 'Cancel download',
+  'update.openInstaller': 'Open installer',
+  'update.download': 'Download installer',
+  'update.releaseNotes': 'Release notes',
+  'update.manualHelp':
+    'Checks and downloads start only when you click. Installation and restart are manual. On macOS, open the DMG and replace ContextWeave in Applications; on Windows, run the installer. Downloads continue when you leave this page.',
 
+  'kernel.backgroundDownloads': 'Background downloads',
   'kernel.versionInstallHelp':
-    'Choose a kernel and version, or install from a download link. Package integrity and architecture are verified.',
+    'Choose a Fingerprint Chromium release. Package integrity and executable architecture are verified after download.',
   'kernel.refreshVersions': 'Refresh releases',
   'kernel.loadingVersions': 'Loading official releases…',
   'kernel.cachedCatalog':

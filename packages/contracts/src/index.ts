@@ -325,3 +325,7 @@ export const customKernelSourceSchema = z.object({
   trustedSource: z.boolean().default(false),
 }).strict()
 export type CustomKernelSource = z.infer<typeof customKernelSourceSchema>
+
+export * from './updates'
+
+export * from './logs'

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell } from 'electron'
 import log from 'electron-log/main'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -6,18 +6,24 @@ import { z } from 'zod'
 import { dataChangedSchema, platformSchema, architectureSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
+import { createAppUpdateService } from './services/app-update-service'
+import { createAppUpdateHandlers } from './app-update-ipc'
+import { createAppLogService } from './services/app-log-service'
+import { createAppLogHandlers } from './app-log-ipc'
 import { ok, fail } from './services/result'
 if (!app.isPackaged && process.env.CONTEXTWEAVE_USER_DATA)
   app.setPath('userData', resolve(process.env.CONTEXTWEAVE_USER_DATA))
 log.transports.file.resolvePathFn = () =>
   join(app.getPath('userData'), 'contextweave', 'logs', 'main.log')
 log.initialize()
+const applicationLogs = createAppLogService()
 const APP_ROOT = resolve(__dirname, '..')
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL
 const targetPlatform = platformSchema.parse(process.platform)
 const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
 let application: ReturnType<typeof createApplication> | undefined
+let updates: ReturnType<typeof createAppUpdateService> | undefined
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 const hasInstanceLock = app.requestSingleInstanceLock()
@@ -57,20 +63,59 @@ if (hasInstanceLock)
       const environmentRoot = join(dataRoot, 'environments')
       mkdirSync(environmentRoot, { recursive: true })
       database = openLocalDatabase(join(dataRoot, 'contextweave.sqlite'))
+      const repository = new EnvironmentRepository(database.sqlite)
+      const environmentStates = new Map(
+        repository.listAll().map((record) => [record.environmentId, record.status]),
+      )
+      applicationLogs.record({ level: 'info', source: 'app', event: 'app-started', fields: {} })
+      updates = createAppUpdateService({
+        currentVersion: app.getVersion(),
+        platform: targetPlatform,
+        arch: targetArch,
+        root: join(dataRoot, 'updates'),
+        openPath: (path) => shell.openPath(path),
+        openExternal: (url) => shell.openExternal(url),
+        hasActiveEnvironments: () =>
+          repository
+            .list()
+            .some((record) =>
+              ['running', 'starting', 'stopping', 'needs-recovery'].includes(record.status),
+            ),
+      })
       application = createApplication({
-        repository: new EnvironmentRepository(database.sqlite),
+        repository,
         dataRoot,
         platform: targetPlatform,
         arch: targetArch,
         secure: safeStorage,
         workerPath: join(__dirname, 'worker.js'),
         changed: (domains) => {
+          if (domains.includes('environments')) {
+            for (const record of repository.listAll()) {
+              if (environmentStates.get(record.environmentId) !== record.status) {
+                applicationLogs.record({
+                  source: 'environment',
+                  event: 'environment-state',
+                  level:
+                    record.status === 'error'
+                      ? 'error'
+                      : record.status === 'needs-recovery'
+                        ? 'warn'
+                        : 'info',
+                  fields: { resourceId: record.environmentId, status: record.status },
+                })
+                environmentStates.set(record.environmentId, record.status)
+              }
+            }
+          }
           if (mainWindow && !mainWindow.isDestroyed())
             mainWindow.webContents.send('data:changed', dataChangedSchema.parse({ domains }))
         },
       })
       application.recover()
       const localHandlers: Record<string, (input: unknown) => unknown> = {
+        ...createAppUpdateHandlers(updates),
+        ...createAppLogHandlers(applicationLogs, (text) => clipboard.writeText(text)),
         'app:get-info': () =>
           ok({
             name: 'ContextWeave',
@@ -102,9 +147,11 @@ if (hasInstanceLock)
         ipcMain.handle(channel, (event, input: unknown) => {
           if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame)
             return fail('FORBIDDEN')
-          return localHandlers[channel]
-            ? localHandlers[channel](input)
-            : application!.invoke(channel, input)
+          return applicationLogs.invoke(channel, input, () =>
+            localHandlers[channel]
+              ? localHandlers[channel](input)
+              : application!.invoke(channel, input),
+          )
         })
       createWindow()
       app.on('activate', () => {
@@ -125,8 +172,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', (event) => {
   if (isQuitting) return
   isQuitting = true
+  applicationLogs.record({ level: 'info', source: 'app', event: 'app-stopping', fields: {} })
   event.preventDefault()
-  void application?.shutdown().finally(() => app.quit())
-  if (!application) app.quit()
+  void Promise.allSettled([application?.shutdown(), updates?.shutdown()]).finally(() => app.quit())
 })
 app.on('will-quit', () => database?.close())

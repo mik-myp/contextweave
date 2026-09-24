@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table'
-import { EllipsisIcon, LockKeyholeIcon, NetworkIcon } from 'lucide-react'
+import { LockKeyholeIcon, PencilIcon, Trash2Icon, WifiIcon } from 'lucide-react'
 import type { I18nContextValue } from '@/i18n'
 import type { ProxySummary } from '@/shared/types/app'
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
@@ -7,13 +7,7 @@ import { selectionColumn } from '@/components/data-table/data-table-selection'
 import { ProxyTestResult } from './components/proxy-test-result'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DataTableRowActions } from '@/components/data-table/data-table-row-actions'
 
 export function proxyColumns({
   t,
@@ -144,41 +138,36 @@ export function proxyColumns({
       enableHiding: false,
       meta: { label: t('proxy.actions'), align: 'end' },
       cell: ({ row }) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`${t('proxy.actions')}: ${row.original.host}:${row.original.port}`}
-              />
-            }
-          >
-            <EllipsisIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuItem disabled={testing.has(row.id)} onClick={() => onTest(row.original)}>
-                <NetworkIcon />
-                {t(testing.has(row.id) ? 'proxy.testing' : 'proxy.test')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={locked.has(row.id)}
-                title={locked.has(row.id) ? t('proxy.inUse') : undefined}
-                onClick={() => onEdit(row.original)}
-              >
-                {t('admin.edit')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={!!usage.get(row.id)}
-                onClick={() => onDelete(row.original)}
-              >
-                {t('admin.delete')}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DataTableRowActions
+          label={`${t('proxy.actions')}: ${row.original.name ?? row.original.host}`}
+          actions={[
+            {
+              id: 'test',
+              label: t(testing.has(row.id) ? 'proxy.testing' : 'proxy.test'),
+              icon: WifiIcon,
+              pending: testing.has(row.id),
+              disabled: testing.has(row.id),
+              onClick: () => onTest(row.original),
+            },
+            {
+              id: 'edit',
+              label: t('admin.edit'),
+              icon: PencilIcon,
+              disabled: locked.has(row.id),
+              disabledReason: t('proxy.inUse'),
+              onClick: () => onEdit(row.original),
+            },
+            {
+              id: 'delete',
+              label: t('admin.delete'),
+              icon: Trash2Icon,
+              destructive: true,
+              disabled: !!usage.get(row.id),
+              disabledReason: t('proxy.unlinkBeforeDelete'),
+              onClick: () => onDelete(row.original),
+            },
+          ]}
+        />
       ),
     },
   ]

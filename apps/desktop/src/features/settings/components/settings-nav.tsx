@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { HardDriveIcon, InfoIcon } from 'lucide-react'
+import { HardDriveIcon, InfoIcon, RefreshCwIcon } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -16,6 +16,15 @@ export function SettingsNav() {
       >
         <HardDriveIcon data-icon="inline-start" aria-hidden="true" />
         {t('settings.storage')}
+      </Link>
+      <Link
+        to="/settings/updates"
+        activeOptions={{ exact: true }}
+        className={cn(buttonVariants({ variant: 'ghost' }), 'justify-start')}
+        activeProps={{ className: 'bg-muted' }}
+      >
+        <RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+        {t('settings.updates')}
       </Link>
       <Link
         to="/settings/about"

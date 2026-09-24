@@ -1,4 +1,17 @@
 export const lifecycleMessages = {
+  'error.UPDATE_RELEASE_INVALID': '发行信息无效或不是可用的正式版本，请稍后重试。',
+  'error.UPDATE_CHECKSUM_UNAVAILABLE':
+    '此安装包缺少可信 SHA-256，暂不能下载。请等待发布者补全发行信息。',
+  'error.UPDATE_RATE_LIMITED': 'GitHub 请求被限制，请稍后再检查。',
+  'error.UPDATE_CHECK_FAILED': '无法检查更新，请检查网络后重试。',
+  'error.UPDATE_TIMEOUT': '更新请求超时，请检查网络后重试。',
+  'error.UPDATE_FAILED': '更新操作未完成，请检查网络、存储空间及目录权限后重试。',
+  'error.UPDATE_NOT_AVAILABLE': '请先检查更新并选择可用的本机安装包。',
+  'error.UPDATE_NOT_READY': '安装包尚未准备好，请先完成下载和校验。',
+  'error.UPDATE_FILE_INVALID': '已下载的安装包丢失或被修改，请重新下载。',
+  'error.UPDATE_ENVIRONMENTS_ACTIVE': '请先停止正在运行的环境并完成异常恢复，然后再打开安装包。',
+  'error.UPDATE_OPEN_FAILED': '系统无法打开安装包或发行说明，请重试。',
+
   'error.KERNEL_VERSION_MISMATCH':
     '实际浏览器版本与环境绑定版本不一致，已停止启动，请安装正确的版本。',
 
@@ -44,8 +57,8 @@ export const lifecycleMessages = {
   'life.cap.unsupported': '不支持',
   'life.cap.failed': '验证失败',
   'life.capHelp': '声明能力与当前版本的实测结果分开显示。未验证不代表支持。',
-  'life.sessions': '浏览器会话',
-  'life.operations': '后台操作',
+  'life.sessions': '运行会话',
+  'life.operations': '操作记录',
   'life.endedAt': '结束时间',
   'life.phase': '阶段',
   'life.result': '结果',

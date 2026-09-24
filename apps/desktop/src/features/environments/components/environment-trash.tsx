@@ -1,3 +1,5 @@
+import { ArchiveRestoreIcon } from 'lucide-react'
+import { DataTableRowActions } from '@/components/data-table/data-table-row-actions'
 import { selectionColumn } from '@/components/data-table/data-table-selection'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -10,7 +12,6 @@ import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-ac
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
 import { useDataTable } from '@/components/data-table/use-data-table'
 import { BatchResult } from '@/components/batch-result'
-import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 const getRowId = (row: EnvironmentSummary) => row.id
 export function EnvironmentTrash() {
@@ -52,19 +53,23 @@ export function EnvironmentTrash() {
     },
     {
       id: 'actions',
-      header: '',
+      header: t('env.actions'),
       enableHiding: false,
       enableSorting: false,
       meta: { label: t('env.actions'), align: 'end' },
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={batch.pending}
-          onClick={() => void restore([row.original])}
-        >
-          {t('life.restore')}
-        </Button>
+        <DataTableRowActions
+          label={`${t('env.actions')}: ${row.original.name}`}
+          actions={[
+            {
+              id: 'restore',
+              label: t('life.restore'),
+              icon: ArchiveRestoreIcon,
+              disabled: batch.pending,
+              onClick: () => void restore([row.original]),
+            },
+          ]}
+        />
       ),
     },
   ]
@@ -79,7 +84,7 @@ export function EnvironmentTrash() {
   })
   const selected = table.getFilteredSelectedRowModel().rows.map((row) => row.original)
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Alert>
         <AlertDescription>{t('life.trashHelp')}</AlertDescription>
       </Alert>
@@ -93,16 +98,20 @@ export function EnvironmentTrash() {
         onRetry={() => void query.refetch()}
         emptyTitle={t('life.trashEmpty')}
         bulkActions={
-          <DataTableBulkActions table={table} disabled={batch.pending}>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={batch.pending || !selected.length}
-              onClick={() => void restore(selected)}
-            >
-              {t('life.restore')} ({selected.length})
-            </Button>
-          </DataTableBulkActions>
+          <DataTableBulkActions
+            table={table}
+            disabled={batch.pending}
+            actions={[
+              {
+                id: 'restore',
+                label: `${t('life.restore')} (${selected.length})`,
+                icon: ArchiveRestoreIcon,
+                disabled: !selected.length,
+                pending: batch.pending,
+                onClick: () => void restore(selected),
+              },
+            ]}
+          />
         }
       />
     </div>

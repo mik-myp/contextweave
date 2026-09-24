@@ -41,13 +41,12 @@ export function DataTable<TData extends RowData>({
   countLabel?: (count: number) => string
 }) {
   const { t } = useI18n()
-  const ref = useRef<HTMLElement>(null)
-  useDataTableScroll(ref, table.options.meta?.stateKey, loading)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useDataTableScroll(scrollRef, table.options.meta?.stateKey, loading || Boolean(error))
   return (
     <section
-      ref={ref}
       aria-label={label}
-      className="flex min-w-0 flex-col gap-4"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-4"
       data-slot="data-table"
     >
       <DataTableToolbar
@@ -56,28 +55,31 @@ export function DataTable<TData extends RowData>({
         filters={filters}
         actions={actions}
       />
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>{t('table.error')}</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-          {onRetry && (
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              {t('common.retry')}
-            </Button>
-          )}
-        </Alert>
-      ) : (
-        <DataTableBody
-          table={table}
-          label={label}
-          loading={loading}
-          selectedRowId={selectedRowId}
-          emptyTitle={emptyTitle ?? t('table.empty')}
-          emptyDescription={emptyDescription ?? t('table.emptyDescription')}
-          emptyAction={emptyAction}
-        />
-      )}
-      {bulkActions}
+      <div data-slot="data-table-content" className="relative flex min-h-0 flex-1 flex-col">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t('table.error')}</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+            {onRetry && (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                {t('common.retry')}
+              </Button>
+            )}
+          </Alert>
+        ) : (
+          <DataTableBody
+            table={table}
+            scrollRef={scrollRef}
+            label={label}
+            loading={loading}
+            selectedRowId={selectedRowId}
+            emptyTitle={emptyTitle ?? t('table.empty')}
+            emptyDescription={emptyDescription ?? t('table.emptyDescription')}
+            emptyAction={emptyAction}
+          />
+        )}
+        {bulkActions}
+      </div>
       <DataTablePagination
         table={table}
         countLabel={countLabel}

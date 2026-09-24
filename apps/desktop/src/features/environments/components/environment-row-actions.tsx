@@ -1,15 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import type { EnvironmentSummary } from '@contextweave/contracts'
-import { EllipsisIcon } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
+import { EyeIcon, PencilIcon, PlayIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  DataTableRowActions,
+  type DataTableRowAction,
+} from '@/components/data-table/data-table-row-actions'
 import { useI18n } from '@/i18n'
 import { isEnvironmentReadOnly } from '../environment-service'
 
@@ -28,76 +23,46 @@ export function EnvironmentRowActions({
 }) {
   const { t } = useI18n()
   const active = environment.status === 'running' || environment.status === 'starting'
+  const readOnly = isEnvironmentReadOnly(environment.status)
   const needsReview = environment.status === 'error' || environment.status === 'needs-recovery'
+  const edit: DataTableRowAction = {
+    id: 'edit',
+    label: t(readOnly || needsReview ? 'env.view' : 'env.edit'),
+    icon: readOnly || needsReview ? EyeIcon : PencilIcon,
+    disabled: pending,
+    render: (
+      <Link to="/environments/$environmentId/edit" params={{ environmentId: environment.id }} />
+    ),
+  }
+  const run: DataTableRowAction = {
+    id: 'run',
+    label: t(
+      environment.status === 'stopping' ? 'status.stopping' : active ? 'env.stop' : 'env.start',
+    ),
+    icon: active || environment.status === 'stopping' ? SquareIcon : PlayIcon,
+    disabled: environment.status === 'stopping' || (pending && environment.status !== 'starting'),
+    pending,
+    onClick: active ? onStop : onStart,
+  }
   return (
-    <div className="flex items-center justify-end gap-1">
-      {needsReview ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={pending}
-          render={
-            <Link
-              to="/environments/$environmentId/edit"
-              params={{ environmentId: environment.id }}
-            />
-          }
-        >
-          {t('env.view')}
-        </Button>
-      ) : (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={
-            environment.status === 'stopping' || (pending && environment.status !== 'starting')
-          }
-          onClick={active ? onStop : onStart}
-        >
-          {pending && <Spinner data-icon="inline-start" />}
-          {environment.status === 'stopping'
-            ? t('status.stopping')
-            : t(active ? 'env.stop' : 'env.start')}
-        </Button>
-      )}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`${t('env.actions')}：${environment.name}`}
-              disabled={pending}
-            />
-          }
-        >
-          <EllipsisIcon />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              render={
-                <Link
-                  to="/environments/$environmentId/edit"
-                  params={{ environmentId: environment.id }}
-                />
-              }
-            >
-              {t(isEnvironmentReadOnly(environment.status) ? 'env.view' : 'env.edit')}
-            </DropdownMenuItem>
-            {environment.status === 'error' && (
-              <DropdownMenuItem onClick={onStart}>{t('env.start')}</DropdownMenuItem>
-            )}
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={isEnvironmentReadOnly(environment.status)}
-              onClick={onDelete}
-            >
-              {t('life.op.trash')}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <DataTableRowActions
+      label={`${t('env.actions')}: ${environment.name}`}
+      actions={[
+        ...(environment.status === 'needs-recovery'
+          ? [edit]
+          : needsReview
+            ? [edit, run]
+            : [run, edit]),
+        {
+          id: 'trash',
+          label: t('life.op.trash'),
+          icon: Trash2Icon,
+          destructive: true,
+          disabled: pending || readOnly,
+          disabledReason: readOnly ? t('env.stopBeforeTrash') : undefined,
+          onClick: onDelete,
+        },
+      ]}
+    />
   )
 }

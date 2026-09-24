@@ -1,4 +1,23 @@
 export const lifecycleMessages = {
+  'error.UPDATE_RELEASE_INVALID':
+    'Release information is invalid or is not a usable stable release. Try again later.',
+  'error.UPDATE_CHECKSUM_UNAVAILABLE':
+    'The installer has no trusted SHA-256 digest. Wait for the publisher to complete the release metadata.',
+  'error.UPDATE_RATE_LIMITED': 'GitHub has limited this request. Check again later.',
+  'error.UPDATE_CHECK_FAILED': 'Unable to check for updates. Check your connection and retry.',
+  'error.UPDATE_TIMEOUT': 'The update request timed out. Check your connection and retry.',
+  'error.UPDATE_FAILED':
+    'The update operation failed. Check the connection, disk space and directory permissions, then retry.',
+  'error.UPDATE_NOT_AVAILABLE': 'Check for updates first to find a compatible installer.',
+  'error.UPDATE_NOT_READY':
+    'The installer is not ready. Finish downloading and verification first.',
+  'error.UPDATE_FILE_INVALID':
+    'The downloaded installer is missing or modified. Download it again.',
+  'error.UPDATE_ENVIRONMENTS_ACTIVE':
+    'Stop running environments and complete recovery before opening the installer.',
+  'error.UPDATE_OPEN_FAILED':
+    'The system could not open the installer or release notes. Please retry.',
+
   'error.KERNEL_VERSION_MISMATCH':
     'The executable version differs from the version pinned to this environment. Startup was stopped. Install the matching release.',
 

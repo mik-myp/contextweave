@@ -1,19 +1,37 @@
 export const adminMessages = {
-  'kernel.backgroundDownloads': '后台下载',
-  'kernel.provider': '内核类型',
-  'kernel.officialReleases': '官方版本',
-  'kernel.downloadLink': '下载链接',
-  'kernel.downloadUrl': 'HTTPS 下载链接',
-  'kernel.customLinkHelp':
-    '官方发行链接可自动识别。其他链接请填写完整版本号和可信 SHA-256；Windows 使用 ZIP，macOS 使用 DMG。',
-  'kernel.trustSource': '我已确认下载来源可信，并确认此发行包遵循所选内核的许可。',
-  'kernel.customInputError':
-    '请填写有效的 HTTPS 链接；版本号为四段数字，SHA-256 为 64 位十六进制。',
+  'settings.updates': '检查更新',
+  'update.availableHelp': '新版已发布。安装前可查看发行说明，了解本次变更。',
+  'update.description': '手动检查 ContextWeave 正式版本，下载适合本机的安装包。',
+  'update.currentVersion': '当前版本',
+  'update.check': '检查更新',
+  'update.checking': '正在检查…',
+  'update.current': '当前没有可更新的正式版本。',
+  'update.idle': '尚未检查。点击“检查更新”连接 GitHub Releases。',
+  'update.cancelled': '下载已取消，可以重新下载。',
+  'update.lastChecked': '上次成功检查',
+  'update.stable': '正式版',
+  'update.published': '发布日期',
+  'update.unsupported': '发现新版本，但此版本没有适合本机平台和架构的安装包。可查看发行说明。',
+  'update.downloading': '正在下载并校验',
+  'update.ready':
+    '安装包已通过 SHA-256 校验。请先停止运行环境，再打开安装包；开始安装前退出 ContextWeave，按系统提示完成更新。',
+  'update.cancelDownload': '取消下载',
+  'update.openInstaller': '打开安装包',
+  'update.download': '下载安装包',
+  'update.releaseNotes': '发行说明',
+  'update.manualHelp':
+    '仅在你点击时检查和下载，不自动安装或重启。macOS 打开 DMG 后替换“应用程序”中的 ContextWeave；Windows 运行安装程序。下载离开本页后仍会继续。',
 
-  'kernel.versionInstallHelp': '选择内核和版本，或使用下载链接安装。下载后校验完整性和可执行架构。',
+  'table.moreActions': '更多操作',
+  'env.stopBeforeTrash': '请先停止环境或完成运行恢复，再移入回收站。',
+  'proxy.unlinkBeforeDelete': '请先解除所有环境与此代理的关联，再删除。',
+
+  'kernel.backgroundDownloads': '后台下载',
+  'kernel.versionInstallHelp':
+    '选择 Fingerprint Chromium 的发行版本，下载后校验完整性和可执行架构。',
   'kernel.refreshVersions': '刷新发行版本',
-  'kernel.loadingVersions': '正在读取官方版本…',
-  'kernel.cachedCatalog': '暂未连接官方版本服务，正在显示本地保留的版本目录。',
+  'kernel.loadingVersions': '正在读取项目发行版本…',
+  'kernel.cachedCatalog': '暂未连接项目发行服务，正在显示本地保留的版本目录。',
   'kernel.keepVersions':
     '不同版本独立安装。环境使用创建时选择的版本，不会自动切换或覆盖浏览器数据。',
   'kernel.packageSize': '下载大小',

@@ -4,6 +4,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
 import type { KernelSummary } from '@/shared/types/app'
+import { DataTableRowActions } from '@/components/data-table/data-table-row-actions'
 import { DataTable } from '@/components/data-table/data-table'
 import { DataTableFilter } from '@/components/data-table/data-table-filter'
 import { useDataTable } from '@/components/data-table/use-data-table'
@@ -94,12 +95,17 @@ export function KernelsPage() {
         enableHiding: false,
         enableSorting: false,
         cell: ({ row }) => (
-          <div className="flex justify-end gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setDetail(row.original)}>
-              <InfoIcon data-icon="inline-start" />
-              {t('admin.details')}
-            </Button>
-          </div>
+          <DataTableRowActions
+            label={`${t('env.actions')}: ${row.original.label}`}
+            actions={[
+              {
+                id: 'details',
+                label: t('admin.details'),
+                icon: InfoIcon,
+                onClick: () => setDetail(row.original),
+              },
+            ]}
+          />
         ),
       },
     ],

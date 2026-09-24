@@ -22,6 +22,7 @@ import { Route as EnvironmentsNewRouteImport } from './routes/environments.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
+import { Route as SettingsUpdatesRouteImport } from './routes/settings.updates'
 import { Route as EnvironmentsEnvironmentIdEditRouteImport } from './routes/environments.$environmentId.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -89,6 +90,11 @@ const SettingsStorageRoute = SettingsStorageRouteImport.update({
   path: '/storage',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsUpdatesRoute = SettingsUpdatesRouteImport.update({
+  id: '/updates',
+  path: '/updates',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const EnvironmentsEnvironmentIdEditRoute =
   EnvironmentsEnvironmentIdEditRouteImport.update({
     id: '/$environmentId/edit',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/updates': typeof SettingsUpdatesRoute
   '/environments/': typeof EnvironmentsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/environments/$environmentId/edit': typeof EnvironmentsEnvironmentIdEditRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/updates': typeof SettingsUpdatesRoute
   '/environments': typeof EnvironmentsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/environments/$environmentId/edit': typeof EnvironmentsEnvironmentIdEditRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/updates': typeof SettingsUpdatesRoute
   '/environments/': typeof EnvironmentsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/environments/$environmentId/edit': typeof EnvironmentsEnvironmentIdEditRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/environments/new'
     | '/settings/about'
     | '/settings/storage'
+    | '/settings/updates'
     | '/environments/'
     | '/settings/'
     | '/environments/$environmentId/edit'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/environments/new'
     | '/settings/about'
     | '/settings/storage'
+    | '/settings/updates'
     | '/environments'
     | '/settings'
     | '/environments/$environmentId/edit'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/environments/new'
     | '/settings/about'
     | '/settings/storage'
+    | '/settings/updates'
     | '/environments/'
     | '/settings/'
     | '/environments/$environmentId/edit'
@@ -296,6 +308,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsStorageRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/updates': {
+      id: '/settings/updates'
+      path: '/updates'
+      fullPath: '/settings/updates'
+      preLoaderRoute: typeof SettingsUpdatesRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/environments/$environmentId/edit': {
       id: '/environments/$environmentId/edit'
       path: '/$environmentId/edit'
@@ -325,12 +344,14 @@ const EnvironmentsRouteWithChildren = EnvironmentsRoute._addFileChildren(
 interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
+  SettingsUpdatesRoute: typeof SettingsUpdatesRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsStorageRoute: SettingsStorageRoute,
+  SettingsUpdatesRoute: SettingsUpdatesRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 

@@ -1,9 +1,11 @@
+import { logMessages } from './zh-CN-logs'
 import { lifecycleMessages } from './zh-CN-lifecycle'
 import { adminMessages } from './zh-CN-admin'
 import { workspaceMessages } from './zh-CN-workspace'
 import type { TranslationKey } from '../types'
 
 export const zhCNMessages: Record<TranslationKey, string> = {
+  ...logMessages,
   ...lifecycleMessages,
   ...workspaceMessages,
   ...adminMessages,
@@ -51,11 +53,12 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   'header.quitDescription': '关闭 ContextWeave 桌面应用。',
   'header.quitConfirmTitle': '退出 ContextWeave？',
   'header.quitConfirmDescription': '当前窗口将关闭，正在运行的环境会按应用退出流程处理。',
+  'nav.system': '系统',
   'nav.workspace': '工作台',
   'nav.environments': '环境',
   'nav.proxies': '代理',
   'nav.kernels': '内核',
-  'nav.activity': '运行记录',
+  'nav.activity': '日志查看',
   'nav.settings': '系统设置',
   'nav.about': '关于',
   'nav.fingerprints': '指纹能力',

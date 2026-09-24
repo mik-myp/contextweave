@@ -1,9 +1,11 @@
+import { enLogMessages } from './en-US-logs'
 import { lifecycleMessages } from './en-US-lifecycle'
 import { adminMessages } from './en-US-admin'
 import { workspaceMessages } from './en-US-workspace'
 import type { TranslationKey } from '../types'
 
 export const enUSMessages: Record<TranslationKey, string> = {
+  ...enLogMessages,
   ...lifecycleMessages,
   ...workspaceMessages,
   ...adminMessages,
@@ -53,11 +55,12 @@ export const enUSMessages: Record<TranslationKey, string> = {
   'header.quitConfirmTitle': 'Quit ContextWeave?',
   'header.quitConfirmDescription':
     'The window will close and running environments will follow the application shutdown flow.',
+  'nav.system': 'System',
   'nav.workspace': 'Workspace',
   'nav.environments': 'Environments',
   'nav.proxies': 'Proxies',
   'nav.kernels': 'Kernels',
-  'nav.activity': 'Activity',
+  'nav.activity': 'Logs',
   'nav.settings': 'System settings',
   'nav.about': 'About',
   'nav.fingerprints': 'Capabilities',

@@ -44,7 +44,7 @@ export function DataTablePagination<TData extends RowData>({
   return (
     <div
       data-slot="data-table-pagination"
-      className="flex flex-wrap items-center justify-end gap-4"
+      className="mt-auto flex shrink-0 flex-wrap items-center justify-end gap-4"
     >
       <span className="text-sm text-muted-foreground" role="status">
         {countLabel ? countLabel(count) : t('table.total').replace('{count}', String(count))}

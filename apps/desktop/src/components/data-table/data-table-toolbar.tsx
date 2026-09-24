@@ -24,7 +24,7 @@ export function DataTableToolbar<TData extends RowData>({
   return (
     <div
       data-slot="data-table-toolbar"
-      className="flex flex-wrap items-center justify-between gap-3"
+      className="flex shrink-0 flex-wrap items-center justify-between gap-3"
     >
       <div
         data-slot="data-table-search"

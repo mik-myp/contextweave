@@ -1,6 +1,5 @@
 import type { KernelRelease } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 
@@ -30,13 +29,6 @@ export function KernelDownloadTasks({
           <div key={release.id} className="flex flex-col gap-2 rounded-lg border p-3">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-medium">{release.version}</span>
-              <Badge variant="secondary">
-                {t(
-                  release.sourceType === 'custom'
-                    ? 'kernel.downloadLink'
-                    : 'kernel.officialReleases',
-                )}
-              </Badge>
               <Button
                 size="sm"
                 variant="ghost"

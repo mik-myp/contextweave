@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import {
-  ActivityIcon,
+  ScrollTextIcon,
   BoxesIcon,
   Globe2Icon,
   SettingsIcon,
@@ -22,11 +22,29 @@ export function AppSidebar({
 }: React.ComponentProps<typeof Sidebar> & { sidebar?: ThemeSidebar; layout?: ThemeLayout }) {
   const { t } = useI18n()
   const navItems = [
-    { title: t('nav.environments'), url: appRoutes.environments, icon: <Globe2Icon /> },
-    { title: t('nav.proxies'), url: appRoutes.proxies, icon: <SlidersHorizontalIcon /> },
-    { title: t('nav.kernels'), url: appRoutes.kernels, icon: <BoxesIcon /> },
-    { title: t('nav.activity'), url: appRoutes.activity, icon: <ActivityIcon /> },
-    { title: t('nav.settings'), url: appRoutes.settings, icon: <SettingsIcon /> },
+    {
+      title: t('nav.environments'),
+      url: appRoutes.environments,
+      icon: <Globe2Icon className="text-sky-600 dark:text-sky-400" />,
+    },
+    {
+      title: t('nav.proxies'),
+      url: appRoutes.proxies,
+      icon: <SlidersHorizontalIcon className="text-violet-600 dark:text-violet-400" />,
+    },
+    {
+      title: t('nav.kernels'),
+      url: appRoutes.kernels,
+      icon: <BoxesIcon className="text-amber-600 dark:text-amber-400" />,
+    },
+  ]
+  // Add system tools here; settings is appended separately to stay last.
+  const systemItems = [
+    {
+      title: t('nav.activity'),
+      url: appRoutes.activity,
+      icon: <ScrollTextIcon className="text-emerald-600 dark:text-emerald-400" />,
+    },
   ]
   const collapsible = layout === 'offcanvas' ? 'offcanvas' : 'icon'
   return (
@@ -42,6 +60,17 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} groupLabel={t('nav.workspace')} />
+        <NavMain
+          items={[
+            ...systemItems,
+            {
+              title: t('nav.settings'),
+              url: appRoutes.settings,
+              icon: <SettingsIcon className="text-slate-500 dark:text-slate-400" />,
+            },
+          ]}
+          groupLabel={t('nav.system')}
+        />
       </SidebarContent>
       <SidebarRail />
     </Sidebar>

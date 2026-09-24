@@ -7,7 +7,7 @@ import { useBatchMutation } from '@/shared/hooks/use-batch-mutation'
 import { environmentService, isEnvironmentReadOnly } from '../environment-service'
 import { useMemo, useState, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
-import { PlusIcon } from 'lucide-react'
+import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import { environmentStatusSchema, type EnvironmentSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import { useAppData } from '@/app/use-app-data'
@@ -26,15 +26,15 @@ const getRowId = (row: EnvironmentSummary) => row.id
 export function EnvironmentsPage() {
   const { t } = useI18n()
   return (
-    <Tabs defaultValue="active">
-      <TabsList>
+    <Tabs defaultValue="active" className="min-h-0 flex-1 gap-4">
+      <TabsList className="shrink-0">
         <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
         <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
       </TabsList>
-      <TabsContent value="active">
+      <TabsContent value="active" className="flex min-h-0 flex-col gap-4">
         <ActiveEnvironmentsPage />
       </TabsContent>
-      <TabsContent value="trash">
+      <TabsContent value="trash" className="flex min-h-0 flex-col gap-4">
         <EnvironmentTrash />
       </TabsContent>
     </Tabs>
@@ -162,20 +162,19 @@ function ActiveEnvironmentsPage() {
         selectedRowId={savedId}
         actions={newAction}
         bulkActions={
-          <DataTableBulkActions table={table} disabled={batch.pending}>
-            {(['start', 'stop', 'delete'] as const).map((action) => (
-              <Button
-                key={action}
-                size="sm"
-                variant={action === 'delete' ? 'destructive' : 'outline'}
-                disabled={batch.pending || !eligible[action].length}
-                onClick={() => setTarget({ action, items: eligible[action] })}
-              >
-                {t(action === 'delete' ? 'life.op.trash' : `env.${action}`)} (
-                {eligible[action].length})
-              </Button>
-            ))}
-          </DataTableBulkActions>
+          <DataTableBulkActions
+            table={table}
+            disabled={batch.pending}
+            actions={(['start', 'stop', 'delete'] as const).map((action) => ({
+              id: action,
+              label: `${t(action === 'delete' ? 'life.op.trash' : `env.${action}`)} (${eligible[action].length})`,
+              icon: { start: PlayIcon, stop: SquareIcon, delete: Trash2Icon }[action],
+              destructive: action === 'delete',
+              disabled: !eligible[action].length,
+              pending: batch.pending && target?.action === action,
+              onClick: () => setTarget({ action, items: eligible[action] }),
+            }))}
+          />
         }
         filters={
           <>

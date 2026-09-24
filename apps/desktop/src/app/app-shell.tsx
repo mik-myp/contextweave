@@ -18,8 +18,14 @@ import { cn } from '@/lib/utils'
 
 export function AppShell() {
   const { theme } = useTheme()
-  const isSettings = useRouterState({
-    select: (state) => state.location.pathname.startsWith('/settings'),
+  const hasContainedViewport = useRouterState({
+    select: (state) => {
+      const pathname = state.location.pathname.replace(/\/$/, '')
+      return (
+        pathname.startsWith('/settings') ||
+        ['/environments', '/proxies', '/kernels', '/activity'].includes(pathname)
+      )
+    },
   })
   const { notice, setNotice } = useAppData()
   const { t } = useI18n()
@@ -64,13 +70,13 @@ export function AppShell() {
             data-scroll-restoration
             className={cn(
               'flex min-h-0 flex-1 flex-col bg-background p-4 md:p-(--page-padding)',
-              isSettings ? 'overflow-hidden' : 'overflow-auto',
+              hasContainedViewport ? 'overflow-hidden' : 'overflow-auto',
             )}
           >
             <div
               className={cn(
                 'mx-auto flex w-full min-w-0 flex-1 flex-col gap-6',
-                isSettings && 'min-h-0',
+                hasContainedViewport && 'min-h-0',
                 theme.contentWidth === 'centered' ? 'max-w-5xl' : 'max-w-none',
               )}
             >

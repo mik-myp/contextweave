@@ -1,3 +1,4 @@
+import { AppLogViewer } from '../components/app-log-viewer'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { OperationsTable } from './operations-table'
 import { errorMessage } from '@/shared/lib/error-message'
@@ -17,15 +18,20 @@ const statuses = ['starting', 'running', 'stopping', 'stopped', 'crashed'] as co
 export function ActivityPage() {
   const { t } = useI18n()
   return (
-    <Tabs defaultValue="sessions">
-      <TabsList>
+    <Tabs defaultValue="logs" className="min-h-0 flex-1 gap-4">
+      <h1 className="sr-only">{t('nav.activity')}</h1>
+      <TabsList className="max-w-full shrink-0">
+        <TabsTrigger value="logs">{t('logs.application')}</TabsTrigger>
         <TabsTrigger value="sessions">{t('life.sessions')}</TabsTrigger>
         <TabsTrigger value="operations">{t('life.operations')}</TabsTrigger>
       </TabsList>
-      <TabsContent value="sessions">
+      <TabsContent value="logs" className="flex min-h-0 flex-col">
+        <AppLogViewer />
+      </TabsContent>
+      <TabsContent value="sessions" className="flex min-h-0 flex-col">
         <SessionsTable />
       </TabsContent>
-      <TabsContent value="operations">
+      <TabsContent value="operations" className="flex min-h-0 flex-col">
         <OperationsTable />
       </TabsContent>
     </Tabs>
@@ -166,7 +172,7 @@ function SessionsTable() {
   })
   return (
     <>
-      <h1 className="sr-only">{t('activity.list')}</h1>
+      <h2 className="sr-only">{t('activity.list')}</h2>
       <DataTable
         table={table}
         label={t('activity.list')}

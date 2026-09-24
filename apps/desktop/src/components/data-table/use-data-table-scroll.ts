@@ -8,7 +8,7 @@ export function useDataTableScroll(
 ) {
   const snapshots = useContext(DataTableStateContext)
   useLayoutEffect(() => {
-    const scroller = ref.current?.closest<HTMLElement>('[data-scroll-restoration]')
+    const scroller = ref.current
     if (!stateKey || !snapshots || !scroller || loading) return
     scroller.scrollTop = snapshots.get(stateKey)?.scrollTop ?? 0
     const remember = () => {

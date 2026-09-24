@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  appLogEntrySchema,
+  appLogSnapshotSchema,
+  appUpdateStateSchema,
   environmentDetailsSchema,
   kernelSummarySchema,
   kernelCatalogSchema,
@@ -64,6 +67,32 @@ const api = {
       ipcResultSchema(z.boolean()).parse(
         await ipcRenderer.invoke('app:open-external', z.string().url().parse(url)),
       ),
+  },
+  logs: {
+    copy: async (entryId: number) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('logs:copy', appLogEntrySchema.shape.id.parse(entryId)),
+      ),
+    list: async () =>
+      ipcResultSchema(appLogSnapshotSchema).parse(await ipcRenderer.invoke('logs:list')),
+    clear: async () =>
+      ipcResultSchema(appLogSnapshotSchema).parse(await ipcRenderer.invoke('logs:clear')),
+  },
+  update: {
+    getState: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:state')),
+    check: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:check')),
+    download: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:download')),
+    cancel: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(await ipcRenderer.invoke('update:cancel')),
+    openInstaller: async () =>
+      ipcResultSchema(appUpdateStateSchema).parse(
+        await ipcRenderer.invoke('update:open-installer'),
+      ),
+    openRelease: async () =>
+      ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('update:open-release')),
   },
   settings: {
     getTheme: async () =>

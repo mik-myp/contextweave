@@ -27,7 +27,7 @@ export function AboutPage() {
     }
   }
   return (
-    <div className="flex max-w-3xl flex-col gap-(--section-gap)">
+    <div className="flex min-w-0 flex-col gap-(--section-gap)">
       <PageHeading title={t('about.title')} description={t('about.description')} />
       {appError ? (
         <Alert variant="destructive">

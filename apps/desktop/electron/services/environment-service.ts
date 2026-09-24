@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto'
+import { isFingerprintKernel } from '@contextweave/kernel-fingerprint-chromium'
+import { randomInt, randomUUID } from 'node:crypto'
 import { mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -23,9 +24,17 @@ export function createEnvironmentService(
     create(input: unknown, environmentId = `env-${randomUUID()}`) {
       const parsed = createEnvironmentInputSchema.parse(input)
       const kernel = kernels.list().find((item) => item.id === parsed.kernelId)
-      if (!kernel || kernel.providerStatus !== 'native') throw new Error('PROVIDER_UNVERIFIED')
+      if (!kernel || !['native', 'verified'].includes(kernel.providerStatus))
+        throw new Error('PROVIDER_UNVERIFIED')
       if (kernel.status !== 'available') throw new Error('KERNEL_UNAVAILABLE')
-      if (!kernels.registry.get(kernel.id).validateConfig(parsed.kernelConfig).ok)
+      const kernelConfig = isFingerprintKernel(kernel.id)
+        ? {
+            seed: randomInt(1, 4294967296),
+            platform: platform === 'win32' ? 'windows' : platform === 'darwin' ? 'macos' : 'linux',
+            hardwareConcurrency: 8,
+          }
+        : parsed.kernelConfig
+      if (!kernels.registry.get(kernel.id).validateConfig(kernelConfig).ok)
         throw new Error('CONFIG_INVALID')
       if (parsed.proxy && !parsed.proxyId) throw new Error('Use a saved proxy reference')
       const proxy = parsed.proxyId ? repository.getProxy(parsed.proxyId) : undefined
@@ -34,6 +43,7 @@ export function createEnvironmentService(
         ...parsed,
         environmentId,
         kernelVersion: kernel.version,
+        kernelConfig,
         proxy,
       })
       const dataDir = join(root, environmentId)

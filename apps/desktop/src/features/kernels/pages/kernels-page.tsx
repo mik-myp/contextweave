@@ -1,10 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { DownloadIcon, InfoIcon } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
 import type { KernelSummary } from '@/shared/types/app'
-import { unwrapIpc } from '@/shared/lib/ipc'
 import { DataTable } from '@/components/data-table/data-table'
 import { DataTableFilter } from '@/components/data-table/data-table-filter'
 import { useDataTable } from '@/components/data-table/use-data-table'
@@ -20,23 +19,21 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { Spinner } from '@/components/ui/spinner'
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
+import { KernelInstallDialog } from '../components/kernel-install-dialog'
 import { KernelCapabilities } from '../components/kernel-capabilities'
 const getRowId = (row: KernelSummary) => row.id
 
 export function KernelsPage() {
   const { t } = useI18n()
-  const { kernels, loading, kernelError, refresh, setNotice } = useAppData(['kernels'])
+  const { kernels, loading, kernelError, refresh } = useAppData(['kernels'])
   const [detail, setDetail] = useState<KernelSummary>()
-  const [target, setTarget] = useState<KernelSummary>()
-  const [pending, setPending] = useState(false)
-  const active = useRef(false)
+  const [installOpen, setInstallOpen] = useState(false)
   const statusLabels = useMemo(
     () => ({
       available: t('kernel.available'),
       'not-installed': t('kernel.notInstalled'),
       'not-configured': t('kernel.notConfigured'),
+      unsupported: t('kernel.platformUnsupported'),
     }),
     [t],
   )
@@ -62,7 +59,15 @@ export function KernelsPage() {
         filterFn: 'isOneOf',
         enableGlobalFilter: false,
         cell: ({ row }) => (
-          <Badge variant={row.original.status === 'available' ? 'success' : 'outline'}>
+          <Badge
+            variant={
+              row.original.status === 'available'
+                ? 'success'
+                : row.original.status === 'unsupported'
+                  ? 'warning'
+                  : 'secondary'
+            }
+          >
             {statusLabels[row.original.status as keyof typeof statusLabels] ?? row.original.status}
           </Badge>
         ),
@@ -84,7 +89,7 @@ export function KernelsPage() {
       },
       {
         id: 'actions',
-        header: '',
+        header: t('env.actions'),
         meta: { label: t('env.actions'), align: 'end' },
         enableHiding: false,
         enableSorting: false,
@@ -94,49 +99,24 @@ export function KernelsPage() {
               <InfoIcon data-icon="inline-start" />
               {t('admin.details')}
             </Button>
-            {row.original.status !== 'available' && row.original.packageAvailable && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() => setTarget(row.original)}
-              >
-                <DownloadIcon data-icon="inline-start" />
-                {t('kernel.install')}
-              </Button>
-            )}
           </div>
         ),
       },
     ],
-    [t, statusLabels, pending],
+    [t, statusLabels],
   )
   const table = useDataTable({ data: kernels, columns, getRowId, stateKey: 'kernels', loading })
-  const install = async () => {
-    if (!target || active.current) return
-    active.current = true
-    setPending(true)
-    try {
-      await unwrapIpc(window.contextweave.kernel.install(target.id))
-      await refresh()
-      setNotice({ kind: 'success', message: t('kernel.installed') })
-      setTarget(undefined)
-    } catch (cause) {
-      setNotice({
-        kind: 'error',
-        message: cause instanceof Error ? cause.message : t('admin.operationError'),
-      })
-      setTarget(undefined)
-    } finally {
-      active.current = false
-      setPending(false)
-    }
-  }
   return (
     <>
       <h1 className="sr-only">{t('kernel.list')}</h1>
       <DataTable
         table={table}
+        actions={
+          <Button size="sm" onClick={() => setInstallOpen(true)}>
+            <DownloadIcon />
+            {t('kernel.install')}
+          </Button>
+        }
         label={t('kernel.list')}
         searchPlaceholder={t('kernel.search')}
         loading={loading}
@@ -175,6 +155,18 @@ export function KernelsPage() {
                   {detail.executablePath ?? t('admin.unavailable')}
                 </p>
               </div>
+              {detail.source && (
+                <p className="break-words text-sm text-muted-foreground">
+                  {t('kernel.source')}: {detail.source}
+                  <br />
+                  {detail.license}
+                </p>
+              )}
+              {detail.unsupportedReason && (
+                <Alert>
+                  <AlertDescription>{t('kernel.platformHelp')}</AlertDescription>
+                </Alert>
+              )}
               {!detail.packageAvailable && detail.status !== 'available' && (
                 <Alert>
                   <AlertDescription>{t('kernel.noPackage')}</AlertDescription>
@@ -187,25 +179,7 @@ export function KernelsPage() {
           )}
         </DialogContent>
       </Dialog>
-      <ConfirmActionDialog
-        open={!!target}
-        onOpenChange={(open) => {
-          if (!open) setTarget(undefined)
-        }}
-        title={t('kernel.installTitle')}
-        description={t('kernel.installDescription')}
-        actionLabel={t('kernel.install')}
-        pending={pending}
-        onConfirm={() => void install()}
-      >
-        <p className="text-sm font-medium">{target?.label}</p>
-        {pending && (
-          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner />
-            {t('kernel.installing')}
-          </p>
-        )}
-      </ConfirmActionDialog>
+      <KernelInstallDialog open={installOpen} onOpenChange={setInstallOpen} />
     </>
   )
 }

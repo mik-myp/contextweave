@@ -27,8 +27,8 @@ try {
   const kernels = await page.evaluate(() => window.contextweave.kernel.list())
   assert(kernels.ok, 'Kernel list must cross the sandboxed IPC bridge')
   assert(
-    kernels.data.find((item) => item.id === 'fingerprint-chromium')?.providerStatus ===
-      'unconfigured',
+    kernels.data.every((item) => item.id === 'standard-chromium'),
+    'Fresh installed list must not contain fingerprint placeholders',
   )
   const native = kernels.data.find(
     (item) => item.id === 'standard-chromium' && item.status === 'available',

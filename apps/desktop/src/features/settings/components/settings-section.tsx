@@ -23,7 +23,7 @@ export function SettingsSection({
         </div>
         <Separator />
       </div>
-      <FieldGroup className="max-w-xl">{children}</FieldGroup>
+      <FieldGroup className="w-full">{children}</FieldGroup>
     </section>
   )
 }

@@ -1,6 +1,8 @@
+import { isFingerprintKernel } from '@contextweave/kernel-fingerprint-chromium'
 import { existsSync } from 'node:fs'
 import {
   environmentConfigSchema,
+  fingerprintIdentitySchema,
   environmentDetailsSchema,
   environmentIdSchema,
   updateEnvironmentInputSchema,
@@ -106,6 +108,9 @@ export function getEnvironmentDetails(
     revision: record.revision,
     lifecycle: record.lifecycle,
     trashedAt: record.trashedAt,
+    fingerprint: isFingerprintKernel(record.kernelId)
+      ? fingerprintIdentitySchema.safeParse(config.kernelConfig).data
+      : undefined,
     browserSettings: {
       language: config.commonConfig.language,
       timezone: config.commonConfig.timezone,

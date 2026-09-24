@@ -14,6 +14,7 @@ export function applyTheme(config: ThemeConfig): void {
   const mode = resolvedMode(config.mode)
   root.classList.toggle('dark', mode === 'dark')
   root.classList.toggle('light', mode === 'light')
+  root.style.colorScheme = mode
   root.dataset.themeMode = config.mode
   root.dataset.themeColor = config.color
   root.dataset.themeRadius = config.radius

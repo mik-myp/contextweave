@@ -80,5 +80,3 @@ export function buildChromiumArgs(input: LaunchInput): string[] {
     ...input.kernelArgs,
   ]
 }
-
-export { installKernelPackage, type KernelDownload, type KernelInstallResult } from './installer'

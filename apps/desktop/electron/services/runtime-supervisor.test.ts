@@ -22,7 +22,7 @@ const cleanup: (() => void)[] = []
 afterEach(() => {
   for (const clean of cleanup.splice(0).reverse()) clean()
 })
-function fixture() {
+function fixture(kernelVersion = 'local') {
   const root = mkdtempSync(join(tmpdir(), 'cw-supervisor-')),
     dir = join(root, 'env-a')
   mkdirSync(dir)
@@ -37,7 +37,7 @@ function fixture() {
       environmentId: 'env-a',
       name: 'A',
       kernelId: 'standard-chromium',
-      kernelVersion: 'local',
+      kernelVersion,
       commonConfig: { language: 'system', timezone: 'system' },
     }),
     dataDir: dir,
@@ -84,6 +84,40 @@ function fixture() {
   return { dir, repository, child, runtime, driver, preflight }
 }
 describe('runtime supervisor', () => {
+  it('rejects a binary whose CDP version differs from the pinned package', async () => {
+    const { runtime, driver, child, repository, dir } = fixture('148.0.7778.215')
+    expect(await runtime.start('env-a')).toMatchObject({
+      ok: false,
+      code: 'KERNEL_VERSION_MISMATCH',
+    })
+    expect(driver.settings).not.toHaveBeenCalled()
+    expect(child.kill).toHaveBeenCalled()
+    expect(repository.get('env-a')?.status).not.toBe('running')
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+  })
+  it('drains unscoped installation commands before shutdown and records cancellation', async () => {
+    const { repository } = fixture()
+    const commands = createCommandCoordinator(repository, vi.fn())
+    let finish!: () => void
+    const command = commands.run(
+      'install',
+      null,
+      () =>
+        new Promise<IpcResult<boolean>>((resolve) => {
+          finish = () => resolve({ ok: false, code: 'CANCELLED', message: 'CANCELLED' })
+        }),
+    )
+    let drained = false
+    const drain = commands.drain().then(() => {
+      drained = true
+    })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    finish()
+    await Promise.all([command, drain])
+    expect(drained).toBe(true)
+    expect(repository.listOperations()[0]?.status).toBe('cancelled')
+  })
   it('allows one launch, records its revision/version and stops without losing the directory', async () => {
     const { runtime, driver, repository, dir } = fixture()
     const [first, duplicate] = await Promise.all([runtime.start('env-a'), runtime.start('env-a')])
@@ -113,6 +147,21 @@ describe('runtime supervisor', () => {
     runtime.cancelStart('env-a')
     expect(await start).toMatchObject({ ok: false, code: 'CANCELLED' })
     expect(repository.get('env-a')?.status).toBe('stopped')
+    expect(existsSync(runtimeLockPath(dir))).toBe(false)
+  })
+  it('fails immediately when the browser exits before its control connection is ready', async () => {
+    const { runtime, driver, child, dir } = fixture()
+    driver.ready.mockImplementation(
+      (_port, signal) =>
+        new Promise<string>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('exited')), { once: true }),
+        ),
+    )
+    const start = runtime.start('env-a')
+    await vi.waitFor(() => expect(driver.ready).toHaveBeenCalled())
+    Object.defineProperty(child, 'exitCode', { value: 1, configurable: true })
+    child.emit('exit', 1, null)
+    expect(await start).toMatchObject({ ok: false, code: 'START_FAILED' })
     expect(existsSync(runtimeLockPath(dir))).toBe(false)
   })
   it('does not launch when preflight fails', async () => {

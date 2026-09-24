@@ -60,6 +60,7 @@ export const runtimeSessions = sqliteTable('runtime_sessions', {
 
 export const proxies = sqliteTable('proxies', {
   proxyId: text('proxy_id').primaryKey(),
+  name: text('name').notNull().default(''),
   type: text('type').notNull(),
   host: text('host').notNull(),
   port: integer('port').notNull(),

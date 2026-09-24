@@ -1,68 +1,64 @@
-import { z } from 'zod'
-import type { KernelManifest } from '@contextweave/contracts'
-import {
-  type BrowserKernelAdapter,
-  type LaunchInput,
-  type LaunchPlan,
-} from '@contextweave/kernel-core'
+import { fingerprintIdentitySchema, type FingerprintIdentity, type KernelManifest } from '@contextweave/contracts'
+import { buildChromiumArgs, type BrowserKernelAdapter, type LaunchInput, type LaunchPlan } from '@contextweave/kernel-core'
 
-export const fingerprintChromiumConfigSchema = z.object({
-  platform: z.string().trim().min(1).default('win32'),
-  canvasMode: z.enum(['default', 'noise', 'off']).default('default'),
-  audioMode: z.enum(['default', 'noise', 'off']).default('default'),
-  webglMode: z.enum(['default', 'noise', 'off']).default('default'),
-})
-export type FingerprintChromiumConfig = z.infer<typeof fingerprintChromiumConfigSchema>
+export const fingerprintChromiumConfigSchema = fingerprintIdentitySchema
+export type FingerprintChromiumConfig = FingerprintIdentity
+export const fingerprintChromiumVersion = '148.0.7778.215'
+const releaseRoot = `https://github.com/adryfish/fingerprint-chromium/releases/download/${fingerprintChromiumVersion}`
 
-export function createFingerprintChromiumManifest(
-  platform: KernelManifest['platform'],
-  arch: KernelManifest['arch'],
-): KernelManifest {
+export function createFingerprintChromiumManifest(platform: KernelManifest['platform'], arch: KernelManifest['arch']): KernelManifest {
+  const packageInfo = platform === 'win32' && arch === 'x64'
+    ? {
+        url: `${releaseRoot}/ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip`,
+        sha256: '9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579',
+        sizeBytes: 189767686,
+      }
+    : platform === 'darwin' && arch === 'arm64'
+      ? {
+          url: `${releaseRoot}/ungoogled-chromium_148.0.7778.215-1.1_macos.dmg`,
+          sha256: 'b72f091e2e1a7583eed389c4b8e3534ed355e568af8c8bbf8fc30a25e23ca679',
+          sizeBytes: 140187500,
+        }
+      : undefined
   return {
-    id: 'fingerprint-chromium',
-    family: 'chromium',
-    version: 'unconfigured',
-    platform,
-    arch,
-    executable: platform === 'win32' ? 'chrome.exe' : 'chrome',
-    controlProtocol: 'cdp',
-    capabilities: {
-      cdp: false,
-      screenshot: false,
-      fileUpload: false,
-      elementScreenshot: false,
-      userAgent: false,
-      timezone: false,
-      proxy: false,
-      webRtcPolicy: false,
-    },
-    configSchema: 'fingerprint-chromium-v1',
-    dataDirCompatibility: [],
-    license: 'Unverified - configure a licensed manifest before release',
+    id: 'fingerprint-chromium', family: 'chromium', version: fingerprintChromiumVersion, platform, arch,
+    executable: platform === 'darwin' ? 'Chromium.app/Contents/MacOS/Chromium' : 'chrome.exe',
+    package: packageInfo, controlProtocol: 'cdp',
+    capabilities: { cdp: true, screenshot: true, fileUpload: true, elementScreenshot: true, userAgent: true, timezone: true, proxy: true, webRtcPolicy: true },
+    configSchema: 'fingerprint-chromium-v2', dataDirCompatibility: [fingerprintChromiumVersion],
+    source: 'https://github.com/adryfish/fingerprint-chromium',
+    license: 'BSD-3-Clause; Chromium third-party notices included in the upstream package',
   }
 }
-
 export class FingerprintChromiumAdapter implements BrowserKernelAdapter<FingerprintChromiumConfig> {
   constructor(private readonly manifest: KernelManifest) {}
-
-  getManifest(): KernelManifest {
-    return this.manifest
-  }
-
+  getManifest() { return this.manifest }
   validateConfig(config: unknown) {
     const result = fingerprintChromiumConfigSchema.safeParse(config)
-    return result.success
-      ? { ok: true as const }
-      : { ok: false as const, issues: result.error.issues.map((issue) => issue.message) }
+    return result.success ? { ok: true as const } : { ok: false as const, issues: result.error.issues.map((issue) => issue.message) }
   }
-
-  buildLaunchPlan(_input: LaunchInput, _config: FingerprintChromiumConfig): LaunchPlan {
-    throw new Error(
-      'PROVIDER_UNVERIFIED: fingerprint-chromium has no qualified provider; placeholder arguments are not executable capabilities',
-    )
+  buildLaunchPlan(input: LaunchInput, config: FingerprintChromiumConfig): LaunchPlan {
+    if (!this.manifest.package) throw new Error('PLATFORM_UNSUPPORTED')
+    const identity = fingerprintChromiumConfigSchema.parse(config)
+    return {
+      executablePath: input.executablePath,
+      args: buildChromiumArgs({ ...input, kernelArgs: [
+        `--fingerprint=${identity.seed}`,
+        `--fingerprint-platform=${identity.platform}`,
+        `--fingerprint-hardware-concurrency=${identity.hardwareConcurrency}`,
+      ] }),
+      userDataDir: input.userDataDir, controlPort: input.controlPort,
+    }
   }
-
-  getCapabilities() {
-    return this.manifest.capabilities
-  }
+  getCapabilities() { return this.manifest.capabilities }
 }
+
+export function fingerprintKernelId(version: string): string {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error('VERSION_INVALID')
+  return `fingerprint-chromium-${version.replaceAll('.', '-')}`
+}
+export function isFingerprintKernel(id: string): boolean {
+  return id === 'fingerprint-chromium' || /^fingerprint-chromium-(?:custom-)?\d+-\d+-\d+-\d+(?:-[0-9a-f]{12})?$/.test(id)
+}
+
+export { fingerprintChromiumLicense } from './provider-license'

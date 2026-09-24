@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { CircleHelpIcon, LogOutIcon, RefreshCwIcon, SettingsIcon } from 'lucide-react'
+import { LogOutIcon, RefreshCwIcon, SettingsIcon } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { useAppData } from '@/app/use-app-data'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -72,10 +72,6 @@ export function HeaderProfile() {
             <DropdownMenuItem onClick={() => goTo(appRoutes.settings)}>
               <SettingsIcon data-icon="inline-start" />
               {t('header.settings')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => goTo(appRoutes.about)}>
-              <CircleHelpIcon data-icon="inline-start" />
-              {t('header.about')}
             </DropdownMenuItem>
             <DropdownMenuItem disabled={loading} onClick={() => void refresh()}>
               <RefreshCwIcon data-icon="inline-start" />

@@ -3,6 +3,12 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   environmentDetailsSchema,
   kernelSummarySchema,
+  kernelCatalogSchema,
+  kernelCatalogInputSchema,
+  kernelProviderSchema,
+  kernelReleaseSchema,
+  customKernelSourceSchema,
+  type CustomKernelSource,
   operationSummarySchema,
   preflightReportSchema,
   orphanDirectorySchema,
@@ -10,6 +16,9 @@ import {
   themeConfigSchema,
   type DataDomain,
   proxySummarySchema,
+  proxyTestInputSchema,
+  proxyTestResultSchema,
+  type ProxyTestInput,
   saveProxyInputSchema,
   activitySummarySchema,
   environmentSummarySchema,
@@ -77,6 +86,25 @@ const api = {
     },
   },
   kernel: {
+    providers: async () =>
+      ipcResultSchema(z.array(kernelProviderSchema)).parse(
+        await ipcRenderer.invoke('kernel:providers'),
+      ),
+    prepareCustom: async (input: CustomKernelSource) =>
+      ipcResultSchema(kernelReleaseSchema).parse(
+        await ipcRenderer.invoke('kernel:prepare-custom', customKernelSourceSchema.parse(input)),
+      ),
+    catalog: async (providerId = 'fingerprint-chromium', refresh = false) =>
+      ipcResultSchema(kernelCatalogSchema).parse(
+        await ipcRenderer.invoke(
+          'kernel:catalog',
+          kernelCatalogInputSchema.parse({ providerId, refresh }),
+        ),
+      ),
+    cancelInstall: async (kernelId: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('kernel:cancel-install', environmentIdSchema.parse(kernelId)),
+      ),
     list: async () =>
       ipcResultSchema(z.array(kernelSummarySchema)).parse(await ipcRenderer.invoke('kernel:list')),
     install: async (kernelId: string) =>
@@ -103,6 +131,10 @@ const api = {
       ),
   },
   proxy: {
+    test: async (input: ProxyTestInput) =>
+      ipcResultSchema(proxyTestResultSchema).parse(
+        await ipcRenderer.invoke('proxy:test', proxyTestInputSchema.parse(input)),
+      ),
     list: async () =>
       ipcResultSchema(z.array(proxySummarySchema)).parse(await ipcRenderer.invoke('proxy:list')),
     save: async (input: SaveProxyInput) =>

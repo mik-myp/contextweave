@@ -1,4 +1,27 @@
 export const lifecycleMessages = {
+  'error.KERNEL_VERSION_MISMATCH':
+    '实际浏览器版本与环境绑定版本不一致，已停止启动，请安装正确的版本。',
+
+  'error.CUSTOM_SOURCE_DETAILS_REQUIRED':
+    '自定义下载源需要填写内核版本、可信 SHA-256，并确认来源和许可。',
+  'error.ADAPTER_UNSUPPORTED': '该内核版本尚无兼容的参数适配，请选择受支持的版本。',
+
+  'error.PLATFORM_UNSUPPORTED': '此内核版本尚不支持当前平台或架构。',
+  'error.DOWNLOAD_FAILED': '内核下载失败，请检查网络后重试。',
+  'error.DOWNLOAD_TIMEOUT': '下载超时，请稍后重试。',
+  'error.DOWNLOAD_SOURCE_INVALID': '下载来源不在受信任的清单中，已阻止下载。',
+  'error.PACKAGE_SIZE_MISMATCH': '下载文件大小不正确，已取消安装，请重试。',
+  'error.PACKAGE_HASH_MISMATCH': '内核 SHA-256 校验失败，已拒绝安装，请重新下载。',
+  'error.ARCHIVE_UNSAFE': '内核归档包含不安全的路径或异常内容，已拒绝解包。',
+  'error.ARCHIVE_INVALID': '内核归档结构无效，请重新下载。',
+  'error.EXECUTABLE_INVALID': '内核包缺少有效的可执行文件。',
+  'error.ARCHIVE_MOUNT_FAILED':
+    '无法挂载内核磁盘映像。请先推出已打开的同版本磁盘映像，再重试安装。',
+  'error.ARCHITECTURE_MISMATCH': '内核架构与当前平台不匹配。',
+  'error.INSTALL_FAILED': '内核安装失败，已有安装与环境数据保持不变，请重试。',
+  'error.PROXY_TEST_FAILED': '代理认证或 HTTPS 请求失败，请检查代理设置。',
+  'error.PROXY_TEST_TIMEOUT': '代理连接测试超时，请检查网络。',
+
   'life.active': '环境',
   'life.trash': '回收站',
   'life.restore': '恢复环境',
@@ -57,7 +80,8 @@ export const lifecycleMessages = {
   'life.phase.stopping': '停止中',
   'error.CONFIG_INVALID': '环境配置无效，请检查并重新保存。',
   'error.ENVIRONMENT_TRASHED': '环境已移入回收站，请先恢复。',
-  'error.KERNEL_UNAVAILABLE': '未发现可用内核，请安装本机 Chrome、Edge 或 Chromium。',
+  'error.KERNEL_UNAVAILABLE':
+    '未发现绑定版本的可用内核，请在内核页面下载指纹内核或安装本机 Chrome、Edge。',
   'error.PROVIDER_UNVERIFIED': '此指纹提供方尚未验证，暂时不能启动或安装。',
   'error.PLATFORM_MISMATCH': '环境的平台或架构与当前设备不匹配。',
   'error.RUNTIME_BUSY': '环境仍被浏览器占用，请先停止。',

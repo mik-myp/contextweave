@@ -1,5 +1,5 @@
 import { EnvironmentDraftNotice } from '@/features/environments/components/environment-draft-notice'
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -18,6 +18,9 @@ import { cn } from '@/lib/utils'
 
 export function AppShell() {
   const { theme } = useTheme()
+  const isSettings = useRouterState({
+    select: (state) => state.location.pathname.startsWith('/settings'),
+  })
   const { notice, setNotice } = useAppData()
   const { t } = useI18n()
   const { open: sidebarOpen, setOpen: setSidebarOpen } = useThemeSidebar()
@@ -59,11 +62,15 @@ export function AppShell() {
           </header>
           <div
             data-scroll-restoration
-            className="flex min-h-0 flex-1 flex-col overflow-auto bg-background p-4 md:p-(--page-padding)"
+            className={cn(
+              'flex min-h-0 flex-1 flex-col bg-background p-4 md:p-(--page-padding)',
+              isSettings ? 'overflow-hidden' : 'overflow-auto',
+            )}
           >
             <div
               className={cn(
                 'mx-auto flex w-full min-w-0 flex-1 flex-col gap-6',
+                isSettings && 'min-h-0',
                 theme.contentWidth === 'centered' ? 'max-w-5xl' : 'max-w-none',
               )}
             >

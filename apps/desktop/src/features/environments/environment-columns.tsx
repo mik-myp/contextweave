@@ -73,11 +73,7 @@ export function environmentColumns({
                 ? ClockIcon
                 : CircleIcon
         return (
-          <Badge
-            variant={
-              status === 'created' || status === 'stopped' ? 'outline' : statusVariant(status)
-            }
-          >
+          <Badge variant={statusVariant(status)}>
             <Icon aria-hidden="true" data-icon="inline-start" />
             {t(`status.${status}`)}
           </Badge>

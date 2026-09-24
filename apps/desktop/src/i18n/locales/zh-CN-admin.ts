@@ -1,4 +1,50 @@
 export const adminMessages = {
+  'kernel.backgroundDownloads': '后台下载',
+  'kernel.provider': '内核类型',
+  'kernel.officialReleases': '官方版本',
+  'kernel.downloadLink': '下载链接',
+  'kernel.downloadUrl': 'HTTPS 下载链接',
+  'kernel.customLinkHelp':
+    '官方发行链接可自动识别。其他链接请填写完整版本号和可信 SHA-256；Windows 使用 ZIP，macOS 使用 DMG。',
+  'kernel.trustSource': '我已确认下载来源可信，并确认此发行包遵循所选内核的许可。',
+  'kernel.customInputError':
+    '请填写有效的 HTTPS 链接；版本号为四段数字，SHA-256 为 64 位十六进制。',
+
+  'kernel.versionInstallHelp': '选择内核和版本，或使用下载链接安装。下载后校验完整性和可执行架构。',
+  'kernel.refreshVersions': '刷新发行版本',
+  'kernel.loadingVersions': '正在读取官方版本…',
+  'kernel.cachedCatalog': '暂未连接官方版本服务，正在显示本地保留的版本目录。',
+  'kernel.keepVersions':
+    '不同版本独立安装。环境使用创建时选择的版本，不会自动切换或覆盖浏览器数据。',
+  'kernel.packageSize': '下载大小',
+  'kernel.publishedAt': '发布日期',
+  'kernel.adapterUnsupported': '此版本尚无兼容的参数适配，暂不开放安装。',
+  'kernel.checksumUnavailable': '此版本未提供可信校验和，暂不开放安装。',
+  'kernel.downloadVersion': '下载并安装',
+
+  'proxy.name': '代理名称',
+  'proxy.namePlaceholder': '例如：工作代理（可选）',
+  'proxy.test': '测试连接',
+  'proxy.testing': '正在测试…',
+  'proxy.testSuccess': '连接成功',
+  'proxy.testFailed': '连接失败',
+  'proxy.testTimeout': '请求超时，请检查代理是否可用',
+  'proxy.testFailedHelp': '请检查地址、凭据和代理网络',
+  'proxy.testDescription':
+    '通过此代理访问 HTTPS 出口检测服务，检查认证、网络和出口 IP。测试不会保存表单。',
+  'proxy.connection': '连接测试',
+  'kernel.platformUnsupported': '当前平台暂不支持',
+  'kernel.platformHelp':
+    '此版本指纹内核支持 Windows x64 和 Apple Silicon Mac。Intel Mac 可使用本机标准内核。',
+  'kernel.downloading': '下载中',
+  'kernel.verifying': '校验中',
+  'kernel.extracting': '安装中',
+  'kernel.cancelInstall': '取消下载',
+  'kernel.source': '内核来源',
+  'env.fingerprintIdentity': '固定指纹身份',
+  'env.fingerprintHelp': '身份种子在创建时生成，重开环境保持相同种子、内核版本与浏览器数据。',
+  'env.fingerprintSeed': '身份种子',
+
   'cap.elementScreenshot': '元素截图',
   'cap.userAgent': 'User-Agent 配置',
   'admin.save': '保存',
@@ -56,8 +102,6 @@ export const adminMessages = {
   'proxy.portError': '端口必须为 1–65535 的整数。',
   'proxy.usernameRequired': '使用密码时需要用户名。',
   'proxy.secureUnavailable': '系统安全存储不可用，无法保存新密码。无密码代理仍可使用。',
-  'proxy.socksAuthUnsupported':
-    '当前浏览器运行时不支持 SOCKS5 用户名／密码验证，请使用无验证 SOCKS5 或 HTTP(S) 代理。',
   'kernel.list': '内核管理',
   'kernel.description': '管理环境可用的浏览器内核，查看安装状态与支持能力。',
   'kernel.search': '筛选内核…',

@@ -1,3 +1,4 @@
+import { openProxyTransport, type ProxyTransport } from './proxy-transport'
 import { closeBrowserGracefully } from './browser-close'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -32,6 +33,7 @@ type Session = {
   dataDir: string
   stopRequested: boolean
   startFailed: boolean
+  closeProxy?: () => Promise<void>
   closeSettings?: () => void
 }
 type RuntimeDriver = {
@@ -83,7 +85,8 @@ function freePort(): Promise<number> {
   })
 }
 export async function waitForCdp(port: number, signal: AbortSignal): Promise<string | undefined> {
-  const deadline = Date.now() + 8000
+  // A fresh profile can take longer on cold or busy machines. Cancellation stays immediate.
+  const deadline = Date.now() + 30000
   while (Date.now() < deadline) {
     signal.throwIfAborted()
     try {
@@ -150,6 +153,7 @@ export function createRuntimeSupervisor(options: {
     const controller = new AbortController()
     starting.set(id, controller)
     let managed: Session | undefined
+    let transport: ProxyTransport | undefined
     let locked = false
     const sessionId = `session-${randomUUID()}`
     const record = repository.get(id)
@@ -183,7 +187,15 @@ export function createRuntimeSupervisor(options: {
       repository.updateStatus(id, 'starting')
       changed()
       phase('launch')
-      const plan = kernels.buildLaunchPlan(record, config, port)
+      if (config.proxy) {
+        const password = config.proxy.credentialRef
+          ? credentials.read(config.proxy.credentialRef)
+          : ''
+        if (password === undefined) throw new Error('CREDENTIAL_UNAVAILABLE')
+        transport = await openProxyTransport(config.proxy, password)
+      }
+      controller.signal.throwIfAborted()
+      const plan = kernels.buildLaunchPlan(record, config, port, transport?.args)
       prepareBrowserLanguage(record.dataDir, config.commonConfig.language)
       const child = driver.launch(plan)
       child.once('error', () => {
@@ -198,6 +210,7 @@ export function createRuntimeSupervisor(options: {
         dataDir: record.dataDir,
         stopRequested: false,
         startFailed: false,
+        closeProxy: transport?.close,
       }
       const session = managed
       sessions.set(id, session)
@@ -221,7 +234,12 @@ export function createRuntimeSupervisor(options: {
         phase: 'launch',
       })
       child.once('exit', (code, signal) => {
+        if (starting.has(id) && !controller.signal.aborted) {
+          session.startFailed = true
+          controller.abort()
+        }
         session.closeSettings?.()
+        void session.closeProxy?.()
         if (sessions.get(id) === session) sessions.delete(id)
         const failed = session.startFailed || (code !== 0 && !session.stopRequested)
         repository.updateRuntimeSession(
@@ -243,6 +261,11 @@ export function createRuntimeSupervisor(options: {
       })
       const browserVersion = await driver.ready(port, controller.signal)
       controller.signal.throwIfAborted()
+      if (
+        record.kernelVersion !== 'local' &&
+        browserVersion?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] !== record.kernelVersion
+      )
+        throw new Error('KERNEL_VERSION_MISMATCH')
       if (browserVersion) kernels.observeCdp(record, browserVersion)
       if (browserVersion)
         repository.setRuntimeVersion(
@@ -250,9 +273,6 @@ export function createRuntimeSupervisor(options: {
           browserVersion.match(/\d+\.\d+\.\d+\.\d+/)?.[0] ?? browserVersion,
         )
       phase('configure')
-      const proxy = config.proxy
-      const password = proxy?.credentialRef ? credentials.read(proxy.credentialRef) : undefined
-      if (proxy?.credentialRef && password === undefined) throw new Error('CREDENTIAL_UNAVAILABLE')
       session.closeSettings = await driver.settings(
         port,
         config.commonConfig,
@@ -261,9 +281,7 @@ export function createRuntimeSupervisor(options: {
           session.startFailed = true
           terminateChild(child)
         },
-        proxy?.username && password !== undefined
-          ? { username: proxy.username, password, host: proxy.host, port: proxy.port }
-          : undefined,
+        transport?.authentication,
       )
       controller.signal.throwIfAborted()
       if (!isChildRunning(child)) throw new Error('START_FAILED')
@@ -272,6 +290,7 @@ export function createRuntimeSupervisor(options: {
       changed()
       return ok(toSummary(repository.get(id)!))
     } catch (error) {
+      await transport?.close()
       const cancelled = controller.signal.aborted && !managed?.startFailed
       if (managed) {
         managed.startFailed = !cancelled
@@ -297,6 +316,7 @@ export function createRuntimeSupervisor(options: {
         'CONTROL_TIMEOUT',
         'SPAWN_FAILED',
         'PROVIDER_UNVERIFIED',
+        'KERNEL_VERSION_MISMATCH',
       ]
       return fail(
         cancelled
@@ -330,6 +350,7 @@ export function createRuntimeSupervisor(options: {
         return fail('STOP_TIMEOUT')
       }
     }
+    await session.closeProxy?.()
     sessions.delete(id)
     releaseRuntimeLock(record.dataDir, session.sessionId)
     repository.updateRuntimeSession(session.sessionId, 'stopped', 'USER_STOPPED')

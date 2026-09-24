@@ -20,7 +20,7 @@ export function FormSection({
         </h2>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <FieldGroup className="max-w-2xl">{children}</FieldGroup>
+      <FieldGroup className="w-full">{children}</FieldGroup>
     </section>
   )
 }

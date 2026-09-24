@@ -1,10 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import {
   buildChromiumArgs,
-  installKernelPackage,
   KernelRegistry,
   type BrowserKernelAdapter,
 } from './index'
@@ -75,48 +71,4 @@ describe('kernel core', () => {
     expect(() => registry.get('missing')).toThrow('not found')
   })
 
-  it('verifies a package before atomically installing the executable', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'contextweave-kernel-'))
-    try {
-      const bytes = new TextEncoder().encode('verified-kernel')
-      const result = await installKernelPackage(
-        {
-          ...adapter.getManifest(),
-          package: {
-            url: 'https://downloads.example.test/test-kernel.bin',
-            sha256: '01944a0fa97916354003abca7d37bccff6459a8d8947b6343b8c98fa22a8fc31',
-            sizeBytes: bytes.byteLength,
-          },
-        },
-        directory,
-        {
-          download: async () => bytes,
-        },
-      )
-
-      expect(result.executablePath).toContain('test-kernel')
-      expect(result.sizeBytes).toBe(bytes.byteLength)
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
-    }
-  })
-
-  it('rejects a package when the declared hash does not match', async () => {
-    const bytes = new TextEncoder().encode('untrusted-kernel')
-    await expect(
-      installKernelPackage(
-        {
-          ...adapter.getManifest(),
-          package: {
-            url: 'https://downloads.example.test/test-kernel.bin',
-            sha256: '0000000000000000000000000000000000000000000000000000000000000000',
-          },
-        },
-        'C:\\contextweave-test',
-        {
-          download: async () => bytes,
-        },
-      ),
-    ).rejects.toThrow('SHA-256 mismatch')
-  })
 })

@@ -77,7 +77,7 @@ function SessionsTable() {
                 ? 'destructive'
                 : row.original.status === 'running'
                   ? 'success'
-                  : 'outline'
+                  : 'secondary'
             }
           >
             {t(

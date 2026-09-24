@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { proxyTypeSchema } from '@contextweave/contracts'
 import { useAppData } from '@/app/use-app-data'
@@ -20,7 +20,7 @@ const getRowId = (row: ProxySummary) => row.proxyId
 
 export function ProxiesPage() {
   const { t, locale } = useI18n()
-  const { proxies, environments, loading, proxyError, refresh } = useAppData([
+  const { proxies, environments, loading, proxyError, refresh, setNotice } = useAppData([
     'proxies',
     'environments',
   ])
@@ -37,6 +37,31 @@ export function ProxiesPage() {
       }
     return { usage, locked }
   }, [environments])
+  const [testing, setTesting] = useState<Set<string>>(new Set())
+  const [results, setResults] = useState<
+    Record<string, import('@contextweave/contracts').ProxyTestResult>
+  >({})
+  const testProxy = useCallback(
+    async (proxy: ProxySummary) => {
+      setTesting((value) => new Set(value).add(proxy.proxyId))
+      try {
+        const result = await unwrapIpc(window.contextweave.proxy.test({ proxyId: proxy.proxyId }))
+        setResults((value) => ({ ...value, [`${proxy.proxyId}:${proxy.updatedAt}`]: result }))
+      } catch (cause) {
+        setNotice({
+          kind: 'error',
+          message: cause instanceof Error ? cause.message : t('admin.operationError'),
+        })
+      } finally {
+        setTesting((value) => {
+          const next = new Set(value)
+          next.delete(proxy.proxyId)
+          return next
+        })
+      }
+    },
+    [setNotice, t],
+  )
   const columns = useMemo(
     () =>
       proxyColumns({
@@ -44,10 +69,13 @@ export function ProxiesPage() {
         locale,
         usage,
         locked,
+        testing,
+        results,
+        onTest: (proxy) => void testProxy(proxy),
         onEdit: (proxy) => setEditor({ proxy }),
         onDelete: (proxy) => setTargets([proxy]),
       }),
-    [t, locale, usage, locked],
+    [t, locale, usage, locked, testing, results, testProxy],
   )
   const table = useDataTable({
     data: proxies,

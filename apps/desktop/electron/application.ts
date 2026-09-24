@@ -9,6 +9,9 @@ import {
   environmentConfigSchema,
   updateEnvironmentInputSchema,
   saveProxyInputSchema,
+  proxyTestInputSchema,
+  kernelCatalogInputSchema,
+  customKernelSourceSchema,
   type DataDomain,
   type IpcResult,
   type TargetPlatform,
@@ -23,7 +26,9 @@ import {
   resolveEnvironmentProxy,
 } from './environment-management'
 import { saveProxyConfiguration, toProxySummary } from './proxy-management'
+import { testProxyTransport } from './services/proxy-transport'
 import { createCredentialStore, type SecureStorage } from './services/credentials'
+import { kernelProviders, requireKernelProvider } from './services/kernel-providers'
 import { createKernelService } from './services/kernel-service'
 import { createEnvironmentService } from './services/environment-service'
 import { checkEnvironment } from './services/preflight'
@@ -43,7 +48,9 @@ export function createApplication(options: {
 }) {
   const { repository, dataRoot, platform, arch, changed } = options
   const credentials = createCredentialStore(join(dataRoot, 'credentials.json'), options.secure)
-  const kernels = createKernelService(repository, platform, arch)
+  const kernels = createKernelService(repository, platform, arch, join(dataRoot, 'kernels'), () =>
+    changed(['kernels']),
+  )
   const environments = createEnvironmentService(
     repository,
     kernels,
@@ -73,12 +80,18 @@ export function createApplication(options: {
     string,
     (input?: unknown) => IpcResult<unknown> | Promise<IpcResult<unknown>>
   > = {
+    'kernel:providers': () => ok(kernelProviders),
+    'kernel:prepare-custom': async (input) =>
+      ok(await kernels.prepareCustom(customKernelSourceSchema.parse(input))),
+    'kernel:catalog': (input) => {
+      const parsed = kernelCatalogInputSchema.parse(input)
+      requireKernelProvider(parsed.providerId)
+      return kernels.catalog(parsed.refresh).then(ok)
+    },
     'kernel:list': () => ok(kernels.list()),
     'kernel:install': (input) =>
-      commands.run('install', null, () => {
-        id(input)
-        return fail('PROVIDER_UNVERIFIED')
-      }),
+      commands.run('install', null, async () => ok(await kernels.install(id(input)))),
+    'kernel:cancel-install': (input) => ok(kernels.cancelInstall(id(input))),
     'environment:list': () => ok(repository.list().map(toSummary)),
     'environment:trash-list': () => ok(repository.listTrash().map(toSummary)),
     'environment:get': (input) => ok(getEnvironmentDetails(repository, id(input))),
@@ -139,6 +152,24 @@ export function createApplication(options: {
       )
     },
     'storage:orphans': () => ok(environments.orphans()),
+    'proxy:test': async (input) => {
+      const parsed = proxyTestInputSchema.parse(input)
+      const saved = parsed.proxyId ? repository.getProxy(parsed.proxyId) : undefined
+      if (parsed.proxyId && !saved) return fail('NOT_FOUND')
+      const config = 'config' in parsed ? parsed.config : saved!
+      let password = ''
+      if ('config' in parsed && parsed.password) password = parsed.password
+      else if (
+        config.username &&
+        saved?.credentialRef &&
+        !('clearPassword' in parsed && parsed.clearPassword)
+      ) {
+        const secret = credentials.read(saved.credentialRef)
+        if (secret === undefined) return fail('CREDENTIAL_UNAVAILABLE')
+        password = secret
+      }
+      return ok(await testProxyTransport(config, password))
+    },
     'proxy:list': () => ok(repository.listProxies().map(toProxySummary)),
     'proxy:save': (input) => {
       const parsed = saveProxyInputSchema.parse(input)
@@ -194,6 +225,7 @@ export function createApplication(options: {
     async shutdown() {
       closing = true
       workers.shutdown()
+      kernels.cancelAll()
       runtime.cancelStarts()
       await commands.drain()
       await runtime.shutdown()

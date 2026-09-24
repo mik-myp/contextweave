@@ -46,7 +46,7 @@ export function OperationsTable() {
                 ? 'destructive'
                 : row.original.status === 'succeeded'
                   ? 'success'
-                  : 'outline'
+                  : 'secondary'
             }
           >
             {t(`life.result.${row.original.status}`)}

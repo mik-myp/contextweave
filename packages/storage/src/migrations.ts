@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 1
+export const databaseVersion = 2
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -77,6 +77,7 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   }
   sqlite.exec('BEGIN IMMEDIATE')
   try {
+    if (version < 1) {
     sqlite.exec(initialSchema)
     sqlite.exec(`
       ALTER TABLE environments ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
@@ -99,6 +100,12 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       );
       CREATE INDEX idx_operations_started ON operations(started_at DESC);
       PRAGMA user_version = 1;
+    `)
+    }
+    if (version < 2) sqlite.exec(`
+      ALTER TABLE proxies ADD COLUMN name TEXT NOT NULL DEFAULT '';
+      UPDATE proxies SET name = host || ':' || port WHERE name = '';
+      PRAGMA user_version = 2;
     `)
     sqlite.exec('COMMIT')
   } catch (error) {

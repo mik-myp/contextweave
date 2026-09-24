@@ -1,6 +1,57 @@
 import type { adminMessages as zhMessages } from './zh-CN-admin'
 
 export const adminMessages: Record<keyof typeof zhMessages, string> = {
+  'kernel.backgroundDownloads': 'Background downloads',
+  'kernel.provider': 'Kernel type',
+  'kernel.officialReleases': 'Official releases',
+  'kernel.downloadLink': 'Download link',
+  'kernel.downloadUrl': 'HTTPS download URL',
+  'kernel.customLinkHelp':
+    'Official release links are recognized automatically. Other links require a full version and a trusted SHA-256. Use ZIP for Windows or DMG for macOS.',
+  'kernel.trustSource':
+    'I trust this download source and have confirmed that this distribution complies with the selected kernel license.',
+  'kernel.customInputError':
+    'Enter a valid HTTPS URL, a four-part version and a 64-character hexadecimal SHA-256.',
+
+  'kernel.versionInstallHelp':
+    'Choose a kernel and version, or install from a download link. Package integrity and architecture are verified.',
+  'kernel.refreshVersions': 'Refresh releases',
+  'kernel.loadingVersions': 'Loading official releases…',
+  'kernel.cachedCatalog':
+    'The official release service is unavailable. Showing the locally retained release catalog.',
+  'kernel.keepVersions':
+    'Versions are installed separately. Environments keep their chosen version and browser data.',
+  'kernel.packageSize': 'Download size',
+  'kernel.publishedAt': 'Released',
+  'kernel.adapterUnsupported':
+    'This version has no compatible adapter and cannot be installed yet.',
+  'kernel.checksumUnavailable': 'This release lacks a trusted checksum and cannot be installed.',
+  'kernel.downloadVersion': 'Download and install',
+
+  'proxy.name': 'Proxy name',
+  'proxy.namePlaceholder': 'e.g. Work proxy (optional)',
+  'proxy.test': 'Test connection',
+  'proxy.testing': 'Testing…',
+  'proxy.testSuccess': 'Connected',
+  'proxy.testFailed': 'Connection failed',
+  'proxy.testTimeout': 'The request timed out. Check proxy availability.',
+  'proxy.testFailedHelp': 'Check the address, credentials and proxy network.',
+  'proxy.testDescription':
+    'Request an HTTPS IP check through this proxy to test authentication, connectivity and exit IP. Testing does not save the form.',
+  'proxy.connection': 'Connection test',
+  'kernel.platformUnsupported': 'Platform not supported',
+  'kernel.platformHelp':
+    'This fingerprint release supports Windows x64 and Apple Silicon Macs. Intel Macs can use a local standard browser.',
+  'kernel.downloading': 'Downloading',
+  'kernel.verifying': 'Verifying',
+  'kernel.extracting': 'Installing',
+  'kernel.cancelInstall': 'Cancel download',
+  'kernel.source': 'Kernel source',
+  'env.fingerprintIdentity': 'Persistent fingerprint identity',
+  'env.fingerprintHelp':
+    'The seed is generated on creation. Reopening keeps the same seed, kernel version and browser data.',
+  'env.fingerprintSeed': 'Identity seed',
+
   'cap.elementScreenshot': 'Element screenshots',
   'cap.userAgent': 'User-Agent configuration',
   'admin.save': 'Save',
@@ -63,8 +114,6 @@ export const adminMessages: Record<keyof typeof zhMessages, string> = {
   'proxy.usernameRequired': 'A username is required when using a password.',
   'proxy.secureUnavailable':
     'Secure storage is unavailable. New passwords cannot be saved, but proxies without passwords can still be used.',
-  'proxy.socksAuthUnsupported':
-    'This browser runtime does not support SOCKS5 username/password authentication. Use unauthenticated SOCKS5 or HTTP(S).',
   'kernel.list': 'Browser kernels',
   'kernel.description':
     'Manage the browser kernels available to environments, their installation and supported capabilities.',

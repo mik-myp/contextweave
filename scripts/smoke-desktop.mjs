@@ -87,7 +87,10 @@ try {
       assert.equal(screenshot.data.title, 'ContextWeave worker fixture')
       const screenshotPath = screenshot.data.screenshotPath
       const outputRoot = await realpath(join(directory, 'contextweave', 'worker-results'))
-      assert.equal(dirname(dirname(screenshotPath)), outputRoot)
+      // Node and Electron may represent the same Windows temp root using long or 8.3 names.
+      const canonicalScreenshot = await realpath(screenshotPath)
+      assert.equal(dirname(dirname(canonicalScreenshot)), outputRoot)
+      assert.match(basename(dirname(canonicalScreenshot)), /^run-[A-Za-z0-9]+$/)
       assert.equal(basename(screenshotPath), 'screenshot.png')
       const png = await readFile(screenshotPath)
       assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])

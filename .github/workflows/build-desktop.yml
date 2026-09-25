@@ -28,21 +28,26 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.26.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22.15.0
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify workspace and tag versions
+        run: node scripts/release-tools.mjs check-version
 
       - name: Run checks
         run: pnpm check
@@ -59,39 +64,14 @@ jobs:
       - name: Build desktop package
         run: pnpm --filter @contextweave/desktop build
 
-      - name: Generate SHA-256 files on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $releaseRoot = Join-Path $PWD 'apps/desktop/release'
-          $versionRoot = Get-ChildItem -LiteralPath $releaseRoot -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $versionRoot) { throw "No electron-builder output directory found" }
-          $stagingRoot = Join-Path $PWD 'release-artifacts/windows-x64'
-          New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
-          Get-ChildItem -LiteralPath $versionRoot.FullName -File |
-            Where-Object { $_.Extension -eq '.exe' } |
-            Copy-Item -Destination $stagingRoot
-          Get-ChildItem -LiteralPath $stagingRoot -File |
-            Where-Object Name -ne 'SHA256SUMS-windows-x64.txt' |
-            Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLowerInvariant(), (Split-Path -Leaf $_.Path) } |
-            Set-Content -LiteralPath (Join-Path $stagingRoot 'SHA256SUMS-windows-x64.txt') -Encoding utf8
+      - name: Verify isolated packaged application bundle
+        run: pnpm test:desktop --packaged
 
-      - name: Generate SHA-256 files on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          version_root="$(find apps/desktop/release -mindepth 1 -maxdepth 1 -type d -print | sort | tail -n 1)"
-          test -n "$version_root"
-          mkdir -p "release-artifacts/${{ matrix.name }}"
-          find "$version_root" -maxdepth 1 -type f \
-            \( -name '*.dmg' -o -name '*.zip' \) \
-            -exec cp {} "release-artifacts/${{ matrix.name }}/" \;
-          cd "release-artifacts/${{ matrix.name }}"
-          shasum -a 256 *.dmg *.zip > "SHA256SUMS-${{ matrix.name }}.txt"
+      - name: Audit packaged dependencies and stage verified artifacts
+        run: node scripts/release-tools.mjs stage ${{ matrix.name }}
 
       - name: Upload desktop artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: contextweave-${{ matrix.name }}
           path: release-artifacts/${{ matrix.name }}/**

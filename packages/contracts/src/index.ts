@@ -26,6 +26,41 @@ export type TargetPlatform = z.infer<typeof platformSchema>
 export const architectureSchema = z.enum(['x64', 'arm64'])
 export type TargetArchitecture = z.infer<typeof architectureSchema>
 
+export const appInfoSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.string().min(1),
+    platform: platformSchema,
+    arch: architectureSchema,
+    secureStorageAvailable: z.boolean(),
+  })
+  .strict()
+export type AppInfo = z.infer<typeof appInfoSchema>
+
+export const appPathsSchema = z
+  .object({
+    userData: z.string().min(1),
+    dataRoot: z.string().min(1),
+    environmentRoot: z.string().min(1),
+    kernelRoot: z.string().min(1),
+    logRoot: z.string().min(1),
+  })
+  .strict()
+export type AppPaths = z.infer<typeof appPathsSchema>
+
+export const externalUrlSchema = z
+  .string()
+  .url()
+  .max(8192)
+  .refine((value) => {
+    try {
+      const url = new URL(value)
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+    } catch {
+      return false
+    }
+  }, 'Only HTTP(S) URLs without embedded credentials are supported')
+
 export const proxyTypeSchema = z.enum(['http', 'https', 'socks5'])
 export type ProxyType = z.infer<typeof proxyTypeSchema>
 
@@ -388,8 +423,12 @@ export const kernelCatalogInputSchema = z.object({ providerId: z.string().min(1)
 export const customKernelSourceSchema = z.object({
   providerId: z.string().min(1),
   url: z.string().url().max(4096).refine((value) => {
-    const url = new URL(value)
-    return url.protocol === 'https:' && !url.username && !url.password && !url.hash
+    try {
+      const url = new URL(value)
+      return url.protocol === 'https:' && !url.username && !url.password && !url.hash
+    } catch {
+      return false
+    }
   }, 'A direct HTTPS URL without embedded credentials is required'),
   version: z.string().regex(/^\d+\.\d+\.\d+\.\d+$/).optional(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/i).optional(),

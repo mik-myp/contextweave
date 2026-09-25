@@ -99,3 +99,30 @@ describe('private Main / Worker envelopes', () => {
     expect(workerResultSchema.safeParse({ ...result, screenshotPath: '/main-owned/screenshot.png' }).success).toBe(true)
   })
 })
+
+it('rejects unbounded navigation, credential-bearing URLs, and unused private secrets', () => {
+  const task = {
+    protocolVersion: 1,
+    taskId: 'task-safe',
+    environmentId: 'env-test',
+    kind: 'browser-smoke',
+    input: { url: 'https://example.invalid/' },
+  }
+  for (const url of [
+    'https://u:secret@example.invalid/',
+    'https://example.invalid/' + 'x'.repeat(8192),
+    'not a URL',
+  ])
+    expect(workerTaskSchema.safeParse({ ...task, input: { url } }).success).toBe(false)
+  expect(workerTaskSchema.safeParse({ ...task, environmentId: 'e'.repeat(201) }).success).toBe(
+    false,
+  )
+  expect(workerTaskSchema.safeParse({ ...task, controlPort: 9222 }).success).toBe(false)
+  expect(
+    workerProcessRequestSchema.safeParse({
+      task,
+      controlPort: 9222,
+      proxyCredentials: { username: 'u', password: 'secret' },
+    }).success,
+  ).toBe(false)
+})

@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell, dialog } fr
 import log from 'electron-log/main'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { z } from 'zod'
+import { pathToFileURL } from 'node:url'
 import { dataChangedSchema, platformSchema, architectureSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
@@ -13,7 +13,9 @@ import { createAppLogService } from './services/app-log-service'
 import { createAppLogHandlers } from './app-log-ipc'
 import { createWindowLifecycle } from './services/window-lifecycle'
 import { classifyStartupError, recoverStartup } from './services/startup-recovery'
-import { ok, fail } from './services/result'
+import { fail } from './services/result'
+import { createAppHandlers } from './app-ipc'
+import { isTrustedIpcSender } from './services/ipc-security'
 if (!app.isPackaged && process.env.CONTEXTWEAVE_USER_DATA)
   app.setPath('userData', resolve(process.env.CONTEXTWEAVE_USER_DATA))
 log.transports.file.resolvePathFn = () =>
@@ -21,7 +23,11 @@ log.transports.file.resolvePathFn = () =>
 log.initialize()
 const applicationLogs = createAppLogService()
 const APP_ROOT = resolve(__dirname, '..')
-const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL
+const DEV_SERVER_URL = app.isPackaged
+  ? undefined
+  : (process.env.ELECTRON_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL)
+const RENDERER_ENTRY_URL =
+  DEV_SERVER_URL ?? pathToFileURL(join(APP_ROOT, 'dist', 'index.html')).href
 const targetPlatform = platformSchema.parse(process.platform)
 const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
@@ -190,46 +196,40 @@ if (hasInstanceLock)
       const localHandlers: Record<string, (input: unknown) => unknown> = {
         ...createAppUpdateHandlers(updates),
         ...createAppLogHandlers(applicationLogs, (text) => clipboard.writeText(text)),
-        'app:get-info': () =>
-          ok({
+        ...createAppHandlers({
+          getInfo: () => ({
             name: 'ContextWeave',
             version: app.getVersion(),
             platform: targetPlatform,
             arch: targetArch,
             secureStorageAvailable: safeStorage.isEncryptionAvailable(),
           }),
-        'app:get-paths': () =>
-          ok({
+          getPaths: () => ({
             userData: app.getPath('userData'),
             dataRoot,
             environmentRoot,
             kernelRoot: join(dataRoot, 'kernels'),
             logRoot: join(dataRoot, 'logs'),
           }),
-        'app:quit': () => {
-          setImmediate(() => app.quit())
-          return ok(true)
-        },
-        'app:open-external': (input) => {
-          const parsed = z.string().url().safeParse(input)
-          if (!parsed.success || !/^https?:\/\//i.test(parsed.data)) return fail('INVALID_URL')
-          void shell.openExternal(parsed.data).catch(() => log.warn('Unable to open external URL'))
-          return ok(true)
-        },
+          quit: () => app.quit(),
+          openExternal: (url) => shell.openExternal(url),
+        }),
       }
       for (const channel of [...application.channels, ...Object.keys(localHandlers)])
         ipcMain.handle(channel, (event, input: unknown) => {
           const mainWindow = windows.get()
           if (
-            isQuitting ||
-            recoveringStartup ||
-            !mainWindow ||
-            event.senderFrame !== mainWindow.webContents.mainFrame
+            !isTrustedIpcSender(
+              event,
+              mainWindow,
+              RENDERER_ENTRY_URL,
+              isQuitting || recoveringStartup,
+            )
           )
             return fail('FORBIDDEN')
           return applicationLogs.invoke(channel, input, () =>
-            localHandlers[channel]
-              ? localHandlers[channel](input)
+            Object.hasOwn(localHandlers, channel)
+              ? localHandlers[channel]!(input)
               : application!.invoke(channel, input),
           )
         })

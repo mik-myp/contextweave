@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
+  maxWorkerProtocolBytes,
   workerProcessResultSchema,
   workerProcessRequestSchema,
   workerTaskSchema,
@@ -50,7 +51,8 @@ export function createWorkerService(
       }
       return new Promise<ReturnType<typeof ok<WorkerResult>> | ReturnType<typeof fail>>(
         (resolve) => {
-          let output = '',
+          const output: Buffer[] = []
+          let outputBytes = 0,
             settled = false
           let stopResult: ReturnType<typeof fail> | undefined
           const finish = (
@@ -81,8 +83,12 @@ export function createWorkerService(
           workers.set(task.taskId, { child, cancel, environmentId: task.environmentId })
           child.stdout?.on('data', (chunk: Buffer) => {
             if (stopResult) return
-            output += String(chunk)
-            if (output.length > 1024 * 1024) stop('WORKER_OUTPUT_LIMIT')
+            outputBytes += chunk.length
+            if (outputBytes > maxWorkerProtocolBytes) {
+              stop('WORKER_OUTPUT_LIMIT')
+              return
+            }
+            output.push(Buffer.from(chunk))
           })
           child.stderr?.resume()
           child.once('error', () => {
@@ -100,7 +106,7 @@ export function createWorkerService(
             }
             try {
               const result = workerProcessResultSchema.parse(
-                JSON.parse(output.trim().split(/\r?\n/).at(-1) ?? ''),
+                JSON.parse(Buffer.concat(output).toString('utf8').trim()),
               )
               if (result.taskId !== task.taskId || result.environmentId !== task.environmentId)
                 throw new Error('WORKER_RESULT_MISMATCH')

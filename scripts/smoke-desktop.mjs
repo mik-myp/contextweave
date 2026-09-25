@@ -1,8 +1,10 @@
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
+import { existsSync } from 'node:fs'
+import { findPackagedArchive } from './release-tools.mjs'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { mkdtemp, rm, readFile, realpath } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, realpath, cp } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
@@ -13,9 +15,21 @@ const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.ur
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
 const { _electron, chromium } = require('playwright-core')
 const directory = await mkdtemp(join(tmpdir(), 'cw-desktop-smoke-'))
+// Run the exact ASAR with the matching Electron runtime outside the repository, so missing
+// production dependencies cannot accidentally resolve from workspace node_modules. This is
+// bundle/lifecycle validation, not a substitute for exercising OS installers or code signing.
+let entry = appRoot
+if (process.argv.includes('--packaged')) {
+  const { version } = JSON.parse(await readFile(join(appRoot, 'package.json'), 'utf8'))
+  const archive = findPackagedArchive(join(appRoot, 'release', version))
+  entry = join(directory, 'packaged', 'app.asar')
+  await cp(archive, entry)
+  if (existsSync(`${archive}.unpacked`))
+    await cp(`${archive}.unpacked`, `${entry}.unpacked`, { recursive: true })
+}
 const desktop = await _electron.launch({
   executablePath: require('electron'),
-  args: [appRoot],
+  args: [entry],
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
 })
@@ -345,7 +359,7 @@ try {
   if (process.platform === 'darwin') {
     await page.close()
     const reopened = desktop.waitForEvent('window', { timeout: 15000 })
-    const second = spawn(require('electron'), [appRoot], {
+    const second = spawn(require('electron'), [entry], {
       env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
       stdio: 'ignore',
     })
@@ -377,5 +391,13 @@ try {
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
-// Native dialog invocation and original-data preservation under actual Electron startup failures.
-await import('./smoke-startup.mjs')
+// The startup harness separately exercises the development bundle with injected native dialogs.
+if (!process.argv.includes('--packaged')) await import('./smoke-startup.mjs')
+else
+  console.log(
+    JSON.stringify({
+      isolatedPackagedBundle: 'passed',
+      platform: process.platform,
+      arch: process.arch,
+    }),
+  )

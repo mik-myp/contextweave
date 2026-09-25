@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { protocolVersion } from '@contextweave/contracts'
+import { protocolVersion, externalUrlSchema } from '@contextweave/contracts'
 
 export const workerTaskKindSchema = z.enum(['browser-smoke'])
 export type WorkerTaskKind = z.infer<typeof workerTaskKindSchema>
@@ -9,9 +9,10 @@ export const workerTaskIdSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9]
 // Main owns the file; the worker receives only this inherited writable descriptor.
 export const workerScreenshotDescriptor = 3
 export const maxWorkerScreenshotBytes = 32 * 1024 * 1024
+export const maxWorkerProtocolBytes = 1024 * 1024
 
 export const browserSmokeTaskInputSchema = z.object({
-  url: z.string().url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP(S) tasks are supported'),
+  url: externalUrlSchema,
   timeoutMs: z.number().int().min(1000).max(120000).default(30000),
 }).strict()
 export type BrowserSmokeTaskInput = z.infer<typeof browserSmokeTaskInputSchema>
@@ -19,7 +20,7 @@ export type BrowserSmokeTaskInput = z.infer<typeof browserSmokeTaskInputSchema>
 export const workerTaskSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   taskId: workerTaskIdSchema,
-  environmentId: z.string().trim().min(1),
+  environmentId: z.string().trim().min(1).max(200),
   kind: workerTaskKindSchema,
   input: browserSmokeTaskInputSchema,
 }).strict()
@@ -28,7 +29,7 @@ export type WorkerTask = z.infer<typeof workerTaskSchema>
 export const workerEventSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   taskId: workerTaskIdSchema,
-  environmentId: z.string().trim().min(1),
+  environmentId: z.string().trim().min(1).max(200),
   step: z.string().trim().min(1),
   status: z.enum(['started', 'running', 'completed', 'failed', 'cancelled']),
   at: z.string().datetime(),
@@ -41,7 +42,7 @@ export type WorkerEvent = z.infer<typeof workerEventSchema>
 export const workerResultSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   taskId: workerTaskIdSchema,
-  environmentId: z.string().trim().min(1),
+  environmentId: z.string().trim().min(1).max(200),
   ok: z.boolean(),
   title: z.string().optional(),
   screenshotPath: z.string().optional(),
@@ -54,7 +55,6 @@ export type WorkerResult = z.infer<typeof workerResultSchema>
 export const workerProcessRequestSchema = z.object({
   task: workerTaskSchema,
   controlPort: z.number().int().min(1).max(65535),
-  proxyCredentials: z.object({ username: z.string(), password: z.string() }).strict().optional(),
 }).strict()
 export type WorkerProcessRequest = z.infer<typeof workerProcessRequestSchema>
 

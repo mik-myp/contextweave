@@ -62,7 +62,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
 
 export const databaseVersion = 4
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
-  const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
+  let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
     throw new Error('This database requires a newer ContextWeave version')
   if (version === databaseVersion) return
@@ -76,6 +76,11 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   }
   sqlite.exec('BEGIN IMMEDIATE')
   try {
+    // Another process may have migrated while the pre-migration backup was captured.
+    // Only the version read under our write transaction is authoritative for DDL.
+    version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
+    if (version > databaseVersion)
+      throw new Error('This database requires a newer ContextWeave version')
     if (version < 1) {
       sqlite.exec(initialSchema)
       sqlite.exec(`
@@ -115,7 +120,10 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       );
       PRAGMA user_version = 3;
     `)
-    if (version < 4) sqlite.exec(`ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`)
+    if (version < 4)
+      sqlite.exec(
+        `ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`,
+      )
     sqlite.exec('COMMIT')
   } catch (error) {
     try {

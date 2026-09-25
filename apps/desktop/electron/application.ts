@@ -9,6 +9,7 @@ import {
   readThemeConfig,
   themeConfigSchema,
   updateEnvironmentInputSchema,
+  createEnvironmentInputSchema,
   saveProxyInputSchema,
   credentialCleanupStatusSchema,
   kernelCatalogInputSchema,
@@ -19,6 +20,7 @@ import {
   type TargetArchitecture,
 } from '@contextweave/contracts'
 import type { EnvironmentRepository } from '@contextweave/storage'
+import { workerTaskIdSchema } from '@contextweave/worker-protocol'
 import {
   getEnvironmentDetails,
   removeEnvironment,
@@ -127,9 +129,10 @@ export function createApplication(options: {
     'environment:get': (input) => ok(getEnvironmentDetails(repository, id(input))),
     'environment:preflight': async (input) => ok(await preflight(id(input))),
     'environment:create': (input) => {
+      const parsed = createEnvironmentInputSchema.parse(input)
       const environmentId = `env-${randomUUID()}`
       return commands.run('create', environmentId, () =>
-        ok(toSummary(environments.create(input, environmentId))),
+        ok(toSummary(environments.create(parsed, environmentId))),
       )
     },
     'environment:update': (input) => {
@@ -233,8 +236,21 @@ export function createApplication(options: {
       return ok(config)
     },
     'worker:run-smoke': (input) => workers.run(input),
-    'worker:cancel': (input) => workers.cancel(id(input)),
+    'worker:cancel': (input) => workers.cancel(workerTaskIdSchema.parse(input)),
   }
+  const noInput = new Set([
+    'kernel:providers',
+    'kernel:list',
+    'environment:list',
+    'environment:trash-list',
+    'activity:list',
+    'operation:list',
+    'storage:orphans',
+    'proxy:list',
+    'settings:get-theme',
+    'proxy:cleanup-status',
+    'proxy:retry-cleanup',
+  ])
   return {
     channels: Object.keys(handlers),
     setUpdating(value: boolean) {
@@ -251,8 +267,10 @@ export function createApplication(options: {
     async invoke(channel: string, input?: unknown): Promise<IpcResult<unknown>> {
       if (closing) return fail('APP_CLOSING')
       if (updating) return fail('APP_UPDATING')
+      if (!Object.hasOwn(handlers, channel)) return fail('UNKNOWN_COMMAND')
       try {
-        return (await handlers[channel]?.(input)) ?? fail('UNKNOWN_COMMAND')
+        if (noInput.has(channel)) z.undefined().parse(input)
+        return await handlers[channel]!(input)
       } catch (error) {
         if (error instanceof z.ZodError) return fail('INVALID_INPUT')
         return fail(

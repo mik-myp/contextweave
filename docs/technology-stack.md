@@ -651,3 +651,13 @@ pnpm exec prettier --config .prettierrc.json --check ../../docs/project-plan.md 
 - SQLite 仍为 schema v4，覆盖备份失败、事务/回滚失败、重开与锁竞争；测试必须证明原数据和可用副本的状态，不能用清空重建掩盖错误。
 - PR/主分支 CI 覆盖 Windows 与适用 macOS；发布构建仅有读取权限，创建 Release 的独立任务才获得写权限。第三方 actions 固定完整提交，权限与版本映射必须可审计。
 - 当前包体/依赖测量来自本版构建或经确认的已发布产物，不沿用旧 alpha 数字；源码 SBOM 与实际打包依赖清单分开命名和解释，不把未扫描安装内容的清单称作二进制 SBOM。
+
+### 19.1 本版打包依赖与验证工具
+
+Renderer 依赖和被 Vite 打包的工作区包只在构建期使用，迁入桌面包 `devDependencies`；运行时只保留 Main/Worker 实际外部引用的库，版本不在此变更中升级。必须用构建后的桌面 smoke 与三平台安装包核实没有漏带运行依赖，不以目录体积变小代替可用性。
+
+将锁文件已存在的 `@electron/asar@3.4.1` 显式声明为开发工具依赖，用公开 API 检查自己构建的 ASAR。许可 MIT、纯 JavaScript、无需原生编译、无运行时网络或遥测；不进入产品运行依赖，不读取用户导入的归档。替换成本限于 `scripts/release-tools.mjs` 与测试，不自行重写 ASAR 格式解析器。
+
+`release-tools` 统一版本一致性、按平台的安装包选择、ASAR 依赖/体积报告和 SHA-256 清单，供构建与发布工作流共用。报告仅列安装资源中的相对路径，不收集用户数据；它是打包库存清单，不冒充包含 Electron 二进制与所有已打包前端代码的完整 SBOM。源码 SPDX 单独命名 `contextweave.source.spdx.json`。发布任务先创建草稿，附件与摘要验证后才公开，不移动既有 tag。
+
+构建产物的隔离 smoke 把 `app.asar` 及其 unpacked 资源复制到仓库外临时目录，用同版本 Electron 启动并使用临时 userData。这样缺失运行依赖不能从开发仓库悄悄回退解析；该验证不等于 NSIS/DMG 安装、人工作业或签名/公证验收。源码扫描在独立只读 job 运行，Release 写权限 job 不执行源码构建或扫描工具。

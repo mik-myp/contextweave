@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import {
   maxWorkerScreenshotBytes,
+  maxWorkerProtocolBytes,
   workerProcessRequestSchema,
   workerScreenshotDescriptor,
   type WorkerProcessRequest,
@@ -15,7 +16,7 @@ async function readPayload(): Promise<WorkerProcessRequest> {
   let size = 0
   for await (const chunk of process.stdin) {
     size += chunk.length
-    if (size > 1024 * 1024) throw new Error('WORKER_INPUT_LIMIT')
+    if (size > maxWorkerProtocolBytes) throw new Error('WORKER_INPUT_LIMIT')
     chunks.push(Buffer.from(chunk))
   }
   return workerProcessRequestSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
@@ -29,25 +30,7 @@ async function run(): Promise<WorkerProcessResult> {
   try {
     const context = browser.contexts()[0] ?? (await browser.newContext())
     const page = context.pages()[0] ?? (await context.newPage())
-    let cdpSession: Awaited<ReturnType<typeof context.newCDPSession>> | undefined
-    if (payload.proxyCredentials) {
-      cdpSession = await context.newCDPSession(page)
-      await cdpSession.send('Fetch.enable', { handleAuthRequests: true })
-      cdpSession.on(
-        'Fetch.authRequired',
-        (event: { requestId: string; authChallenge: { source?: string } }) => {
-          if (event.authChallenge.source !== 'Proxy') return
-          void cdpSession?.send('Fetch.continueWithAuth', {
-            requestId: event.requestId,
-            authChallengeResponse: {
-              response: 'ProvideCredentials',
-              username: payload.proxyCredentials?.username,
-              password: payload.proxyCredentials?.password,
-            },
-          })
-        },
-      )
-    }
+    // Proxy authentication is owned by Main's runtime/bridge, never by a worker task.
     // Restored sessions may contain multiple tabs. Headful Chromium can defer
     // screenshot composition for a background tab, especially on Windows.
     // Activate the page this Worker actually selected, not another CDP client's first page.

@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  appInfoSchema,
+  appPathsSchema,
+  externalUrlSchema,
   ipLocaleRequestSchema,
   ipLocaleResultSchema,
   ipLocaleCancelSchema,
@@ -43,6 +46,7 @@ import {
   type ThemeConfig,
 } from '@contextweave/contracts'
 import {
+  workerTaskIdSchema,
   workerResultSchema,
   workerTaskSchema,
   type WorkerTask,
@@ -52,28 +56,12 @@ const api = {
   app: {
     quit: async () => ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('app:quit')),
     getInfo: async () =>
-      ipcResultSchema(
-        z.object({
-          name: z.string(),
-          version: z.string(),
-          platform: z.string(),
-          arch: z.string(),
-          secureStorageAvailable: z.boolean(),
-        }),
-      ).parse(await ipcRenderer.invoke('app:get-info')),
+      ipcResultSchema(appInfoSchema).parse(await ipcRenderer.invoke('app:get-info')),
     getPaths: async () =>
-      ipcResultSchema(
-        z.object({
-          userData: z.string(),
-          dataRoot: z.string(),
-          environmentRoot: z.string(),
-          kernelRoot: z.string(),
-          logRoot: z.string(),
-        }),
-      ).parse(await ipcRenderer.invoke('app:get-paths')),
+      ipcResultSchema(appPathsSchema).parse(await ipcRenderer.invoke('app:get-paths')),
     openExternal: async (url: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('app:open-external', z.string().url().parse(url)),
+        await ipcRenderer.invoke('app:open-external', externalUrlSchema.parse(url)),
       ),
   },
   logs: {
@@ -265,7 +253,7 @@ const api = {
       ),
     cancel: async (taskId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('worker:cancel', z.string().min(1).parse(taskId)),
+        await ipcRenderer.invoke('worker:cancel', workerTaskIdSchema.parse(taskId)),
       ),
   },
 } as const

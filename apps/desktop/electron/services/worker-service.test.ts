@@ -34,6 +34,15 @@ function setup() {
       if (mode === '/path') result.screenshotPath = '/outside/protected.png'
       if (mode === '/mismatch') result.taskId = 'other-task'
       if (mode === '/environment-mismatch') result.environmentId = 'other-environment'
+      if (mode === '/unicode') {
+        result.title = 'A中文B'
+        const bytes = Buffer.from(JSON.stringify(result) + '\\n')
+        const split = bytes.indexOf(Buffer.from('中')) + 1
+        process.stdout.write(bytes.subarray(0, split))
+        setTimeout(() => process.stdout.write(bytes.subarray(split)), 25)
+        return
+      }
+      if (mode === '/prefix') process.stdout.write('unexpected protocol output\\n')
       if (mode === '/malformed') { process.stdout.write('not-json'); return }
       if (mode === '/failed') { result.ok = false; result.errorCode = 'TEST_FAILED' }
       if (payload.outputDirectory || payload.screenshotPath || task.input.screenshotPath) process.exit(9)
@@ -78,6 +87,12 @@ describe('worker service output boundary', () => {
     expect(readdirSync(outputRoot)).toHaveLength(2)
   })
 
+  it('preserves multibyte text split across separate stdout chunks', async () => {
+    const { service } = setup()
+    const result = await service.run(task('unicode-task', '/unicode'))
+    expect(result).toMatchObject({ ok: true, data: { ok: true, title: 'A中文B' } })
+  })
+
   it.each(['../escape', '..\\escape', '/outside', 'C:\\outside', 'x'.repeat(129)])(
     'rejects task ID %j before allocating or spawning',
     async (id) => {
@@ -96,17 +111,22 @@ describe('worker service output boundary', () => {
     expect(existsSync(outputRoot)).toBe(false)
   })
 
-  it.each(['/path', '/mismatch', '/environment-mismatch', '/malformed', '/empty', '/crash'])(
-    'rejects invalid process results and discards its output: %s',
-    async (mode) => {
-      const { service, outputRoot } = setup()
-      expect(await service.run(task('task-test', mode))).toMatchObject({
-        ok: false,
-        code: 'WORKER_FAILED',
-      })
-      expect(readdirSync(outputRoot)).toEqual([])
-    },
-  )
+  it.each([
+    '/path',
+    '/mismatch',
+    '/environment-mismatch',
+    '/malformed',
+    '/prefix',
+    '/empty',
+    '/crash',
+  ])('rejects invalid process results and discards its output: %s', async (mode) => {
+    const { service, outputRoot } = setup()
+    expect(await service.run(task('task-test', mode))).toMatchObject({
+      ok: false,
+      code: 'WORKER_FAILED',
+    })
+    expect(readdirSync(outputRoot)).toEqual([])
+  })
 
   it('discards failed task output even when the process returns a valid envelope', async () => {
     const { service, outputRoot } = setup()

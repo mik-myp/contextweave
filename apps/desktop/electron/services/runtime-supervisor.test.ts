@@ -20,9 +20,22 @@ import { createRuntimeSupervisor, terminateChild } from './runtime-supervisor'
 import { createKernelService } from './kernel-service'
 import { createCommandCoordinator } from './command-coordinator'
 import { ok } from './result'
-const cleanup: (() => void)[] = []
-afterEach(() => {
-  for (const clean of cleanup.splice(0).reverse()) clean()
+// Fake ChildProcess objects use this test process PID. They must not invoke slow OS
+// probe subprocesses; real identity capture is verified by the platform smoke tests.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execFileSync: (file: string) => {
+      if (file === '/bin/ps') return 'Fri Sep 25 12:34:56 2026\n'
+      if (file.endsWith('powershell.exe')) return '123456789\n'
+      throw new Error('Unexpected synchronous command in runtime unit test')
+    },
+  }
+})
+const cleanup: (() => void | Promise<void>)[] = []
+afterEach(async () => {
+  for (const clean of cleanup.splice(0).reverse()) await clean()
 })
 function fixture(
   kernelVersion = 'local',
@@ -103,6 +116,15 @@ function fixture(
     preflight,
     changed: vi.fn(),
     driver,
+  })
+  cleanup.push(async () => {
+    // Drain exit handlers and transport cleanup before closing the test database, even
+    // when an assertion failed while a synthetic child was still marked running.
+    if (child.exitCode === null) {
+      Object.defineProperty(child, 'exitCode', { value: 0, configurable: true })
+      child.emit('exit', 0, null)
+    }
+    await runtime.shutdown()
   })
   return { dir, repository, child, runtime, driver, preflight, detect, kernels }
 }

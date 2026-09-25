@@ -40,10 +40,8 @@ if (!hasInstanceLock) app.quit()
 let recoveringStartup = false
 const windows = createWindowLifecycle({
   create: createWindow,
-  load: (window) =>
-    DEV_SERVER_URL
-      ? window.loadURL(DEV_SERVER_URL)
-      : window.loadFile(join(APP_ROOT, 'dist', 'index.html')),
+  // Loading and IPC validation must share serialization (notably '~' in Windows temp paths).
+  load: (window) => window.loadURL(RENDERER_ENTRY_URL),
   failed: () => {
     void handleStartupFailure(new Error('UI_LOAD_FAILED'))
   },

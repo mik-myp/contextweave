@@ -22,7 +22,8 @@ let entry = appRoot
 if (process.argv.includes('--packaged')) {
   const { version } = JSON.parse(await readFile(join(appRoot, 'package.json'), 'utf8'))
   const archive = findPackagedArchive(join(appRoot, 'release', version))
-  entry = join(directory, 'packaged', 'app.asar')
+  // '~' reproduces Windows short temp paths: legacy loadFile URL serialization differs.
+  entry = join(directory, 'packaged ~', 'app.asar')
   await cp(archive, entry)
   if (existsSync(`${archive}.unpacked`))
     await cp(`${archive}.unpacked`, `${entry}.unpacked`, { recursive: true })
@@ -58,6 +59,8 @@ try {
   )
   for (const method of ['cleanupStatus', 'retryCleanup']) {
     const status = await page.evaluate((method) => window.contextweave.proxy[method](), method)
+    if (!status.ok)
+      console.error(JSON.stringify({ bridgeFailure: status.code, rendererUrl: page.url() }))
     assert.deepEqual(
       status,
       { ok: true, data: { pendingCount: 0, temporaryFilesPending: false } },

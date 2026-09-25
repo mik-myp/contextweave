@@ -140,6 +140,10 @@ const api = {
           kernelCatalogInputSchema.parse({ providerId, refresh }),
         ),
       ),
+    remove: async (kernelId: string) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('kernel:remove', environmentIdSchema.parse(kernelId)),
+      ),
     cancelInstall: async (kernelId: string) =>
       ipcResultSchema(z.boolean()).parse(
         await ipcRenderer.invoke('kernel:cancel-install', environmentIdSchema.parse(kernelId)),

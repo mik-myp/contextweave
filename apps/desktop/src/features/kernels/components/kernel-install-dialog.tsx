@@ -125,7 +125,7 @@ export function KernelInstallDialog({
                 <Select
                   items={releases.map((item) => ({
                     value: item.id,
-                    label: `${item.version}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
+                    label: `${item.version}${item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
                   }))}
                   value={release.id}
                   disabled={!!pending}
@@ -144,6 +144,7 @@ export function KernelInstallDialog({
                       {releases.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
                           {item.version}
+                          {item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}
                           {item.installed ? ` · ${t('kernel.installed')}` : ''}
                         </SelectItem>
                       ))}

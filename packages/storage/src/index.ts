@@ -117,6 +117,7 @@ function mapRuntimeSession(row: Row): RuntimeSessionRecord {
     sessionId: stringValue(row, 'session_id'),
     environmentId: stringValue(row, 'environment_id'),
     pid: Number(row.pid),
+    processIdentity: nullableStringValue(row, 'process_identity') ?? undefined,
     controlPort: Number(row.control_port),
     startedAt: stringValue(row, 'started_at'),
     status: stringValue(row, 'status') as RuntimeSession['status'],
@@ -206,8 +207,8 @@ export class EnvironmentRepository {
     )
     this.insertRuntimeSessionStatement = sqlite.prepare(`
       INSERT INTO runtime_sessions (
-        session_id, environment_id, pid, control_port, started_at, status, exit_reason, ended_at, revision, kernel_version, executable_version, phase
-      ) VALUES (@sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason, @endedAt, @revision, @kernelVersion, @executableVersion, @phase)
+        session_id, environment_id, pid, control_port, started_at, status, exit_reason, ended_at, revision, kernel_version, executable_version, phase, process_identity
+      ) VALUES (@sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason, @endedAt, @revision, @kernelVersion, @executableVersion, @phase, @processIdentity)
     `)
     this.updateRuntimeSessionStatement = sqlite.prepare(`
       UPDATE runtime_sessions SET status = ?, exit_reason = ?, ended_at = COALESCE(ended_at, ?), phase = ? WHERE session_id = ?
@@ -458,6 +459,7 @@ export class EnvironmentRepository {
     this.insertRuntimeSessionStatement.run({
       ...input,
       endedAt: input.endedAt ?? null,
+      processIdentity: input.processIdentity ?? null,
       revision: input.revision ?? null,
       kernelVersion: input.kernelVersion ?? null,
       executableVersion: input.executableVersion ?? null,
@@ -594,6 +596,15 @@ export class EnvironmentRepository {
     this.upsertSettingStatement.run(key, JSON.stringify(value), new Date().toISOString())
   }
 
+  markKernelRemoving(id: number): void {
+    this.sqlite.prepare("UPDATE kernel_installations SET state = 'removing', updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), id)
+  }
+
+  deleteKernelInstallation(id: number): void {
+    this.sqlite.prepare('DELETE FROM kernel_installations WHERE id = ?').run(id)
+  }
+
   listKernelInstallations(): KernelInstallationRecord[] {
     return (this.listKernelInstallationsStatement.all() as Row[]).map(mapKernelInstallation)
   }
@@ -633,6 +644,8 @@ export {
   acquireRuntimeLock,
   inspectRuntimeLock,
   isProcessAlive,
+  isRuntimeProcessAlive,
+  readProcessIdentity,
   releaseRuntimeLock,
   runtimeLockPath,
   updateRuntimeLockOwner,

@@ -1,7 +1,7 @@
 // Real official-package acceptance. No credentials or browser data are kept in the repository.
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, access } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
@@ -18,7 +18,12 @@ const directory = suppliedData || (await mkdtemp(join(tmpdir(), 'cw-fingerprint-
 const env = { ...process.env, CONTEXTWEAVE_USER_DATA: directory }
 delete env.CONTEXTWEAVE_SMOKE_PROXY
 delete env.CONTEXTWEAVE_SMOKE_DATA
-const server = createServer((_request, response) => {
+const server = createServer((request, response) => {
+  if (request.url === '/slow') {
+    const timer = setTimeout(() => response.end('slow fixture complete'), 6500)
+    response.once('close', () => clearTimeout(timer))
+    return
+  }
   response.setHeader('Content-Type', 'text/html')
   response.end(
     '<!doctype html><title>ContextWeave fingerprint fixture</title><h1>Persistent identity</h1>',
@@ -145,10 +150,11 @@ try {
       assert(started.ok, JSON.stringify(started))
       const lock = JSON.parse(
         await readFile(
-          join(directory, 'contextweave', 'environments', id, '.runtime.lock', 'owner.json'),
+          join(directory, 'contextweave', 'environments', id, '.runtime.lock'),
           'utf8',
         ),
       )
+      assert(lock.processIdentity, 'New locks must capture the OS process start identity')
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
       const context = browser.contexts()[0]
       if (run) {
@@ -180,6 +186,36 @@ try {
       await diagnostic.close()
       const tab = await context.newPage()
       await tab.goto(fixtureUrl)
+      if (run === 0) {
+        const blockedRemoval = await page.evaluate(
+          (id) => window.contextweave.kernel.remove(id),
+          provider.id,
+        )
+        assert(!blockedRemoval.ok, 'Never delete a running kernel')
+        const began = Date.now()
+        assert.equal(
+          await tab.evaluate(() => fetch('/slow').then((response) => response.text())),
+          'slow fixture complete',
+        )
+        assert(Date.now() - began >= 6000, 'Fixture must exceed the control command timeout')
+        assert.equal(
+          (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data.status,
+          'running',
+        )
+        const closing = await context.newPage()
+        await closing.goto(fixtureUrl)
+        await closing.evaluate(() => {
+          void fetch('/slow').catch(() => {})
+        })
+        await closing.close()
+        await tab.evaluate(async () => {
+          await Promise.all(Array.from({ length: 20 }, () => fetch('/').then((r) => r.text())))
+        })
+        assert.equal(
+          (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data.status,
+          'running',
+        )
+      }
       const observation = await tab.evaluate(() => {
         const canvas = document.createElement('canvas')
         canvas.width = 280
@@ -275,10 +311,11 @@ try {
       assert(started.ok, JSON.stringify(started))
       const lock = JSON.parse(
         await readFile(
-          join(directory, 'contextweave', 'environments', liveId, '.runtime.lock', 'owner.json'),
+          join(directory, 'contextweave', 'environments', liveId, '.runtime.lock'),
           'utf8',
         ),
       )
+      assert(lock.processIdentity, 'New locks must capture the OS process start identity')
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
       const tab = await browser.contexts()[0].newPage()
       await tab.goto('https://api.ipify.org?format=json', { timeout: 45000 })
@@ -291,6 +328,36 @@ try {
       assert((await page.evaluate((id) => window.contextweave.environment.stop(id), liveId)).ok)
       console.log(JSON.stringify({ suppliedProxy: 'passed', https: 'passed', sameExit: true }))
     }
+    const prior = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+    assert((await page.evaluate((id) => window.contextweave.kernel.remove(id), provider.id)).ok)
+    assert.deepEqual(
+      (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data,
+      prior.data,
+    )
+    await access(join(directory, 'contextweave', 'environments', id, 'Default'))
+    const unavailable = await page.evaluate(
+      (id) => window.contextweave.environment.preflight(id),
+      id,
+    )
+    assert(
+      unavailable.ok &&
+        !unavailable.data.canStart &&
+        unavailable.data.issues.some((item) => item.code === 'KERNEL_UNAVAILABLE'),
+    )
+    const reinstalled = await page.evaluate(
+      (id) => window.contextweave.kernel.install(id),
+      provider.id,
+    )
+    assert(reinstalled.ok && reinstalled.data.status === 'available', JSON.stringify(reinstalled))
+    assert((await page.evaluate((id) => window.contextweave.environment.start(id), id)).ok)
+    const restoredLock = JSON.parse(
+      await readFile(join(directory, 'contextweave', 'environments', id, '.runtime.lock'), 'utf8'),
+    )
+    const reopened = await chromium.connectOverCDP(`http://127.0.0.1:${restoredLock.controlPort}`)
+    const retained = await reopened.contexts()[0].newPage()
+    await retained.goto(fixtureUrl)
+    assert.equal(await retained.evaluate(() => localStorage.getItem('cw-acceptance')), 'retained')
+    assert((await page.evaluate((id) => window.contextweave.environment.stop(id), id)).ok)
     console.log(
       JSON.stringify({
         ...(customSource ? { customInstall: 'passed' } : { officialInstall: 'passed' }),
@@ -298,6 +365,8 @@ try {
         identityStable: true,
         dataRetained: true,
         authenticatedProxy: 'passed',
+        slowResponseAndClosingRequests: 'passed',
+        kernelDeleteReinstallPreservesProfile: 'passed',
         restoredTabs: 'passed',
         browserCloseStops: 'passed',
         remoteDnsWithoutUnsafeFlag: 'passed',

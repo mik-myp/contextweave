@@ -193,4 +193,20 @@ export const lifecycleMessages = {
   'error.BROWSER_CLOSED': '浏览器正常关闭。',
   'error.PROCESS_CRASHED': '浏览器进程异常退出。',
   'error.PROCESS_SIGNAL': '浏览器进程被外部信号终止。',
+  'kernel.remove': '删除内核',
+  'kernel.removed': '内核已删除，环境配置和浏览器数据已保留。',
+  'kernel.removeTitle': '删除 {name}？',
+  'kernel.removeDescription':
+    '仅删除下载的内核文件，不会删除环境配置、标签或网站数据。当前有 {count} 个环境（含回收站）引用此内核；再次启动前必须重新下载相同版本。运行中或待恢复的环境会阻止删除。自定义来源可能需要重新提供下载地址。',
+  'kernel.removalPending': '删除未完成 · 可重试',
+  'error.KERNEL_NOT_MANAGED': '只允许删除本应用下载管理的内核，不能删除系统浏览器或外部安装。',
+  'error.KERNEL_PATH_UNSAFE':
+    '安装目录校验失败，未删除文件。请检查目录是否被移动或替换为符号链接。',
+  'error.KERNEL_REMOVE_FAILED':
+    '删除未完成，内核已禁用。请关闭占用文件的程序，检查目录权限后重试删除。',
+  'error.KERNEL_REMOVAL_PENDING': '此内核有未完成的删除，请先在内核列表重试删除，再重新下载。',
+  'life.op.remove-kernel': '删除内核',
+  'error.KERNEL_IN_USE':
+    '此内核仍被启动中、运行中、停止中或待恢复的环境占用。请先停止相关环境并完成恢复，再重试删除。',
+  'kernel.pinnedVersion': '环境固定版本',
 } as const

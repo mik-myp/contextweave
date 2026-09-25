@@ -219,3 +219,172 @@ it('stops only after the last top-level page disappears, not during a short tab 
     vi.restoreAllMocks()
   }
 })
+
+it('uses explicit request-stage HTTP patterns; authentication never waits for page response bodies', async () => {
+  mockCdp()
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(9222, settings, failure, {
+    username: 'u',
+    password: 'p',
+    host: '127.0.0.1',
+    port: 8080,
+  })
+  try {
+    expect(
+      MockSocket.instance.commands.find((command) => command.method === 'Fetch.enable')?.params,
+    ).toEqual({
+      handleAuthRequests: true,
+      patterns: [
+        { urlPattern: 'http://*', requestStage: 'Request' },
+        { urlPattern: 'https://*', requestStage: 'Request' },
+      ],
+    })
+    MockSocket.instance.emit({
+      method: 'Fetch.requestPaused',
+      sessionId: 'page-1',
+      params: { requestId: 'slow' },
+    })
+    await Promise.resolve()
+    expect(
+      MockSocket.instance.commands.some((command) => command.method === 'Fetch.continueRequest'),
+    ).toBe(true)
+    vi.useFakeTimers()
+    await vi.advanceTimersByTimeAsync(60000) // No response from the website is necessary for control health.
+    expect(failure).not.toHaveBeenCalled()
+  } finally {
+    close()
+    vi.useRealTimers()
+  }
+})
+
+it('ignores a cancelled request ID but does not hide a real authentication/control error', async () => {
+  mockCdp()
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(9222, settings, failure)
+  const original = MockSocket.prototype.send
+  let error = 'Invalid InterceptionId.'
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Fetch.continueRequest') {
+      queueMicrotask(() => this.emit({ id: command.id, error: { message: error } }))
+    } else original.call(this, text)
+  })
+  try {
+    const paused = () =>
+      MockSocket.instance.emit({
+        method: 'Fetch.requestPaused',
+        sessionId: 'page-1',
+        params: { requestId: 'cancelled' },
+      })
+    paused()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(failure).not.toHaveBeenCalled()
+    error = 'Unexpected control failure'
+    paused()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(failure).toHaveBeenCalledOnce()
+  } finally {
+    close()
+    vi.restoreAllMocks()
+  }
+})
+
+it('settles pending commands when their target detaches instead of failing the whole runtime', async () => {
+  mockCdp()
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(9222, settings, failure)
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Fetch.continueRequest') return
+    original.call(this, text)
+  })
+  vi.useFakeTimers()
+  try {
+    MockSocket.instance.emit({
+      method: 'Fetch.requestPaused',
+      sessionId: 'page-1',
+      params: { requestId: 'closing' },
+    })
+    MockSocket.instance.emit({
+      method: 'Target.detachedFromTarget',
+      params: { sessionId: 'page-1' },
+    })
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(failure).not.toHaveBeenCalled()
+  } finally {
+    close()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  }
+})
+
+it('cancels during configuration without reporting a runtime failure or leaving pending timers', async () => {
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Emulation.setTimezoneOverride') {
+      this.commands.push(command)
+      return
+    }
+    original.call(this, text)
+  })
+  const controller = new AbortController(),
+    failure = vi.fn()
+  const opening = connectBrowserSettings(
+    9222,
+    settings,
+    failure,
+    undefined,
+    undefined,
+    controller.signal,
+  )
+  const rejected = expect(opening).rejects.toThrow()
+  await vi.waitFor(() =>
+    expect(
+      MockSocket.instance.commands.some(
+        (command) => command.method === 'Emulation.setTimezoneOverride',
+      ),
+    ).toBe(true),
+  )
+  controller.abort()
+  await rejected
+  expect(failure).not.toHaveBeenCalled()
+  vi.restoreAllMocks()
+})
+
+it('still fails a genuinely unresponsive control command within a bounded deadline', async () => {
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    if (JSON.parse(text).method === 'Emulation.setTimezoneOverride') return
+    original.call(this, text)
+  })
+  vi.useFakeTimers()
+  try {
+    const opening = connectBrowserSettings(9222, settings, vi.fn())
+    const failure = expect(opening).rejects.toThrow(
+      'command timed out: Emulation.setTimezoneOverride',
+    )
+    await vi.advanceTimersByTimeAsync(5100)
+    await failure
+  } finally {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  }
+})

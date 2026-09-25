@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { DownloadIcon, InfoIcon } from 'lucide-react'
+import { DownloadIcon, InfoIcon, Trash2Icon } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -22,16 +22,20 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { KernelInstallDialog } from '../components/kernel-install-dialog'
 import { KernelCapabilities } from '../components/kernel-capabilities'
+import { useKernelRemoval } from '../hooks/use-kernel-removal'
+import { KernelRemoveDialog } from '../components/kernel-remove-dialog'
 const getRowId = (row: KernelSummary) => row.id
 
 export function KernelsPage() {
   const { t } = useI18n()
+  const removal = useKernelRemoval()
   const { kernels, loading, kernelError, refresh } = useAppData(['kernels'])
   const [detail, setDetail] = useState<KernelSummary>()
   const [installOpen, setInstallOpen] = useState(false)
   const statusLabels = useMemo(
     () => ({
       available: t('kernel.available'),
+      'removal-pending': t('kernel.removalPending'),
       'not-installed': t('kernel.notInstalled'),
       'not-configured': t('kernel.notConfigured'),
       unsupported: t('kernel.platformUnsupported'),
@@ -104,12 +108,24 @@ export function KernelsPage() {
                 icon: InfoIcon,
                 onClick: () => setDetail(row.original),
               },
+              ...(row.original.removable
+                ? [
+                    {
+                      id: 'remove',
+                      label: t('kernel.remove'),
+                      icon: Trash2Icon,
+                      destructive: true,
+                      disabled: removal.pending,
+                      onClick: () => removal.select(row.original),
+                    },
+                  ]
+                : []),
             ]}
           />
         ),
       },
     ],
-    [t, statusLabels],
+    [t, statusLabels, removal],
   )
   const table = useDataTable({ data: kernels, columns, getRowId, stateKey: 'kernels', loading })
   return (
@@ -185,6 +201,7 @@ export function KernelsPage() {
           )}
         </DialogContent>
       </Dialog>
+      <KernelRemoveDialog removal={removal} />
       <KernelInstallDialog open={installOpen} onOpenChange={setInstallOpen} />
     </>
   )

@@ -15,7 +15,8 @@ import {
 import {
   acquireRuntimeLock,
   inspectRuntimeLock,
-  isProcessAlive,
+  isRuntimeProcessAlive,
+  readProcessIdentity,
   releaseRuntimeLock,
   updateRuntimeLockOwner,
   type EnvironmentRepository,
@@ -35,6 +36,8 @@ type Session = {
   stopReason?: 'USER_STOPPED' | 'BROWSER_CLOSED'
   stopRequested: boolean
   startFailed: boolean
+  processIdentity?: string
+  releaseKernel: () => void
   closeProxy?: () => Promise<void>
   closeSettings?: () => void
 }
@@ -47,7 +50,12 @@ type RuntimeDriver = {
 export function isChildRunning(child: ChildProcess) {
   return child.exitCode === null && child.signalCode === null
 }
-export function terminateChild(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM') {
+export function terminateChild(
+  child: ChildProcess,
+  signal: NodeJS.Signals = 'SIGTERM',
+  processIdentity?: string,
+) {
+  if (processIdentity && child.pid && !isRuntimeProcessAlive(child.pid, processIdentity)) return
   if (isChildRunning(child)) {
     try {
       child.kill(signal)
@@ -123,6 +131,8 @@ export function createRuntimeSupervisor(options: {
   const driver = options.driver ?? defaultDriver
   const sessions = new Map<string, Session>()
   const starting = new Map<string, AbortController>()
+  let shuttingDown = false
+  const startTasks = new Set<Promise<IpcResult<EnvironmentSummary>>>()
   const stopping = new Map<string, Promise<IpcResult<EnvironmentSummary>>>()
   function recoverOnStartup() {
     repository.recoverOperations()
@@ -143,23 +153,25 @@ export function createRuntimeSupervisor(options: {
         continue
       // A PID is insufficient evidence to kill/adopt a process, even with a matching old lock.
       for (const session of previous)
-        if (!isProcessAlive(session.pid))
+        if (!isRuntimeProcessAlive(session.pid, session.processIdentity))
           repository.updateRuntimeSession(session.sessionId, 'crashed', 'CLIENT_INTERRUPTED')
       repository.updateStatus(record.environmentId, 'needs-recovery')
     }
   }
-  async function start(
+  async function startImpl(
     id: string,
     phase: (value: string) => void = () => {},
   ): Promise<IpcResult<EnvironmentSummary>> {
     // Automatic last-window shutdown can still be releasing resources after the exit event.
     const pendingStop = stopping.get(id)
     if (pendingStop) await pendingStop
+    if (shuttingDown) return fail('CANCELLED')
     if (starting.has(id) || sessions.has(id)) return fail('ALREADY_RUNNING')
     const controller = new AbortController()
     starting.set(id, controller)
     let managed: Session | undefined
     let transport: ProxyTransport | undefined
+    let releaseKernel: (() => void) | undefined
     let locked = false
     const sessionId = `session-${randomUUID()}`
     const record = repository.get(id)
@@ -168,6 +180,7 @@ export function createRuntimeSupervisor(options: {
       return fail('NOT_FOUND')
     }
     try {
+      releaseKernel = kernels.retain(record.kernelId)
       phase('preflight')
       const report = await preflight(id)
       controller.signal.throwIfAborted()
@@ -184,6 +197,7 @@ export function createRuntimeSupervisor(options: {
       const startedAt = new Date().toISOString()
       const lock = acquireRuntimeLock(record.dataDir, {
         pid: process.pid,
+        processIdentity: readProcessIdentity(process.pid),
         sessionId,
         controlPort: port,
         startedAt,
@@ -217,6 +231,7 @@ export function createRuntimeSupervisor(options: {
         if (managed) managed.startFailed = true
       })
       if (!child.pid) throw new Error('SPAWN_FAILED')
+      const processIdentity = readProcessIdentity(child.pid)
       managed = {
         child,
         port,
@@ -225,11 +240,14 @@ export function createRuntimeSupervisor(options: {
         stopRequested: false,
         startFailed: false,
         closeProxy: transport?.close,
+        releaseKernel,
+        processIdentity,
       }
       const session = managed
       sessions.set(id, session)
       updateRuntimeLockOwner(record.dataDir, {
         pid: child.pid,
+        processIdentity,
         sessionId,
         controlPort: port,
         startedAt,
@@ -238,6 +256,7 @@ export function createRuntimeSupervisor(options: {
         sessionId,
         environmentId: id,
         pid: child.pid,
+        processIdentity,
         controlPort: port,
         startedAt,
         status: 'starting',
@@ -271,6 +290,7 @@ export function createRuntimeSupervisor(options: {
         )
         repository.updateStatus(id, failed ? 'needs-recovery' : 'stopped')
         releaseRuntimeLock(record.dataDir, sessionId)
+        session.releaseKernel()
         changed()
       })
       const browserVersion = await driver.ready(port, controller.signal)
@@ -295,16 +315,17 @@ export function createRuntimeSupervisor(options: {
           void waitForChildExit(child, 3000).then((exited) => {
             if (exited || session.stopRequested) return
             session.startFailed = true
-            terminateChild(child)
+            terminateChild(child, 'SIGTERM', session.processIdentity)
           })
         },
         transport?.authentication,
         () => {
           void stop(id, 'BROWSER_CLOSED').catch(() => {
             session.startFailed = true
-            terminateChild(child)
+            terminateChild(child, 'SIGTERM', session.processIdentity)
           })
         },
+        controller.signal,
       )
       controller.signal.throwIfAborted()
       if (!isChildRunning(child)) throw new Error('START_FAILED')
@@ -319,9 +340,9 @@ export function createRuntimeSupervisor(options: {
         managed.startFailed = !cancelled
         managed.stopRequested = cancelled
         managed.closeSettings?.()
-        terminateChild(managed.child)
+        terminateChild(managed.child, 'SIGTERM', managed.processIdentity)
         if (!(await waitForChildExit(managed.child))) {
-          terminateChild(managed.child, 'SIGKILL')
+          terminateChild(managed.child, 'SIGKILL', managed.processIdentity)
           await waitForChildExit(managed.child, 2000)
         }
         if (isChildRunning(managed.child)) {
@@ -345,6 +366,8 @@ export function createRuntimeSupervisor(options: {
         'SPAWN_FAILED',
         'PROVIDER_UNVERIFIED',
         'KERNEL_VERSION_MISMATCH',
+        'OPERATION_IN_PROGRESS',
+        'KERNEL_REMOVAL_PENDING',
       ]
       return fail(
         cancelled
@@ -355,7 +378,17 @@ export function createRuntimeSupervisor(options: {
       )
     } finally {
       starting.delete(id)
+      if (!managed || !isChildRunning(managed.child)) releaseKernel?.()
     }
+  }
+  function start(id: string, phase?: (value: string) => void) {
+    const task = startImpl(id, phase)
+    startTasks.add(task)
+    void task.then(
+      () => startTasks.delete(task),
+      () => startTasks.delete(task),
+    )
+    return task
   }
   async function stopImpl(
     id: string,
@@ -371,11 +404,15 @@ export function createRuntimeSupervisor(options: {
     repository.updateRuntimeSession(session.sessionId, 'stopping')
     changed()
     session.closeSettings?.()
-    await driver.close?.(session.port)
+    try {
+      await driver.close?.(session.port)
+    } catch {
+      /* Fall back to the owned child handle. */
+    }
     if (isChildRunning(session.child)) await waitForChildExit(session.child, 3000)
-    terminateChild(session.child)
+    terminateChild(session.child, 'SIGTERM', session.processIdentity)
     if (!(await waitForChildExit(session.child))) {
-      terminateChild(session.child, 'SIGKILL')
+      terminateChild(session.child, 'SIGKILL', session.processIdentity)
       if (!(await waitForChildExit(session.child, 2000))) {
         repository.updateStatus(id, 'needs-recovery')
         changed()
@@ -385,6 +422,7 @@ export function createRuntimeSupervisor(options: {
     await session.closeProxy?.()
     sessions.delete(id)
     releaseRuntimeLock(record.dataDir, session.sessionId)
+    session.releaseKernel()
     repository.updateRuntimeSession(session.sessionId, 'stopped', reason)
     repository.updateStatus(id, 'stopped')
     changed()
@@ -409,7 +447,10 @@ export function createRuntimeSupervisor(options: {
           session.environmentId === id &&
           ['starting', 'running', 'stopping'].includes(session.status),
       )
-    if (lock.live || previous.some((session) => isProcessAlive(session.pid)))
+    if (
+      lock.live ||
+      previous.some((session) => isRuntimeProcessAlive(session.pid, session.processIdentity))
+    )
       return fail('RECOVERY_MANUAL_REQUIRED')
     if (existsSync(lock.lockPath) && !lock.owner) return fail('RECOVERY_LOCK_UNREADABLE')
     for (const session of previous)
@@ -430,7 +471,9 @@ export function createRuntimeSupervisor(options: {
     cancelStart: (id: string) => starting.get(id)?.abort(),
     session: (id: string) => sessions.get(id),
     async shutdown() {
+      shuttingDown = true
       for (const controller of starting.values()) controller.abort()
+      await Promise.allSettled([...startTasks])
       await Promise.all([...sessions.keys()].map((id) => stop(id)))
     },
   }

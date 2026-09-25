@@ -580,3 +580,13 @@ pnpm exec prettier --config .prettierrc.json --check ../../docs/project-plan.md 
 - 推荐语言通过 Node/Electron 的 `Intl.Locale('und-国家代码').maximize()`（ICU/CLDR likely-subtags）得到，不额外维护全球语言表或引入依赖；这是地区默认推荐，不是对真实用户语言的断言，多语言地区、漫游/隧道/轮换代理均可能不准确。
 - IPWho.is 是用户客户端直接访问的第三方服务，不是项目自营后端。官方文档在本版核验时允许 Free endpoint 商业使用，标明每出口 IP 每日 1,000 请求且无 SLA；额度/条款可能变化，不承诺永久免费/可用。只有显式选择自动或点击检测才访问；不添加后台遥测，不跨环境缓存结果。网络能力复用 Node HTTPS、现有 `https-proxy-agent` 与 `proxy-chain`，无新增依赖。
 - 官方依据：[IPWhois 文档](https://ipwhois.io/documentation)、[Electron BrowserWindow](https://www.electronjs.org/docs/latest/api/browser-window)、[Electron dialog](https://www.electronjs.org/docs/latest/api/dialog)。自动模式是新的配置取值，数据库 schema 无需变更；使用后若降级须先转成固定值或跟随系统。
+
+## 18. v0.1.5 运行归属与内核删除边界
+
+- 本版继续使用开源内核，不维护内核源码。核验 Chromium 源码后，不能采用报告建议的“空 patterns + handleAuthRequests”：上游会拒绝这个组合。代理认证保留 HTTP/HTTPS 请求阶段拦截（显式 patterns），不拦截响应阶段；放行命令 ACK 不等待网页响应。目标关闭取消其待处理命令，页面取消请求的已知协议错误不会使整个环境崩溃。控制命令仍有明确期限，超时后让出一次事件循环处理已到达响应，不靠无限放大超时掩盖故障；真实慢网页另做回归。
+- 运行锁改为完整写入、同步后以独占硬链接发布的文件，兼容读取旧目录格式。启动不自动抢占已有锁；恢复只清理已确认旧进程不存在的完整锁。不可读锁保持保守阻止并提示人工处理，不凭文件年龄判断无人使用。
+- 本地运行会话和锁保存操作系统进程启动身份（macOS 固定英文/UTC 的 ps 启动时间、Windows 进程 StartTime UTC ticks、Linux boot ID + start ticks）。PID 相同但身份不同表示旧进程已结束；身份不可读或旧记录缺失身份时按可能存活处理。绝不按历史 PID 杀死/接管进程。SQLite schema 升至 v4，沿用迁移前备份与事务；旧版不能打开 v4 数据库。
+- 新增内核删除白名单 IPC，Renderer 只提交内核 ID；Main 根据本地安装记录解析路径并校验受管根目录、包身份、平台、架构和符号链接。仅受管下载包可删除，不触碰系统 Chrome/Edge、外部安装或环境目录。
+- 启动持有内核使用租约直至确认浏览器退出；删除与启动/安装互斥。存在运行、启动、停止、待恢复状态或残留锁时拒绝删除。已停止环境和回收站引用允许保留，确认框说明数量与重新下载相同版本的要求，不自动更换内核或改写环境配置。
+- 删除前持久化 removing 状态，再删除文件，最后移除安装记录。文件删除或数据库提交失败时保留记录并禁止启动/覆盖安装，用户可以重试删除；重启仍显示待清理。保留已验证 manifest，并从环境引用恢复它；已不在上游最近发布列表的官方固定版本仍出现在安装选择器（标记“环境固定版本”），避免旧 ID 被替换成同版本新 ID。上游包或自定义下载 URL 不承诺永远有效。
+- 不增加生产依赖；控制端点仍是 loopback CDP，不能宣称已经提供操作系统用户之间的隔离或解决既有端口认证限制。

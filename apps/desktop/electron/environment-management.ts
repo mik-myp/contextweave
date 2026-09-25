@@ -11,7 +11,7 @@ import {
 } from '@contextweave/contracts'
 import {
   inspectRuntimeLock,
-  isProcessAlive,
+  isRuntimeProcessAlive,
   type EnvironmentRecord,
   type EnvironmentRepository,
 } from '@contextweave/storage'
@@ -27,7 +27,7 @@ export function assertEnvironmentEditable(
       (session) =>
         session.environmentId === record.environmentId &&
         ['starting', 'running', 'stopping'].includes(session.status) &&
-        isProcessAlive(session.pid),
+        isRuntimeProcessAlive(session.pid, session.processIdentity),
     )
   if (
     ['starting', 'running', 'stopping', 'needs-recovery'].includes(record.status) ||

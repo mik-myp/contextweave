@@ -351,6 +351,7 @@ export function ipcResultSchema<T>(data: z.ZodType<T>) {
 }
 
 export const runtimeSessionSchema = z.object({
+  processIdentity: z.string().min(1).optional(),
   sessionId: z.string().trim().min(1),
   environmentId: z.string().trim().min(1),
   pid: z.number().int().positive(),
@@ -366,7 +367,7 @@ export const runtimeSessionSchema = z.object({
 export type RuntimeSession = z.infer<typeof runtimeSessionSchema>
 
 export const activitySummarySchema = runtimeSessionSchema
-  .omit({ pid: true, controlPort: true })
+  .omit({ pid: true, controlPort: true, processIdentity: true })
   .extend({
     environmentName: z.string().optional(),
     exitReason: z.string().nullable(),

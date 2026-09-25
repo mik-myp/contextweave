@@ -194,7 +194,7 @@ try {
       assert.equal(started.data.status, 'running')
       const lock = JSON.parse(
         await readFile(
-          join(directory, 'contextweave', 'environments', id, '.runtime.lock', 'owner.json'),
+          join(directory, 'contextweave', 'environments', id, '.runtime.lock'),
           'utf8',
         ),
       )

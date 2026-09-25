@@ -234,4 +234,22 @@ export const lifecycleMessages = {
   'error.BROWSER_CLOSED': 'Browser closed normally.',
   'error.PROCESS_CRASHED': 'The browser process exited unexpectedly.',
   'error.PROCESS_SIGNAL': 'The browser process was terminated by an external signal.',
+  'kernel.remove': 'Delete kernel',
+  'kernel.removed': 'Kernel deleted. Environment settings and browser data were preserved.',
+  'kernel.removeTitle': 'Delete {name}?',
+  'kernel.removeDescription':
+    'Deletes downloaded kernel files only, not settings, tabs or website data. {count} environments (including trash) reference this kernel; download the same version again before starting them. Running environments or those needing recovery block deletion. Custom sources may require a new download URL.',
+  'kernel.removalPending': 'Deletion incomplete · retry',
+  'error.KERNEL_NOT_MANAGED':
+    'Only kernels downloaded by this app can be deleted, not system browsers or external installations.',
+  'error.KERNEL_PATH_UNSAFE':
+    'Installation path validation failed. No files were deleted. Check for moved directories or symbolic links.',
+  'error.KERNEL_REMOVE_FAILED':
+    'Deletion is incomplete and this kernel is disabled. Close programs using its files, check directory permissions and retry deletion.',
+  'error.KERNEL_REMOVAL_PENDING':
+    'Retry the incomplete deletion in the kernel list before downloading this kernel again.',
+  'life.op.remove-kernel': 'Delete kernel',
+  'error.KERNEL_IN_USE':
+    'This kernel is used by an environment that is starting, running, stopping or needs recovery. Stop and recover the affected environments before retrying deletion.',
+  'kernel.pinnedVersion': 'Pinned by an environment',
 } as const

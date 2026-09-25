@@ -1,3 +1,5 @@
+import { validateKernelRemovalPath } from './kernel-removal'
+import { assertEnvironmentEditable } from '../environment-management'
 import { z } from 'zod'
 import { existsSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
@@ -75,7 +77,12 @@ export function createKernelService(
         registry.register(new FingerprintChromiumAdapter(entry.manifest))
   }
   registerEntries()
-  for (const installation of repository.listKernelInstallations()) {
+  // A stopped environment may retain a pinned version after its package is deleted.
+  const knownVersions = [
+    ...repository.listKernelInstallations(),
+    ...repository.listAll().map((record) => ({ ...record, version: record.kernelVersion })),
+  ]
+  for (const installation of knownVersions) {
     if (
       installation.platform !== platform ||
       installation.arch !== arch ||
@@ -115,9 +122,41 @@ export function createKernelService(
       })()
       await fetching
     }
+    const availableEntries = [...entries, ...customEntries.values()]
+    const referenced = new Set(repository.listAll().map((record) => record.kernelId))
+    // Keep pinned official identities selectable even when upstream's recent-release
+    // window no longer lists them, including the legacy unversioned kernel ID.
+    for (const adapter of registry.list()) {
+      const manifest = adapter.getManifest()
+      if (
+        !referenced.has(manifest.id) ||
+        !manifest.source ||
+        !manifest.package?.url ||
+        !manifest.package.sha256 ||
+        manifest.sourceType === 'custom' ||
+        availableEntries.some((entry) => entry.release.id === manifest.id)
+      )
+        continue
+      availableEntries.push({
+        manifest,
+        release: {
+          id: manifest.id,
+          provider: 'fingerprint-chromium',
+          version: manifest.version,
+          platform,
+          arch,
+          source: manifest.source,
+          sizeBytes: manifest.package.sizeBytes,
+          sha256: manifest.package.sha256,
+          installable: true,
+          installed: false,
+          retained: true,
+        },
+      })
+    }
     return {
       sourceStatus: catalogSource,
-      releases: [...entries, ...customEntries.values()].map(({ release }) => ({
+      releases: availableEntries.map(({ release }) => ({
         ...release,
         installed: Boolean(executableFor({ kernelId: release.id })),
         installation: progress.get(release.id),
@@ -126,6 +165,62 @@ export function createKernelService(
   }
   const jobs = new Map<string, { controller: AbortController; promise: Promise<KernelSummary> }>()
   const progress = new Map<string, InstallProgress>()
+  const removals = new Set<string>()
+  const users = new Map<string, number>()
+  function installationFor(id: string) {
+    const manifest = registry
+      .list()
+      .find((adapter) => adapter.getManifest().id === id)
+      ?.getManifest()
+    return manifest
+      ? repository.getKernelInstallation(id, manifest.version, platform, arch)
+      : undefined
+  }
+  function retain(id: string): () => void {
+    if (removals.has(id) || jobs.has(id)) throw new Error('OPERATION_IN_PROGRESS')
+    if (installationFor(id)?.state === 'removing') throw new Error('KERNEL_REMOVAL_PENDING')
+    users.set(id, (users.get(id) ?? 0) + 1)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const count = (users.get(id) ?? 1) - 1
+      if (count) users.set(id, count)
+      else users.delete(id)
+    }
+  }
+  async function remove(id: string): Promise<boolean> {
+    if (removals.has(id) || jobs.has(id) || users.has(id)) throw new Error('OPERATION_IN_PROGRESS')
+    const installation = installationFor(id)
+    if (!root || !installation || !isFingerprintKernel(id)) throw new Error('KERNEL_NOT_MANAGED')
+    // Both active and trashed configurations can own a profile/process.
+    for (const record of repository.listAll().filter((item) => item.kernelId === id)) {
+      try {
+        assertEnvironmentEditable(repository, record)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'ENVIRONMENT_BUSY')
+          throw new Error('KERNEL_IN_USE')
+        throw error
+      }
+    }
+    removals.add(id) // Before the first await: launch and install cannot pass this fence.
+    try {
+      const path = await validateKernelRemovalPath(root, installation)
+      repository.markKernelRemoving(installation.id)
+      changed()
+      try {
+        await rm(path, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 })
+        repository.deleteKernelInstallation(installation.id)
+      } catch {
+        throw new Error('KERNEL_REMOVE_FAILED')
+      }
+      progress.delete(id)
+      changed()
+      return true
+    } finally {
+      removals.delete(id)
+    }
+  }
   function executableFor(
     record: Pick<EnvironmentRecord, 'kernelId'> & { kernelVersion?: string },
   ): string | undefined {
@@ -197,13 +292,22 @@ export function createKernelService(
           platform,
           arch,
           version: manifest.version,
-          status: executablePath
-            ? 'available'
-            : manifest.package
-              ? 'not-installed'
-              : manifest.id === 'standard-chromium'
-                ? 'not-configured'
-                : 'unsupported',
+          removable: Boolean(
+            root && isFingerprintKernel(manifest.id) && installationFor(manifest.id),
+          ),
+          removalPending: installationFor(manifest.id)?.state === 'removing',
+          referenceCount: repository.listAll().filter((record) => record.kernelId === manifest.id)
+            .length,
+          status:
+            installationFor(manifest.id)?.state === 'removing'
+              ? 'removal-pending'
+              : executablePath
+                ? 'available'
+                : manifest.package
+                  ? 'not-installed'
+                  : manifest.id === 'standard-chromium'
+                    ? 'not-configured'
+                    : 'unsupported',
           executablePath,
           packageAvailable: Boolean(manifest.package),
           source: manifest.source,
@@ -289,6 +393,9 @@ export function createKernelService(
     )
   }
   function install(id: string): Promise<KernelSummary> {
+    if (removals.has(id) || users.has(id)) return Promise.reject(new Error('OPERATION_IN_PROGRESS'))
+    if (installationFor(id)?.state === 'removing')
+      return Promise.reject(new Error('KERNEL_REMOVAL_PENDING'))
     const existing = jobs.get(id)
     if (existing) return existing.promise
     if (jobs.size >= 2) return Promise.reject(new Error('OPERATION_IN_PROGRESS'))
@@ -384,6 +491,8 @@ export function createKernelService(
   }
   return {
     prepareCustom,
+    remove,
+    retain,
     registry,
     list,
     executableFor,

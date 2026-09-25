@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 3
+export const databaseVersion = 4
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -115,6 +115,7 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       );
       PRAGMA user_version = 3;
     `)
+    if (version < 4) sqlite.exec(`ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`)
     sqlite.exec('COMMIT')
   } catch (error) {
     try {

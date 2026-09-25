@@ -1,99 +1,99 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { z } from 'zod'
+import { isRuntimeProcessAlive } from './process-identity'
+export { isProcessAlive, isRuntimeProcessAlive, readProcessIdentity } from './process-identity'
 
-export type RuntimeLockOwner = {
-  pid: number
-  sessionId: string
-  controlPort: number
-  startedAt: string
-}
-
+const ownerSchema = z.object({
+  pid: z.number().int().positive(),
+  sessionId: z.string().min(1),
+  controlPort: z.number().int().min(1).max(65535),
+  startedAt: z.string().datetime(),
+  processIdentity: z.string().min(1).optional(),
+})
+export type RuntimeLockOwner = z.infer<typeof ownerSchema>
 export type RuntimeLockResult =
   | { acquired: true; lockPath: string }
   | { acquired: false; lockPath: string; owner?: RuntimeLockOwner }
 
-export function isProcessAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
-  }
+function ownerPath(lockPath: string): string {
+  const stat = lstatSync(lockPath)
+  if (stat.isSymbolicLink()) throw new Error('Runtime lock cannot be a symbolic link')
+  const path = stat.isDirectory() ? join(lockPath, 'owner.json') : lockPath
+  if (!lstatSync(path).isFile()) throw new Error('Runtime lock must be a regular file')
+  return path
 }
-
 function readOwner(lockPath: string): RuntimeLockOwner | undefined {
   try {
-    const value = JSON.parse(
-      readFileSync(join(lockPath, 'owner.json'), { encoding: 'utf8' }),
-    ) as Partial<RuntimeLockOwner>
-    if (
-      typeof value.pid !== 'number' ||
-      typeof value.sessionId !== 'string' ||
-      typeof value.controlPort !== 'number' ||
-      typeof value.startedAt !== 'string'
-    ) {
-      return undefined
-    }
-    return value as RuntimeLockOwner
+    return ownerSchema.parse(JSON.parse(readFileSync(ownerPath(lockPath), 'utf8')))
   } catch {
     return undefined
   }
 }
-
 export function runtimeLockPath(dataDir: string): string {
   return join(dataDir, '.runtime.lock')
 }
 
+function writeOwner(path: string, owner: RuntimeLockOwner) {
+  const fd = openSync(path, 'wx', 0o600)
+  try {
+    writeFileSync(fd, `${JSON.stringify(ownerSchema.parse(owner))}\n`, 'utf8')
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
 export function acquireRuntimeLock(dataDir: string, owner: RuntimeLockOwner): RuntimeLockResult {
   const lockPath = runtimeLockPath(dataDir)
+  const temporary = `${lockPath}.${randomUUID()}.tmp`
   try {
-    mkdirSync(lockPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    const existingOwner = readOwner(lockPath)
-    if (!existingOwner || isProcessAlive(existingOwner.pid)) {
-      return { acquired: false, lockPath, owner: existingOwner }
-    }
-    rmSync(lockPath, { recursive: true, force: true })
+    writeOwner(temporary, owner)
     try {
-      mkdirSync(lockPath)
-    } catch (retryError) {
-      if ((retryError as NodeJS.ErrnoException).code === 'EEXIST') {
-        return { acquired: false, lockPath }
-      }
-      throw retryError
+      // Publishing a fully written inode is exclusive and cannot replace another owner.
+      linkSync(temporary, lockPath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      return { acquired: false, lockPath, owner: readOwner(lockPath) }
     }
+    return { acquired: true, lockPath }
+  } finally {
+    rmSync(temporary, { force: true })
   }
-
-  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, {
-    encoding: 'utf8',
-    flag: 'w',
-  })
-  return { acquired: true, lockPath }
 }
-
 export function updateRuntimeLockOwner(dataDir: string, owner: RuntimeLockOwner): void {
   const lockPath = runtimeLockPath(dataDir)
-  const currentOwner = readOwner(lockPath)
-  if (!currentOwner || currentOwner.sessionId !== owner.sessionId) {
+  const current = readOwner(lockPath)
+  if (!current || current.sessionId !== owner.sessionId)
     throw new Error('Runtime lock owner mismatch')
+  const path = ownerPath(lockPath)
+  const temporary = `${path}.${randomUUID()}.tmp`
+  try {
+    writeOwner(temporary, owner)
+    renameSync(temporary, path)
+  } finally {
+    rmSync(temporary, { force: true })
   }
-  writeFileSync(join(lockPath, 'owner.json'), `${JSON.stringify(owner, null, 2)}\n`, {
-    encoding: 'utf8',
-    flag: 'w',
-  })
 }
-
 export function releaseRuntimeLock(dataDir: string, sessionId?: string): void {
   const lockPath = runtimeLockPath(dataDir)
-  if (sessionId) {
-    const owner = readOwner(lockPath)
-    if (owner && owner.sessionId !== sessionId) return
-  }
-  rmSync(lockPath, { recursive: true, force: true })
+  const owner = readOwner(lockPath)
+  // Never delete unreadable/foreign ownership; recovery must not guess.
+  if (!owner || !sessionId || owner.sessionId !== sessionId) return
+  if (lstatSync(lockPath).isDirectory()) rmSync(lockPath, { recursive: true })
+  else unlinkSync(lockPath)
 }
-
 export function inspectRuntimeLock(dataDir: string): {
   lockPath: string
   owner?: RuntimeLockOwner
@@ -101,5 +101,9 @@ export function inspectRuntimeLock(dataDir: string): {
 } {
   const lockPath = runtimeLockPath(dataDir)
   const owner = readOwner(lockPath)
-  return { lockPath, owner, live: owner ? isProcessAlive(owner.pid) : false }
+  return {
+    lockPath,
+    owner,
+    live: owner ? isRuntimeProcessAlive(owner.pid, owner.processIdentity) : false,
+  }
 }

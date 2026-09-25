@@ -124,6 +124,8 @@ describe('local SQLite storage', () => {
       })}\n`,
       { encoding: 'utf8' },
     )
+    expect(inspectRuntimeLock(directory).live).toBe(false)
+    releaseRuntimeLock(directory, 'session-dead')
     expect(
       acquireRuntimeLock(directory, {
         pid: process.pid,

@@ -57,6 +57,7 @@ type PendingCommand = {
   resolve: (result: Record<string, unknown>) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+  sessionId?: string
 }
 
 /** Keep a CDP session for settings on existing pages, new tabs and cross-origin frames. */
@@ -66,13 +67,15 @@ export async function connectBrowserSettings(
   onFailure: (error: Error) => void,
   proxy?: { username: string; password: string; host: string; port: number },
   onNoPages?: () => void,
+  signal?: AbortSignal,
 ): Promise<() => void> {
+  signal?.throwIfAborted()
   if (settings.language === 'auto' || settings.timezone === 'auto')
     throw new Error('IP_LOCALE_FAILED')
   const needsOverrides = !!proxy || settings.language !== 'system' || settings.timezone !== 'system'
   if (!needsOverrides && !onNoPages) return () => {}
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]),
   })
   const { webSocketDebuggerUrl } = z
     .object({ webSocketDebuggerUrl: z.string().url() })
@@ -118,15 +121,25 @@ export async function connectBrowserSettings(
     }, 750)
   }
   const close = () => {
+    if (closed) return
     closed = true
+    signal?.removeEventListener('abort', close)
     clearTimeout(emptyTimer)
-    socket.close()
+    try {
+      socket.close()
+    } catch {
+      /* Connecting sockets may already be closing. */
+    }
     for (const command of pending.values()) {
       clearTimeout(command.timer)
       command.reject(new Error('Browser settings connection closed'))
     }
     pending.clear()
+    attached.clear()
+    authAttempts.clear()
   }
+  signal?.addEventListener('abort', close, { once: true })
+  if (signal?.aborted) close()
   const fail = (cause: unknown) => {
     if (closed) return
     failure = cause instanceof Error ? cause : new Error('Browser settings could not be applied')
@@ -135,16 +148,19 @@ export async function connectBrowserSettings(
   }
   const send = (method: string, params: Record<string, unknown>, sessionId?: string) =>
     new Promise<Record<string, unknown>>((resolve, reject) => {
-      if (closed) {
+      if (closed || (sessionId && !attached.has(sessionId))) {
         reject(new Error('Browser settings connection closed'))
         return
       }
       const id = ++sequence
       const timer = setTimeout(() => {
-        pending.delete(id)
-        reject(new Error(`Browser settings command timed out: ${method}`))
+        // Timers can run before queued socket messages after a busy main-loop turn.
+        setImmediate(() => {
+          if (!pending.delete(id)) return
+          reject(new Error(`Browser settings command timed out: ${method}`))
+        })
       }, 5000)
-      pending.set(id, { resolve, reject, timer })
+      pending.set(id, { resolve, reject, timer, sessionId })
       try {
         socket.send(JSON.stringify({ id, method, params, sessionId }))
       } catch (cause) {
@@ -161,14 +177,40 @@ export async function connectBrowserSettings(
         await send('Emulation.setTimezoneOverride', { timezoneId: settings.timezone }, sessionId)
       if (settings.language !== 'system')
         await send('Emulation.setLocaleOverride', { locale: settings.language }, sessionId)
-      if (proxy) await send('Fetch.enable', { handleAuthRequests: true }, sessionId)
+      if (proxy)
+        await send(
+          'Fetch.enable',
+          {
+            // Chromium rejects empty patterns when auth is enabled. Request-stage ACKs
+            // do not wait for the remote response; never intercept the response body.
+            patterns: [
+              { urlPattern: 'http://*', requestStage: 'Request' },
+              { urlPattern: 'https://*', requestStage: 'Request' },
+            ],
+            handleAuthRequests: true,
+          },
+          sessionId,
+        )
       await send('Runtime.runIfWaitingForDebugger', {}, sessionId)
     } catch (cause) {
       // Closing a tab during setup is normal; other failures invalidate this runtime.
       if (attached.has(sessionId)) fail(cause)
     }
   }
+  const requestFailure = (sessionId: string, cause: unknown) => {
+    if (!attached.has(sessionId) || closed) return
+    // Navigation/cancellation can invalidate a request before its continuation arrives.
+    if (
+      cause instanceof Error &&
+      /^(Invalid InterceptionId|Invalid RequestId|Invalid state for continueInterceptedRequest)\.?$/.test(
+        cause.message,
+      )
+    )
+      return
+    fail(cause)
+  }
   socket.addEventListener('message', (event) => {
+    if (closed) return
     try {
       if (typeof event.data !== 'string') throw new Error('Invalid browser settings response')
       const message = messageSchema.parse(JSON.parse(event.data))
@@ -205,7 +247,7 @@ export async function connectBrowserSettings(
           'Fetch.continueRequest',
           { requestId: request.requestId },
           message.sessionId,
-        ).catch(fail)
+        ).catch((cause) => requestFailure(message.sessionId!, cause))
       } else if (message.method === 'Fetch.authRequired' && message.sessionId) {
         const request = z
           .object({
@@ -241,10 +283,16 @@ export async function connectBrowserSettings(
                 : { response: matchesProxy ? 'CancelAuth' : 'Default' },
           },
           message.sessionId,
-        ).catch(fail)
+        ).catch((cause) => requestFailure(message.sessionId!, cause))
       } else if (message.method === 'Target.detachedFromTarget') {
         const detached = z.object({ sessionId: z.string() }).parse(message.params)
         attached.delete(detached.sessionId)
+        for (const [id, command] of pending) {
+          if (command.sessionId !== detached.sessionId) continue
+          clearTimeout(command.timer)
+          pending.delete(id)
+          command.reject(new Error('Browser target detached'))
+        }
         for (const key of authAttempts)
           if (key.startsWith(`${detached.sessionId}:`)) authAttempts.delete(key)
       }
@@ -255,6 +303,7 @@ export async function connectBrowserSettings(
   socket.addEventListener('close', () => fail(new Error('Browser settings connection lost')))
   socket.addEventListener('error', () => fail(new Error('Browser settings connection failed')))
   try {
+    signal?.throwIfAborted()
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error('Browser settings connection timed out')),
@@ -305,6 +354,7 @@ export async function connectBrowserSettings(
       await send('Target.setAutoAttach', autoAttach)
       while (initializing.size) await Promise.all([...initializing])
     }
+    signal?.throwIfAborted()
     if (failure) throw failure
     ready = true
     checkEmpty()

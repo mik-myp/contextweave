@@ -16,7 +16,7 @@ import {
   runtimeLockPath,
 } from '@contextweave/storage'
 import type { connectBrowserSettings } from '../browser-settings'
-import { createRuntimeSupervisor } from './runtime-supervisor'
+import { createRuntimeSupervisor, terminateChild } from './runtime-supervisor'
 import { createKernelService } from './kernel-service'
 import { createCommandCoordinator } from './command-coordinator'
 import { ok } from './result'
@@ -129,6 +129,7 @@ describe('runtime supervisor', () => {
         expect.any(Function),
         type ? expect.objectContaining({ host: '127.0.0.1' }) : undefined,
         expect.any(Function),
+        expect.any(AbortSignal),
       )
       expect(f.detect).toHaveBeenCalledWith(
         type
@@ -320,6 +321,76 @@ describe('runtime supervisor', () => {
     expect(kill.mock.calls.every((call) => call[1] === 0)).toBe(true)
     kill.mockRestore()
   })
+  it('recovers a saved reused PID without sending a termination signal', async () => {
+    const f = fixture()
+    const startedAt = new Date().toISOString()
+    acquireRuntimeLock(f.dir, {
+      pid: process.pid,
+      processIdentity: 'previous-instance',
+      sessionId: 'old',
+      controlPort: 9000,
+      startedAt,
+    })
+    f.repository.createRuntimeSession({
+      pid: process.pid,
+      processIdentity: 'previous-instance',
+      sessionId: 'old',
+      environmentId: 'env-a',
+      controlPort: 9000,
+      startedAt,
+      status: 'running',
+      exitReason: null,
+    })
+    const kill = vi.spyOn(process, 'kill')
+    try {
+      f.runtime.recoverOnStartup()
+      expect(await f.runtime.recover('env-a')).toMatchObject({ ok: true })
+      expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+      expect(f.repository.getRuntimeSession('old')?.status).toBe('crashed')
+      expect(kill.mock.calls.every((call) => call[1] === 0)).toBe(true)
+    } finally {
+      kill.mockRestore()
+    }
+  })
+  it('retains the lock and kernel lease on stop timeout, then retries without spawning another process', async () => {
+    const f = fixture()
+    const release = vi.fn()
+    vi.spyOn(f.kernels, 'retain').mockReturnValue(release)
+    await f.runtime.start('env-a')
+    vi.mocked(f.child.kill).mockReturnValue(false)
+    vi.useFakeTimers()
+    try {
+      const stopped = f.runtime.stop('env-a')
+      await vi.advanceTimersByTimeAsync(9000)
+      expect(await stopped).toMatchObject({ ok: false, code: 'STOP_TIMEOUT' })
+      expect(existsSync(runtimeLockPath(f.dir))).toBe(true)
+      expect(release).not.toHaveBeenCalled()
+      expect(f.repository.get('env-a')?.status).toBe('needs-recovery')
+      Object.defineProperty(f.child, 'exitCode', { value: 0, configurable: true })
+      f.child.emit('exit', 0, null)
+      expect(await f.runtime.stop('env-a')).toMatchObject({ ok: true })
+      expect(release).toHaveBeenCalled()
+      expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+  it('cancels configuration on shutdown and waits for startup cleanup before returning', async () => {
+    const f = fixture()
+    f.driver.settings.mockImplementation(
+      (_port, _settings, _failure, _proxy, _pages, signal) =>
+        new Promise((_resolve, reject) => {
+          signal!.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })
+        }),
+    )
+    const started = f.runtime.start('env-a')
+    await vi.waitFor(() => expect(f.driver.settings).toHaveBeenCalled())
+    await f.runtime.shutdown()
+    expect(await started).toMatchObject({ ok: false, code: 'CANCELLED' })
+    expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+    expect(await f.runtime.start('env-a')).toMatchObject({ ok: false, code: 'CANCELLED' })
+  })
   it('serializes commands for one environment and records failures without swallowing them', async () => {
     const { repository } = fixture(),
       commands = createCommandCoordinator(repository, vi.fn())
@@ -346,4 +417,12 @@ describe('runtime supervisor', () => {
       repository.listOperations().some((operation) => operation.errorCode === 'CONFIG_CONFLICT'),
     ).toBe(true)
   })
+})
+
+it('never signals a child PID when its saved OS start identity no longer matches', () => {
+  const child = new ChildProcess()
+  Object.defineProperty(child, 'pid', { value: process.pid })
+  child.kill = vi.fn(() => true)
+  terminateChild(child, 'SIGTERM', 'previous-instance')
+  expect(child.kill).not.toHaveBeenCalled()
 })

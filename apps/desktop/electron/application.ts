@@ -117,6 +117,8 @@ export function createApplication(options: {
     'kernel:list': () => ok(kernels.list()),
     'kernel:install': (input) =>
       commands.run('install', null, async () => ok(await kernels.install(id(input)))),
+    'kernel:remove': (input) =>
+      commands.run('remove-kernel', null, async () => ok(await kernels.remove(id(input)))),
     'kernel:cancel-install': (input) => ok(kernels.cancelInstall(id(input))),
     'environment:detect-locale': async (input) => ok(await localePreview.detect(input)),
     'environment:cancel-locale': (input) => ok(localePreview.cancel(input)),

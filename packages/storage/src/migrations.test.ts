@@ -40,7 +40,7 @@ function fixture() {
   repository.updateConfig({ ...config, name: 'Changed' }, 1)
   repository.deleteEnvironment('env')
   repository.setSetting('fixture', { keep: true })
-  db.sqlite.exec('DROP TABLE credential_cleanup; PRAGMA user_version = 2;')
+  db.sqlite.exec('ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; PRAGMA user_version = 2;')
   const snapshot = () => ({
     proxies: repository.listProxies(),
     environments: repository.listAll(),
@@ -105,7 +105,7 @@ describe('schema v3 migration', () => {
       fault.mockRestore()
       migrateDatabase(f.db.sqlite, f.file)
       expect(f.snapshot()).toEqual(before)
-      expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(3)
+      expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
     },
   )
   it('does not start migration or modify the database when its backup cannot be written', () => {
@@ -136,4 +136,25 @@ describe('schema v3 migration', () => {
       f.db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'proxies'").get(),
     ).toBeUndefined()
   })
+})
+
+it('migrates a genuine v3 session without inventing process identity; v4 reopens idempotently', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cw-migration-v4-'))
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+  const file = join(root, 'data.sqlite')
+  let db = openLocalDatabase(file)
+  db.sqlite.exec(`INSERT INTO runtime_sessions (session_id, environment_id, pid, control_port, started_at, status, phase)
+    VALUES ('old', 'env', 123, 9222, '2026-09-24T00:00:00.000Z', 'running', 'launch');
+    ALTER TABLE runtime_sessions DROP COLUMN process_identity; PRAGMA user_version = 3;`)
+  db.close()
+  db = openLocalDatabase(file)
+  const repository = new EnvironmentRepository(db.sqlite)
+  expect(repository.getRuntimeSession('old')).toMatchObject({ pid: 123, processIdentity: undefined })
+  repository.createRuntimeSession({ sessionId: 'new', environmentId: 'env', pid: 234, processIdentity: 'fixture-start', controlPort: 9333, startedAt: new Date().toISOString(), status: 'running', exitReason: null })
+  expect(repository.getRuntimeSession('new')?.processIdentity).toBe('fixture-start')
+  db.close()
+  db = openLocalDatabase(file)
+  expect(readdirSync(root).filter((name) => name.endsWith('.bak'))).toHaveLength(1)
+  expect(db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(4)
+  db.close()
 })

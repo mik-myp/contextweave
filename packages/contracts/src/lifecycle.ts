@@ -27,6 +27,9 @@ export const kernelSummarySchema = z.object({
   executablePath: z.string().optional(),
   installationPath: z.string().optional(),
   packageAvailable: z.boolean(),
+  removable: z.boolean().default(false),
+  removalPending: z.boolean().default(false),
+  referenceCount: z.number().int().nonnegative().default(0),
   capabilities: z.record(z.string(), z.boolean()),
   capabilityReport: z.record(z.string(), capabilityEvidenceSchema),
   providerStatus: z.enum(['native', 'unconfigured', 'candidate', 'verified']),
@@ -84,6 +87,7 @@ export const operationKindSchema = z.enum([
   'trash',
   'restore',
   'install',
+  'remove-kernel',
 ])
 export type OperationKind = z.infer<typeof operationKindSchema>
 export const operationSummarySchema = z.object({
@@ -115,6 +119,7 @@ export const orphanDirectorySchema = z.object({
 export type OrphanDirectory = z.infer<typeof orphanDirectorySchema>
 
 export const kernelReleaseSchema = z.object({
+  retained: z.boolean().optional(),
   id: z.string(),
   provider: z.string(),
   sourceType: z.enum(['official', 'custom']).optional(),

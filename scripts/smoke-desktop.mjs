@@ -41,6 +41,21 @@ try {
     undefined,
     { timeout: 10000 },
   )
+  assert.equal(
+    await page.evaluate(() => typeof window.__electronLog),
+    'undefined',
+    'No third-party logger API may bypass the typed preload whitelist',
+  )
+  assert.deepEqual(
+    await desktop.evaluate(({ ipcMain, session }) => ({
+      logListeners: ipcMain.listenerCount('__ELECTRON_LOG__'),
+      logPreloads: session.defaultSession
+        .getPreloadScripts()
+        .filter((script) => script.filePath.includes('electron-log')).length,
+    })),
+    { logListeners: 0, logPreloads: 0 },
+    'Main-only logging must not register renderer IPC or session preload scripts',
+  )
   for (const method of ['cleanupStatus', 'retryCleanup']) {
     const status = await page.evaluate((method) => window.contextweave.proxy[method](), method)
     assert.deepEqual(
@@ -212,6 +227,7 @@ try {
           'utf8',
         ),
       )
+      assert(lock.processIdentity, 'New locks must capture the OS process start identity')
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
       const context = browser.contexts()[0]
       const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]

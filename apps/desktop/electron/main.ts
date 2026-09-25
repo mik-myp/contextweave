@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell, dialog } from 'electron'
-import log from 'electron-log/main'
+// The Electron entry auto-registers unrestricted logging IPC even without initialize().
+import log from 'electron-log/node'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -20,7 +21,6 @@ if (!app.isPackaged && process.env.CONTEXTWEAVE_USER_DATA)
   app.setPath('userData', resolve(process.env.CONTEXTWEAVE_USER_DATA))
 log.transports.file.resolvePathFn = () =>
   join(app.getPath('userData'), 'contextweave', 'logs', 'main.log')
-log.initialize()
 const applicationLogs = createAppLogService()
 const APP_ROOT = resolve(__dirname, '..')
 const DEV_SERVER_URL = app.isPackaged

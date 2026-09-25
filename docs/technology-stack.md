@@ -646,6 +646,7 @@ pnpm exec prettier --config .prettierrc.json --check ../../docs/project-plan.md 
 ## 19. v0.1.6 边界与发布验证工作包
 
 - IPC 主进程验证发送方对象、当前窗口主 frame 和加载页面；生产包忽略开发服务器环境变量。校验使用 URL 解析，不以字符串前缀匹配信任来源；历史/关闭窗口、子 frame、非应用页面与启动恢复/退出状态均拒绝。
+- Main 文件日志使用 `electron-log/node`，不使用会自行注册 IPC 的 `electron-log/main`，也不初始化第三方 preload；日志页继续通过已有受校验 IPC 获取脱敏记录。
 - Preload 只暴露现有类型化能力；补有效与恶意输入、输出包和订阅清理测试，不能将 Electron event 或任意 IPC 能力传给 Renderer。
 - Worker 继续由 Main 掌握控制端点、任务所有权和输出文件；补资源上限与异常路径，不因测试方便允许 Renderer 指定调试地址、凭据或截图绝对路径。
 - SQLite 仍为 schema v4，覆盖备份失败、事务/回滚失败、重开与锁竞争；测试必须证明原数据和可用副本的状态，不能用清空重建掩盖错误。

@@ -12,18 +12,14 @@ import {
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { z } from 'zod'
+import {
+  runtimeLockOwnerSchema as ownerSchema,
+  type RuntimeLockOwner,
+} from '@contextweave/contracts'
+export type { RuntimeLockOwner } from '@contextweave/contracts'
 import { isRuntimeProcessAlive } from './process-identity'
 export { isProcessAlive, isRuntimeProcessAlive, readProcessIdentity } from './process-identity'
 
-const ownerSchema = z.object({
-  pid: z.number().int().positive(),
-  sessionId: z.string().min(1),
-  controlPort: z.number().int().min(1).max(65535),
-  startedAt: z.string().datetime(),
-  processIdentity: z.string().min(1).optional(),
-})
-export type RuntimeLockOwner = z.infer<typeof ownerSchema>
 export type RuntimeLockResult =
   | { acquired: true; lockPath: string }
   | { acquired: false; lockPath: string; owner?: RuntimeLockOwner }

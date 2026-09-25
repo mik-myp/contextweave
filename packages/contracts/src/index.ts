@@ -366,6 +366,11 @@ export const runtimeSessionSchema = z.object({
 })
 export type RuntimeSession = z.infer<typeof runtimeSessionSchema>
 
+export const runtimeLockOwnerSchema = runtimeSessionSchema.pick({
+  pid: true, sessionId: true, controlPort: true, startedAt: true, processIdentity: true,
+})
+export type RuntimeLockOwner = z.infer<typeof runtimeLockOwnerSchema>
+
 export const activitySummarySchema = runtimeSessionSchema
   .omit({ pid: true, controlPort: true, processIdentity: true })
   .extend({

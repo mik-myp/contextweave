@@ -1,38 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { z } from 'zod'
 import type { BrowserSettings } from '@contextweave/contracts'
 
-// Chromium reads Accept-Language/navigator.languages from the profile on every platform.
-export function prepareBrowserProfile(dataDir: string, language: string, useProxy = false) {
-  if (language === 'auto') throw new Error('IP_LOCALE_FAILED')
-  const profile = join(dataDir, 'Default')
-  const path = join(profile, 'Preferences')
-  const object = z.record(z.string(), z.unknown())
-  const preferences = existsSync(path) ? object.parse(JSON.parse(readFileSync(path, 'utf8'))) : {}
-  const intl = object.parse(preferences.intl ?? {})
-  if (language === 'system') delete intl.accept_languages
-  else intl.accept_languages = [...new Set([language, language.split('-')[0]])].join(',')
-  mkdirSync(profile, { recursive: true })
-  const temporary = `${path}.contextweave-tmp`
-  writeFileSync(
-    temporary,
-    JSON.stringify({
-      ...preferences,
-      intl,
-      session: { ...object.parse(preferences.session ?? {}), restore_on_startup: 1 },
-      background_mode: { ...object.parse(preferences.background_mode ?? {}), enabled: false },
-      ...(useProxy
-        ? {
-            network_prediction_options: 2,
-            dns_prefetching: { ...object.parse(preferences.dns_prefetching ?? {}), enabled: false },
-          }
-        : {}),
-    }),
-    { mode: 0o600 },
-  )
-  renameSync(temporary, path)
-}
+export { prepareBrowserProfile } from './services/browser-profile'
 
 const messageSchema = z.object({
   id: z.number().optional(),

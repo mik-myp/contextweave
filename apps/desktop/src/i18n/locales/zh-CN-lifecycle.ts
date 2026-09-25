@@ -181,6 +181,14 @@ export const lifecycleMessages = {
   'error.OPERATION_IN_PROGRESS': '此环境已有操作正在执行，请稍后重试。',
   'error.ALREADY_RUNNING': '环境已在启动或运行中。',
   'error.CANCELLED': '操作已取消。',
+  'error.BROWSER_PREFERENCES_INVALID':
+    '浏览器首选项损坏或结构不受支持，原文件已保留。请先备份该环境，在 Default 目录中检查或手动修复 Preferences 后重试；不会自动重置会话。',
+  'error.BROWSER_PREFERENCES_TOO_LARGE':
+    '浏览器 Preferences 超过 16 MiB 安全读取上限，原文件已保留。请备份并检查异常增长后重试。',
+  'error.BROWSER_PROFILE_IO_FAILED':
+    '无法安全读写浏览器配置，请检查磁盘空间、文件权限和占用状态后重试；不会清空原配置。',
+  'error.BROWSER_PROFILE_UNSAFE':
+    '浏览器配置目录或文件不是受支持的普通目录/文件，已停止写入。请先备份并检查链接或异常文件。',
   'error.START_FAILED': '浏览器启动失败，请查看预检和运行记录。',
   'error.CONTROL_TIMEOUT': '浏览器控制连接超时，请检查内核或恢复环境。',
   'error.STOP_TIMEOUT': '浏览器未能停止，已保留运行锁，请手动关闭后恢复。',

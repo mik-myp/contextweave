@@ -1,6 +1,6 @@
 import { createIpLocaleService, parseIpLocale } from './ip-locale'
 import { ChildProcess } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -129,6 +129,21 @@ function fixture(
   return { dir, repository, child, runtime, driver, preflight, detect, kernels }
 }
 describe('runtime supervisor', () => {
+  it('preserves corrupt preferences, reports the specific error, and never spawns a browser', async () => {
+    const f = fixture()
+    mkdirSync(join(f.dir, 'Default'))
+    const path = join(f.dir, 'Default', 'Preferences')
+    const original = '{"private":"fixture-secret"'
+    writeFileSync(path, original)
+    expect(await f.runtime.start('env-a')).toMatchObject({
+      ok: false,
+      code: 'BROWSER_PREFERENCES_INVALID',
+    })
+    expect(f.driver.launch).not.toHaveBeenCalled()
+    expect(readFileSync(path, 'utf8')).toBe(original)
+    expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+    expect(f.repository.get('env-a')?.status).toBe('error')
+  })
   it('does not use the network for existing system/manual settings', async () => {
     const f = fixture()
     expect((await f.runtime.start('env-a')).ok).toBe(true)

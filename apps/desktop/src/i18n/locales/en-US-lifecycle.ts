@@ -219,6 +219,14 @@ export const lifecycleMessages = {
     'Another operation is running for this environment. Retry when it finishes.',
   'error.ALREADY_RUNNING': 'This environment is already starting or running.',
   'error.CANCELLED': 'Operation cancelled.',
+  'error.BROWSER_PREFERENCES_INVALID':
+    'Browser preferences are damaged or have an unsupported structure. The original is preserved. Back up this environment, inspect or repair Default/Preferences, then retry. Sessions are not automatically reset.',
+  'error.BROWSER_PREFERENCES_TOO_LARGE':
+    'Browser Preferences exceeds the 16 MiB safe read limit. The original is preserved. Back up the environment and inspect unexpected growth before retrying.',
+  'error.BROWSER_PROFILE_IO_FAILED':
+    'Browser preferences could not be safely read or written. Check disk space, permissions, and file locks, then retry. Existing preferences are not cleared.',
+  'error.BROWSER_PROFILE_UNSAFE':
+    'The browser preferences directory or file is not a supported regular directory/file. Writing stopped. Back up the environment and inspect links or unusual files.',
   'error.START_FAILED': 'Browser launch failed. Review preflight and runtime history.',
   'error.CONTROL_TIMEOUT':
     'The browser control connection timed out. Check the kernel or recover the environment.',

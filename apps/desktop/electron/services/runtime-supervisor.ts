@@ -356,6 +356,10 @@ export function createRuntimeSupervisor(options: {
       repository.updateStatus(id, cancelled ? 'stopped' : 'error')
       changed()
       const known = [
+        'BROWSER_PREFERENCES_INVALID',
+        'BROWSER_PREFERENCES_TOO_LARGE',
+        'BROWSER_PROFILE_IO_FAILED',
+        'BROWSER_PROFILE_UNSAFE',
         'IP_LOCALE_FAILED',
         'IP_LOCALE_TIMEOUT',
         'IP_LOCALE_BUSY',

@@ -47,7 +47,8 @@ export function readProcessIdentity(pid: number): string | undefined {
           '-NoProfile',
           '-NonInteractive',
           '-Command',
-          `$ErrorActionPreference='Stop'; (Get-Process -Id ${pid}).StartTime.ToUniversalTime().Ticks.ToString()`,
+          // Use the BCL directly: Get-Process cold-loads PowerShell management modules.
+          `$ErrorActionPreference='Stop'; [System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().Ticks.ToString()`,
         ],
         {
           encoding: 'utf8',

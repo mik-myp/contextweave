@@ -30,6 +30,14 @@ afterEach(() => {
 describe('process identity trust decisions', () => {
   it('reads OS start identity, matches the owner, and recognizes PID reuse', () => {
     expect(readProcessIdentity(123)).toBe(identity)
+    if (process.platform === 'win32') {
+      const [file, args, options] = vi.mocked(execFileSync).mock.calls[0]!
+      expect(file).toMatch(/WindowsPowerShell.*powershell\.exe$/)
+      expect(args).toContain(
+        "$ErrorActionPreference='Stop'; [System.Diagnostics.Process]::GetProcessById(123).StartTime.ToUniversalTime().Ticks.ToString()",
+      )
+      expect(options).toMatchObject({ timeout: 5000, maxBuffer: 4096, windowsHide: true })
+    }
     expect(isRuntimeProcessAlive(123, identity)).toBe(true)
     expect(isRuntimeProcessAlive(123, 'previous-process')).toBe(false)
   })

@@ -1,7 +1,7 @@
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
 import { findPackagedArchive } from './release-tools.mjs'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm, readFile, realpath, cp } from 'node:fs/promises'
@@ -230,6 +230,37 @@ try {
           'utf8',
         ),
       )
+      if (!lock.processIdentity && process.platform === 'win32') {
+        assert(Number.isSafeInteger(lock.pid) && lock.pid > 0)
+        const diagnostic = await new Promise((resolve) =>
+          execFile(
+            join(
+              process.env.SystemRoot ?? 'C:\\Windows',
+              'System32',
+              'WindowsPowerShell',
+              'v1.0',
+              'powershell.exe',
+            ),
+            [
+              '-NoLogo',
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `$ErrorActionPreference='Stop'; [System.Diagnostics.Process]::GetProcessById(${lock.pid}).StartTime.ToUniversalTime().Ticks.ToString()`,
+            ],
+            { timeout: 10000, maxBuffer: 4096, windowsHide: true },
+            (error, stdout, stderr) =>
+              resolve({
+                code: error?.code ?? null,
+                killed: error?.killed ?? false,
+                stdout,
+                stderr,
+              }),
+          ),
+        )
+        // Fixture-only diagnosis; never weakens the assertion or rewrites application ownership.
+        console.error(JSON.stringify({ missingIdentityPid: lock.pid, diagnostic }))
+      }
       assert(lock.processIdentity, 'New locks must capture the OS process start identity')
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
       const context = browser.contexts()[0]

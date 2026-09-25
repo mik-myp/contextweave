@@ -395,12 +395,26 @@ try {
     assert.equal(after, before)
     const operations = await page.evaluate(() => window.contextweave.operation.list())
     assert(operations.ok && operations.data.some((item) => item.errorCode === 'ALREADY_RUNNING'))
+    // Finite, distinct fresh profiles, not retries of a failed startup. Any failure stops the gate.
+    for (let sample = 0; sample < 3; sample++) {
+      const fresh = await page.evaluate((sample) => window.contextweave.environment.create({
+        name: `Fresh-profile launch ${sample}`,
+        kernelId: 'standard-chromium',
+        commonConfig: { language: 'system', timezone: 'system' },
+      }), sample)
+      assert(fresh.ok)
+      const started = await page.evaluate((id) => window.contextweave.environment.start(id), fresh.data.id)
+      assert(started.ok, JSON.stringify({ sample, started, control: await readRuntimeDiagnostics(desktop) }))
+      const stopped = await page.evaluate((id) => window.contextweave.environment.stop(id), fresh.data.id)
+      assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
+    }
     console.log(
       JSON.stringify({
         bridge: 'passed',
         credentialMaintenance: 'passed',
         batchProxyImport: 'passed',
         nativeLifecycle: 'passed',
+        additionalFreshProfiles: 3,
         nativeExecutable: (await readRuntimeDiagnostics(desktop))[0]?.executable,
         executableVersion: sessions.data[0].executableVersion,
         reopen: 'passed',

@@ -55,7 +55,7 @@ jobs:
       - name: Build and verify desktop runtime
         run: |
           pnpm --filter @contextweave/desktop exec electron-vite build
-          pnpm test:desktop
+          pnpm test:desktop --require-native
 
       - name: Verify official fingerprint browser lifecycle
         if: matrix.name != 'macos-x64'
@@ -65,7 +65,7 @@ jobs:
         run: pnpm --filter @contextweave/desktop build
 
       - name: Verify isolated packaged application bundle
-        run: pnpm test:desktop --packaged
+        run: pnpm test:desktop --packaged --require-native
 
       - name: Audit packaged dependencies and stage verified artifacts
         run: node scripts/release-tools.mjs stage ${{ matrix.name }}

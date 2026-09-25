@@ -15,7 +15,7 @@
     "format": "prettier --config .prettierrc.json --write .",
     "format:check": "prettier --config .prettierrc.json --check .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
     "rebuild:native": "electron-builder install-app-deps"
   },

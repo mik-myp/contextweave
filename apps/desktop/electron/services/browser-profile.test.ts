@@ -1,5 +1,8 @@
 import {
   existsSync,
+  lstatSync,
+  fstatSync,
+  readSync,
   fsyncSync,
   mkdirSync,
   mkdtempSync,
@@ -19,7 +22,14 @@ import { prepareBrowserProfile } from '../browser-settings'
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
-  return { ...actual, renameSync: vi.fn(actual.renameSync), fsyncSync: vi.fn(actual.fsyncSync) }
+  return {
+    ...actual,
+    renameSync: vi.fn(actual.renameSync),
+    fsyncSync: vi.fn(actual.fsyncSync),
+    lstatSync: vi.fn(actual.lstatSync),
+    fstatSync: vi.fn(actual.fstatSync),
+    readSync: vi.fn(actual.readSync),
+  }
 })
 vi.mock('node:crypto', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:crypto')>()
@@ -35,7 +45,11 @@ function fixture(contents = '{"browser":{"check_default_browser":false}}') {
   writeFileSync(path, contents)
   return { root, profile, path, original: readFileSync(path) }
 }
-afterEach(() => {
+afterEach(async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  vi.mocked(lstatSync).mockImplementation(actual.lstatSync)
+  vi.mocked(fstatSync).mockImplementation(actual.fstatSync)
+  vi.mocked(readSync).mockImplementation(actual.readSync)
   vi.clearAllMocks()
   vi.restoreAllMocks()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -154,4 +168,53 @@ describe('browser Preferences safety', () => {
     expect(() => prepareBrowserProfile(emptyRoot, 'auto')).toThrow('IP_LOCALE_FAILED')
     expect(existsSync(emptyRoot)).toBe(false)
   })
+})
+
+it('accepts platforms where path and handle device identifiers use different representations', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const f = fixture()
+  vi.mocked(lstatSync).mockImplementation((path, options) => {
+    const value = actual.lstatSync(path, options)
+    if (!value) return value
+    return new Proxy(value, {
+      get(target, key, receiver) {
+        if (key === 'dev') return typeof target.dev === 'bigint' ? target.dev + 1n : target.dev + 1
+        return Reflect.get(target, key, receiver)
+      },
+    })
+  })
+  prepareBrowserProfile(f.root, 'en-US')
+  expect(JSON.parse(readFileSync(f.path, 'utf8')).intl.accept_languages).toBe('en-US,en')
+})
+it('does not replace a different Preferences file substituted while reading', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const f = fixture()
+  vi.mocked(readSync).mockImplementationOnce((...args) => {
+    const size = actual.readSync(...args)
+    actual.renameSync(f.path, `${f.path}.original`)
+    actual.writeFileSync(f.path, '{"external":"replacement"}')
+    return size
+  })
+  expect(() => prepareBrowserProfile(f.root, 'en-US')).toThrow('BROWSER_PROFILE_UNSAFE')
+  expect(readFileSync(f.path, 'utf8')).toBe('{"external":"replacement"}')
+  expect(readFileSync(`${f.path}.original`).equals(f.original)).toBe(true)
+})
+it('compares full-width handle identities without rounding adjacent 64-bit inode numbers', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const f = fixture()
+  let originalDescriptor: number | undefined
+  vi.mocked(fstatSync).mockImplementation((fd, options) => {
+    originalDescriptor ??= fd
+    const value = actual.fstatSync(fd, options)
+    const identity = fd === originalDescriptor ? 9007199254740992n : 9007199254740993n
+    return new Proxy(value, {
+      get(target, key, receiver) {
+        if (key === 'ino') return typeof target.ino === 'bigint' ? identity : Number(identity)
+        return Reflect.get(target, key, receiver)
+      },
+    })
+  })
+  expect(() => prepareBrowserProfile(f.root, 'en-US')).toThrow('BROWSER_PROFILE_UNSAFE')
+  expect(readFileSync(f.path).equals(f.original)).toBe(true)
+  expect(fstatSync).toHaveBeenCalledWith(expect.any(Number), { bigint: true })
 })

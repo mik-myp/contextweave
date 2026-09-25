@@ -21,7 +21,7 @@ class BrowserProfileError extends Error {}
 function readPreferences(path: string): Record<string, unknown> {
   const before = (() => {
     try {
-      return lstatSync(path)
+      return lstatSync(path, { bigint: true })
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
       throw error
@@ -33,10 +33,9 @@ function readPreferences(path: string): Record<string, unknown> {
   const fd = openSync(path, 'r')
   let text: string
   try {
-    const opened = fstatSync(fd)
-    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino)
-      throw new BrowserProfileError('BROWSER_PROFILE_UNSAFE')
-    if (opened.size > maxPreferencesBytes)
+    const opened = fstatSync(fd, { bigint: true })
+    if (!opened.isFile()) throw new BrowserProfileError('BROWSER_PROFILE_UNSAFE')
+    if (opened.size > BigInt(maxPreferencesBytes))
       throw new BrowserProfileError('BROWSER_PREFERENCES_TOO_LARGE')
     const chunks: Buffer[] = []
     const buffer = Buffer.alloc(64 * 1024)
@@ -55,9 +54,28 @@ function readPreferences(path: string): Record<string, unknown> {
       if (size > maxPreferencesBytes) throw new BrowserProfileError('BROWSER_PREFERENCES_TOO_LARGE')
       chunks.push(Buffer.from(buffer.subarray(0, length)))
     }
-    const after = fstatSync(fd)
-    if (opened.size !== after.size || opened.mtimeMs !== after.mtimeMs)
+    const after = fstatSync(fd, { bigint: true })
+    if (opened.size !== after.size || opened.mtimeNs !== after.mtimeNs)
       throw new BrowserProfileError('BROWSER_PROFILE_IO_FAILED')
+    const verificationDescriptor = openSync(path, 'r')
+    try {
+      // Windows can represent dev differently for path and handle stats. Compare
+      // each kind with itself; BigInts preserve full-width file identities.
+      const current = fstatSync(verificationDescriptor, { bigint: true })
+      const currentPath = lstatSync(path, { bigint: true })
+      if (
+        !current.isFile() ||
+        !currentPath.isFile() ||
+        currentPath.isSymbolicLink() ||
+        current.dev !== opened.dev ||
+        current.ino !== opened.ino ||
+        currentPath.dev !== before.dev ||
+        currentPath.ino !== before.ino
+      )
+        throw new BrowserProfileError('BROWSER_PROFILE_UNSAFE')
+    } finally {
+      closeSync(verificationDescriptor)
+    }
     try {
       text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
     } catch {

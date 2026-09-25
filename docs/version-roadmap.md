@@ -822,3 +822,9 @@ R11（P0 / S）在 `v1.2.0` 显示远端已提交版本与本地副本状态，�
 本轮最终工作树执行 `pnpm check`：格式、lint、类型检查与 **72 个 Vitest 文件 / 539 项测试通过**，另 **6 项发布工具测试通过**；新增真实 ZIP 8 项包括在上述总数中。变更 Markdown 格式、相对文件链接及 `git diff --check` 通过。八个 workspace 版本均为 `0.1.7`，SQLite 仍为 schema v4。
 
 `pnpm build` 生成 ARM64 DMG/ZIP；`test:desktop --require-native`、`test:desktop --packaged`、官方与 `--custom-source` 指纹 smoke 均通过。隔离包体验证不等于 NSIS/DMG 的用户安装验收；本机日志显示未找到 Developer ID，使用默认 Electron 图标，未宣称签名/公证。远端 CI、三平台 Build 和 tag/草稿 Release 附件核验仍待执行，本段不提前宣称发布成功。
+
+#### Windows 发布门槛发现的差异（尚未发布）
+
+首次候选 `dd30328` 的 CI `36185936886` 与 Build `36185936925` 中，两类 macOS 完成，Windows 未通过，**未打 tag、未创建 Release**。CI 的 12 个失败共同指向 Preferences 读入时把 `lstat.dev` 与 `fstat.dev` 直接比较；Windows 路径统计和句柄统计可以使用不同表示，正常文件被误判为不安全，不是可忽略的 runner 超时。
+
+修复采用路径对路径、句柄对重新打开的验证句柄比较，并以 BigInt 保留完整文件 ID；增加读取中路径替换检查，防止用旧内容覆盖新文件。新增三个回归在修复前全部失败，修复后相关 **3 文件 / 50 项**通过；完整本地检查提升到 **72 文件 / 542 项 Vitest + 6 项发布工具测试**，真实 native smoke 再次通过。没有跳过 Windows 验证或放宽路径/文件保护，仍等待修复提交的全新三平台 CI/Build。

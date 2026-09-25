@@ -95,6 +95,12 @@ function fixture(
       .fn<(port: number, signal: AbortSignal) => Promise<string | undefined>>()
       .mockResolvedValue('Chrome/123.0.0.1'),
     settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
+    // Ordinary stop tests should model Browser.close, not spend three seconds
+    // waiting for a synthetic process that cannot receive a real CDP command.
+    close: vi.fn(async () => {
+      Object.defineProperty(child, 'exitCode', { value: 0, configurable: true })
+      queueMicrotask(() => child.emit('exit', 0, null))
+    }),
   }
   const locale = createIpLocaleService()
   const detect = vi.spyOn(locale, 'detect').mockResolvedValue(
@@ -389,12 +395,28 @@ describe('runtime supervisor', () => {
       kill.mockRestore()
     }
   })
+  it('falls back to terminating its own child if the graceful close command fails', async () => {
+    const f = fixture()
+    await f.runtime.start('env-a')
+    f.driver.close.mockRejectedValue(new Error('fixture close failed'))
+    vi.useFakeTimers()
+    try {
+      const stopped = f.runtime.stop('env-a')
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(await stopped).toMatchObject({ ok: true })
+      expect(f.child.kill).toHaveBeenCalledWith('SIGTERM')
+      expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('retains the lock and kernel lease on stop timeout, then retries without spawning another process', async () => {
     const f = fixture()
     const release = vi.fn()
     vi.spyOn(f.kernels, 'retain').mockReturnValue(release)
     await f.runtime.start('env-a')
     vi.mocked(f.child.kill).mockReturnValue(false)
+    f.driver.close.mockResolvedValue(undefined)
     vi.useFakeTimers()
     try {
       const stopped = f.runtime.stop('env-a')

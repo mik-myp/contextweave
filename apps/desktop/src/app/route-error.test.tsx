@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/i18n'
 import { RouteError } from './route-error'
+import { router as applicationRouter } from '../router'
 
 let root: Root, container: HTMLDivElement
 beforeEach(() => {
@@ -129,7 +130,6 @@ it('fences repeated retry requests and sanitizes retry failure while allowing an
   await act(async () => button('重试').click())
   expect(container.textContent).toContain('recovered page')
 })
-it('installs the local error component as the application-wide Router fallback', async () => {
-  const { router } = await import('../router')
-  expect(router.options.defaultErrorComponent).toBe(RouteError)
+it('installs the local error component as the application-wide Router fallback', () => {
+  expect(applicationRouter.options.defaultErrorComponent).toBe(RouteError)
 })

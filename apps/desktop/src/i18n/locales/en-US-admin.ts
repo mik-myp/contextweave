@@ -1,6 +1,12 @@
 import type { adminMessages as zhMessages } from './zh-CN-admin'
 
 export const adminMessages: Record<keyof typeof zhMessages, string> = {
+  'route.errorTitle': 'This page could not be displayed',
+  'route.errorDescription':
+    'Retry loading this page or return to environments. Retrying will not repeat launch, delete or install commands. If the problem persists, report the steps that led to it.',
+  'route.retryFailed':
+    'Page recovery failed. Try again, or reopen the application interface if it remains unavailable.',
+  'route.backToEnvironments': 'Back to environments',
   'update.installing': 'Preparing installation; the app will close and restart automatically…',
   'table.moreActions': 'More actions',
   'env.stopBeforeTrash': 'Stop the environment or complete recovery before moving it to trash.',

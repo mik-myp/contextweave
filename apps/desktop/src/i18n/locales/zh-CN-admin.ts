@@ -1,4 +1,9 @@
 export const adminMessages = {
+  'route.errorTitle': '页面暂时无法显示',
+  'route.errorDescription':
+    '可以重试加载页面，或返回环境列表。重试不会自动重复启动、删除或安装操作。如问题持续出现，请记录操作步骤并反馈。',
+  'route.retryFailed': '页面恢复失败，请重试；如果仍不可用，请重新打开应用界面。',
+  'route.backToEnvironments': '返回环境列表',
   'update.installing': '正在准备安装；完成后应用会自动退出并重新启动…',
   'settings.updates': '检查更新',
   'update.availableHelp': '新版已发布。安装前可查看发行说明，了解本次变更。',

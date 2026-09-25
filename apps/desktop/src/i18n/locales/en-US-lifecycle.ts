@@ -1,4 +1,6 @@
 export const lifecycleMessages = {
+  'error.IPC_UNAVAILABLE':
+    'The application could not be reached. Reopen the application interface and try again.',
   'env.ipLocaleAuto': 'Follow exit IP (on each launch)',
   'env.ipLocaleTitle': 'Language and timezone from exit IP',
   'env.ipLocaleDescription':

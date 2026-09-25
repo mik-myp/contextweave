@@ -1,4 +1,5 @@
 export const lifecycleMessages = {
+  'error.IPC_UNAVAILABLE': '无法连接应用后台，请重新打开应用界面后重试。',
   'env.ipLocaleAuto': '跟随出口 IP（每次启动获取）',
   'env.ipLocaleTitle': '根据出口 IP 获取语言与时区',
   'env.ipLocaleDescription':

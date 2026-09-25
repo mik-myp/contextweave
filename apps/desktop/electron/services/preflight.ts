@@ -46,10 +46,7 @@ export async function checkEnvironment(
   if (['starting', 'running', 'stopping'].includes(record.status) && !existsSync(lock.lockPath))
     add('RUNTIME_BUSY')
   if (record.kernelId === 'standard-chromium') add('NATIVE_MODE', 'info')
-  else if (
-    kernels.list().find((kernel) => kernel.id === record.kernelId)?.providerStatus !== 'verified'
-  )
-    add('PROVIDER_UNVERIFIED')
+  if (!kernels.hasCompatibleProvider(record)) add('PROVIDER_UNVERIFIED')
   let executableVersion: string | undefined
   const executable = kernels.executableFor(record)
   if (!executable) add('KERNEL_UNAVAILABLE')

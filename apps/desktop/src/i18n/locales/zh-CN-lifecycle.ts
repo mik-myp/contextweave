@@ -78,6 +78,8 @@ export const lifecycleMessages = {
 
   'error.CUSTOM_SOURCE_DETAILS_REQUIRED':
     '自定义下载源需要填写内核版本、可信 SHA-256，并确认来源和许可。',
+  'error.RELEASE_UNREVIEWED':
+    '此发行物尚未纳入应用的固定版本与摘要集合，不能自动下载。已安装环境不会被删除或降级；自定义来源需自行确认版本、摘要与许可。',
   'error.ADAPTER_UNSUPPORTED': '该内核版本尚无兼容的参数适配，请选择受支持的版本。',
 
   'error.PLATFORM_UNSUPPORTED': '此内核版本尚不支持当前平台或架构。',
@@ -205,7 +207,7 @@ export const lifecycleMessages = {
   'kernel.removed': '内核已删除，环境配置和浏览器数据已保留。',
   'kernel.removeTitle': '删除 {name}？',
   'kernel.removeDescription':
-    '仅删除下载的内核文件，不会删除环境配置、标签或网站数据。当前有 {count} 个环境（含回收站）引用此内核；再次启动前必须重新下载相同版本。运行中或待恢复的环境会阻止删除。自定义来源可能需要重新提供下载地址。',
+    '仅删除下载的内核文件，不会删除环境配置、标签或网站数据。当前有 {count} 个环境（含回收站）引用此内核；再次启动前必须重新下载相同版本。运行中或待恢复的环境会阻止删除。未纳入当前固定清单的旧版本不能直接重新下载；自定义来源若已失效，需重新确认地址和摘要。请先确认有可用的恢复来源。',
   'kernel.removalPending': '删除未完成 · 可重试',
   'error.KERNEL_NOT_MANAGED': '只允许删除本应用下载管理的内核，不能删除系统浏览器或外部安装。',
   'error.KERNEL_PATH_UNSAFE':

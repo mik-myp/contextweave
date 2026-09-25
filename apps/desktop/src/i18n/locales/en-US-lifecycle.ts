@@ -94,6 +94,8 @@ export const lifecycleMessages = {
 
   'error.CUSTOM_SOURCE_DETAILS_REQUIRED':
     'Custom sources require a kernel version, trusted SHA-256, and confirmation of the source and license.',
+  'error.RELEASE_UNREVIEWED':
+    'This release is outside the fixed version and checksum set and cannot be downloaded automatically. Existing environments are not deleted or downgraded. Custom sources require your own version, checksum, and license confirmation.',
   'error.ADAPTER_UNSUPPORTED':
     'This kernel version has no compatible adapter. Choose a supported version.',
 
@@ -246,7 +248,7 @@ export const lifecycleMessages = {
   'kernel.removed': 'Kernel deleted. Environment settings and browser data were preserved.',
   'kernel.removeTitle': 'Delete {name}?',
   'kernel.removeDescription':
-    'Deletes downloaded kernel files only, not settings, tabs or website data. {count} environments (including trash) reference this kernel; download the same version again before starting them. Running environments or those needing recovery block deletion. Custom sources may require a new download URL.',
+    'Deletes downloaded kernel files only, not settings, tabs or website data. {count} environments (including trash) reference this kernel; download the same version again before starting them. Running environments or those needing recovery block deletion. Older versions outside the current pinned set cannot be downloaded automatically. Expired custom sources require renewed URL and checksum confirmation. Ensure a recovery source is available first.',
   'kernel.removalPending': 'Deletion incomplete · retry',
   'error.KERNEL_NOT_MANAGED':
     'Only kernels downloaded by this app can be deleted, not system browsers or external installations.',

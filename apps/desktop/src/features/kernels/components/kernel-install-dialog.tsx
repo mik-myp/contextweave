@@ -200,11 +200,13 @@ export function KernelInstallDialog({
               <Alert>
                 <AlertDescription>
                   {t(
-                    release.reason === 'PLATFORM_UNSUPPORTED'
-                      ? 'kernel.platformHelp'
-                      : release.reason === 'ADAPTER_UNSUPPORTED'
-                        ? 'kernel.adapterUnsupported'
-                        : 'kernel.checksumUnavailable',
+                    release.reason === 'RELEASE_UNREVIEWED'
+                      ? 'error.RELEASE_UNREVIEWED'
+                      : release.reason === 'PLATFORM_UNSUPPORTED'
+                        ? 'kernel.platformHelp'
+                        : release.reason === 'ADAPTER_UNSUPPORTED'
+                          ? 'kernel.adapterUnsupported'
+                          : 'kernel.checksumUnavailable',
                   )}
                 </AlertDescription>
               </Alert>

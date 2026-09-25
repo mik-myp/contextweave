@@ -10,6 +10,8 @@ import {
   fingerprintKernelId,
 } from '@contextweave/kernel-fingerprint-chromium'
 
+import { isCompatibleFingerprintManifest, supportsFingerprintVersion } from './kernel-providers'
+
 export const officialReleasesSchema = z.array(
   z.object({
     tag_name: z.string(),
@@ -27,6 +29,19 @@ export const officialReleasesSchema = z.array(
   }),
 )
 export type CatalogEntry = { release: KernelRelease; manifest?: KernelManifest }
+// Byte-level pinning is not an assertion of independent signing, licensing, or fingerprint capability.
+export function isPinnedOfficialPackage(manifest: KernelManifest): boolean {
+  if (manifest.sourceType === 'custom' || !isCompatibleFingerprintManifest(manifest)) return false
+  const pinned = createFingerprintChromiumManifest(manifest.platform, manifest.arch)
+  return Boolean(
+    pinned.package &&
+    manifest.package &&
+    manifest.version === pinned.version &&
+    manifest.package.url === pinned.package.url &&
+    manifest.package.sha256?.toLowerCase() === pinned.package.sha256 &&
+    manifest.package.sizeBytes === pinned.package.sizeBytes,
+  )
+}
 export function parseOfficialReleases(
   value: unknown,
   platform: TargetPlatform,
@@ -48,8 +63,7 @@ export function parseOfficialReleases(
           : platform === 'darwin' && arch === 'arm64'
             ? item.assets.find((asset) => asset.name.endsWith('_macos.dmg'))
             : undefined
-      const major = Number(version.split('.')[0])
-      const supported = [136, 138, 139, 142, 144, 148].includes(major)
+      const supported = supportsFingerprintVersion(version)
       const checksum = asset?.digest?.match(/^sha256:([0-9a-f]{64})$/)?.[1]
       const expectedPrefix = `https://github.com/adryfish/fingerprint-chromium/releases/download/${version}/`
       const validSource = Boolean(
@@ -57,13 +71,25 @@ export function parseOfficialReleases(
         asset.browser_download_url === `${expectedPrefix}${asset.name}` &&
         /^[a-zA-Z0-9_.-]+$/.test(asset.name),
       )
+      const candidate: KernelManifest | undefined =
+        asset && checksum
+          ? {
+              ...base,
+              id,
+              version,
+              dataDirCompatibility: [version],
+              package: { url: asset.browser_download_url, sha256: checksum, sizeBytes: asset.size },
+            }
+          : undefined
       const reason = !supported
         ? 'ADAPTER_UNSUPPORTED'
         : !asset
           ? 'PLATFORM_UNSUPPORTED'
           : !checksum || !validSource
             ? 'CHECKSUM_UNAVAILABLE'
-            : undefined
+            : !candidate || !isPinnedOfficialPackage(candidate)
+              ? 'RELEASE_UNREVIEWED'
+              : undefined
       const release: KernelRelease = {
         id,
         provider: 'fingerprint-chromium',
@@ -80,20 +106,7 @@ export function parseOfficialReleases(
       }
       return {
         release,
-        manifest:
-          !reason && asset
-            ? {
-                ...base,
-                id,
-                version,
-                dataDirCompatibility: [version],
-                package: {
-                  url: asset.browser_download_url,
-                  sha256: checksum,
-                  sizeBytes: asset.size,
-                },
-              }
-            : undefined,
+        manifest: !reason ? candidate : undefined,
       }
     })
     .sort((a, b) =>

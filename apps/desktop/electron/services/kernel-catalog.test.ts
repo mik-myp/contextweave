@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
-import { parseOfficialReleases } from './kernel-catalog'
+import { bundledRelease, parseOfficialReleases } from './kernel-catalog'
 import { createKernelService } from './kernel-service'
 import { createEnvironmentService } from './environment-service'
 function release(version: string) {
@@ -16,8 +16,8 @@ function release(version: string) {
     assets: [
       {
         name,
-        size: 100,
-        digest: `sha256:${'a'.repeat(64)}`,
+        size: 189767686,
+        digest: 'sha256:9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579',
         browser_download_url: `https://github.com/adryfish/fingerprint-chromium/releases/download/${version}/${name}`,
       },
     ],
@@ -56,8 +56,18 @@ describe('versioned official kernel catalog', () => {
           .list()
           .filter((kernel) => kernel.id.startsWith('fingerprint')),
       ).toEqual([])
-      for (const { manifest } of parseOfficialReleases(raw, 'win32', 'x64')) {
-        const installPath = join(root, manifest!.id)
+      const current = bundledRelease('win32', 'x64').manifest!
+      const legacy = {
+        ...current,
+        id: 'fingerprint-chromium-144-0-7559-132',
+        version: '144.0.7559.132',
+        dataDirCompatibility: ['144.0.7559.132'],
+      }
+      // Actual installs persist manifests. A prior version remains usable without
+      // allowing its old cached catalog row to authorize a fresh download.
+      for (const manifest of [current, legacy]) {
+        repository.setSetting(`kernel-manifest:${manifest.id}`, manifest)
+        const installPath = join(root, manifest.id)
         mkdirSync(installPath)
         writeFileSync(join(installPath, 'chrome.exe'), 'fixture')
         repository.recordKernelInstallation({

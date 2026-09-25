@@ -132,7 +132,7 @@ export const kernelReleaseSchema = z.object({
   sha256: z.string().optional(),
   installable: z.boolean(),
   installed: z.boolean(),
-  reason: z.enum(['PLATFORM_UNSUPPORTED', 'ADAPTER_UNSUPPORTED', 'CHECKSUM_UNAVAILABLE']).optional(),
+  reason: z.enum(['PLATFORM_UNSUPPORTED', 'ADAPTER_UNSUPPORTED', 'CHECKSUM_UNAVAILABLE', 'RELEASE_UNREVIEWED']).optional(),
   installation: kernelSummarySchema.shape.installation,
 })
 export type KernelRelease = z.infer<typeof kernelReleaseSchema>

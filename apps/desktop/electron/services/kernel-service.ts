@@ -31,12 +31,13 @@ import {
 import type { EnvironmentRecord, EnvironmentRepository } from '@contextweave/storage'
 import {
   bundledRelease,
+  isPinnedOfficialPackage,
   fetchOfficialReleases,
   parseOfficialReleases,
   type CatalogEntry,
 } from './kernel-catalog'
 import { createCustomKernelEntry, publicDownloadSource } from './kernel-custom-source'
-import { requireKernelProvider } from './kernel-providers'
+import { isCompatibleFingerprintManifest, requireKernelProvider } from './kernel-providers'
 const execute = promisify(execFile)
 
 export function createKernelService(
@@ -148,7 +149,8 @@ export function createKernelService(
           source: manifest.source,
           sizeBytes: manifest.package.sizeBytes,
           sha256: manifest.package.sha256,
-          installable: true,
+          installable: isPinnedOfficialPackage(manifest),
+          reason: isPinnedOfficialPackage(manifest) ? undefined : 'RELEASE_UNREVIEWED',
           installed: false,
           retained: true,
         },
@@ -220,6 +222,23 @@ export function createKernelService(
     } finally {
       removals.delete(id)
     }
+  }
+  function hasCompatibleProvider(
+    record: Pick<EnvironmentRecord, 'kernelId'> & { kernelVersion?: string },
+  ): boolean {
+    const adapter = registry.list().find((item) => item.getManifest().id === record.kernelId)
+    if (!adapter) return false
+    const manifest = adapter.getManifest()
+    if (
+      manifest.platform !== platform ||
+      manifest.arch !== arch ||
+      (record.kernelVersion && record.kernelVersion !== manifest.version)
+    )
+      return false
+    if (adapter instanceof StandardChromiumAdapter) return manifest.id === 'standard-chromium'
+    return (
+      adapter instanceof FingerprintChromiumAdapter && isCompatibleFingerprintManifest(manifest)
+    )
   }
   function executableFor(
     record: Pick<EnvironmentRecord, 'kernelId'> & { kernelVersion?: string },
@@ -322,7 +341,7 @@ export function createKernelService(
             manifest.id === 'standard-chromium'
               ? 'native'
               : manifest.package
-                ? 'verified'
+                ? 'candidate'
                 : 'unconfigured',
           capabilityReport: Object.fromEntries(
             Object.entries(manifest.capabilities).map(([key, declared]) => [
@@ -351,6 +370,7 @@ export function createKernelService(
   ): LaunchPlan {
     if (config.commonConfig.language === 'auto' || config.commonConfig.timezone === 'auto')
       throw new Error('IP_LOCALE_FAILED')
+    if (!hasCompatibleProvider(record)) throw new Error('PROVIDER_UNVERIFIED')
     const adapter = registry.get(record.kernelId)
     const executablePath = executableFor(record)
     if (!executablePath) throw new Error('KERNEL_UNAVAILABLE')
@@ -404,6 +424,8 @@ export function createKernelService(
     if (!manifest.package || !root) return Promise.reject(new Error('PLATFORM_UNSUPPORTED'))
     if (executableFor({ kernelId: id }))
       return Promise.resolve(list().find((item) => item.id === id)!)
+    if (manifest.sourceType !== 'custom' && !isPinnedOfficialPackage(manifest))
+      return Promise.reject(new Error('RELEASE_UNREVIEWED'))
     const controller = new AbortController()
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60_000)])
     const promise = (async () => {
@@ -496,6 +518,7 @@ export function createKernelService(
     registry,
     list,
     executableFor,
+    hasCompatibleProvider,
     buildLaunchPlan,
     observeCdp,
     install,

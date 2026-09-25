@@ -24,7 +24,10 @@ export function createEnvironmentService(
     create(input: unknown, environmentId = `env-${randomUUID()}`) {
       const parsed = createEnvironmentInputSchema.parse(input)
       const kernel = kernels.list().find((item) => item.id === parsed.kernelId)
-      if (!kernel || !['native', 'verified'].includes(kernel.providerStatus))
+      if (
+        !kernel ||
+        !kernels.hasCompatibleProvider({ kernelId: kernel.id, kernelVersion: kernel.version })
+      )
         throw new Error('PROVIDER_UNVERIFIED')
       if (kernel.status !== 'available') throw new Error('KERNEL_UNAVAILABLE')
       const kernelConfig = isFingerprintKernel(kernel.id)

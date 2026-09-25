@@ -5,7 +5,7 @@ import {
   type TargetArchitecture,
 } from '@contextweave/contracts'
 import type { CatalogEntry } from './kernel-catalog'
-import { providerManifest } from './kernel-providers'
+import { providerManifest, supportsFingerprintVersion } from './kernel-providers'
 
 export function publicDownloadSource(url: string): string {
   const parsed = new URL(url)
@@ -22,8 +22,7 @@ export function createCustomKernelEntry(
   const base = providerManifest(parsed.providerId, platform, arch)
   if (!parsed.trustedSource || !parsed.version || !parsed.sha256)
     throw new Error('CUSTOM_SOURCE_DETAILS_REQUIRED')
-  if (![136, 138, 139, 142, 144, 148].includes(Number(parsed.version.split('.')[0])))
-    throw new Error('ADAPTER_UNSUPPORTED')
+  if (!supportsFingerprintVersion(parsed.version)) throw new Error('ADAPTER_UNSUPPORTED')
   if (!(platform === 'win32' && arch === 'x64') && !(platform === 'darwin' && arch === 'arm64'))
     throw new Error('PLATFORM_UNSUPPORTED')
   const sha256 = parsed.sha256.toLowerCase()

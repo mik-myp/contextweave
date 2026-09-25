@@ -141,7 +141,7 @@ describe('managed kernel deletion', () => {
     await cancelled
     await expect(f.kernels.remove(f.manifest.id)).resolves.toBe(true)
   })
-  it('keeps a deleted pinned official version selectable after restart when absent from the current catalog', async () => {
+  it('retains a deleted legacy version without allowing unreviewed redownload after restart', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
     const f = fixture('142.0.7444.175')
     f.environment()
@@ -152,7 +152,8 @@ describe('managed kernel deletion', () => {
     expect(catalog.releases.find((item) => item.id === f.manifest.id)).toMatchObject({
       retained: true,
       installed: false,
-      installable: true,
+      installable: false,
+      reason: 'RELEASE_UNREVIEWED',
     })
   })
   it('keeps disabled, retryable metadata if DB cleanup fails after file deletion, including restart', async () => {

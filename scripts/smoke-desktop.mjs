@@ -1,3 +1,4 @@
+import { installRuntimeDiagnostics, readRuntimeDiagnostics, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
 import { connectManagedBrowser } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
@@ -166,6 +167,7 @@ try {
     await once(fixtureServer, 'listening')
     const fixtureUrl = `http://127.0.0.1:${fixtureServer.address().port}`
     const screenshots = []
+    await installRuntimeDiagnostics(desktop)
     const created = await page.evaluate(() =>
       window.contextweave.environment.create({
         name: 'Desktop smoke fixture',
@@ -222,6 +224,7 @@ try {
         JSON.stringify({
           run,
           started,
+          control: started.ok ? undefined : await readRuntimeDiagnostics(desktop),
           environment: await page.evaluate((id) => window.contextweave.environment.get(id), id),
         }),
       )
@@ -264,6 +267,9 @@ try {
         console.error(JSON.stringify({ missingIdentityPid: lock.pid, diagnostic }))
       }
       assert(lock.processIdentity, 'New locks must capture the OS process start identity')
+      const processEvidence = (await readRuntimeDiagnostics(desktop)).find((record) => record.pid === lock.pid)
+      assert(processEvidence && processEvidence.sentBytes > 0 && processEvidence.receivedBytes > 0, 'The actual owned browser must exchange data on its private pipe')
+      assert.deepEqual(processEvidence.controlArguments, ['--remote-debugging-pipe'])
       const browser = await connectManagedBrowser(desktop, id, lock.controlPort)
       const context = browser.contexts()[0]
       const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]
@@ -359,7 +365,7 @@ try {
       } while (Date.now() < closeDeadline)
       assert(
         stopped.ok && stopped.data.status === 'stopped',
-        'Closing the browser must stop the environment without a manual stop command',
+        JSON.stringify({ message: 'Closing the browser must stop the environment without a manual stop command', run, stopped, control: await readRuntimeDiagnostics(desktop), sessions: (await page.evaluate(() => window.contextweave.activity.list())).data }),
       )
     }
     assert.equal(new Set(screenshots).size, 2, 'Every task must have a separately allocated output')
@@ -395,6 +401,8 @@ try {
         credentialMaintenance: 'passed',
         batchProxyImport: 'passed',
         nativeLifecycle: 'passed',
+        nativeExecutable: (await readRuntimeDiagnostics(desktop))[0]?.executable,
+        executableVersion: sessions.data[0].executableVersion,
         reopen: 'passed',
         restoredTabs: 'passed',
         browserCloseStops: 'passed',
@@ -430,6 +438,7 @@ try {
     console.log(JSON.stringify({ destroyedWindowSecondInstance: 'passed', macActivate: 'passed' }))
   }
 } finally {
+  await restoreRuntimeDiagnostics(desktop)
   try {
     if (id) {
       const page = await desktop.firstWindow()

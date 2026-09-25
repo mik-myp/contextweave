@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerService } from './worker-service'
 
+const leaseControl = () => ({ access: { port: 9222, token: 'a'.repeat(64) }, revoke: vi.fn() })
 const directories: string[] = []
 const services: ReturnType<typeof createWorkerService>[] = []
 afterEach(() => {
@@ -51,13 +52,19 @@ function setup() {
     })
   `,
   )
+  const leases: ReturnType<typeof leaseControl>[] = []
+  const acquire = vi.fn(() => {
+    const lease = leaseControl()
+    leases.push(lease)
+    return lease
+  })
   const service = createWorkerService(
-    { session: (id) => (id === 'env-test' ? { port: 9222 } : undefined) },
+    { session: (id) => (id === 'env-test' ? {} : undefined), leaseControl: acquire },
     workerPath,
     outputRoot,
   )
   services.push(service)
-  return { service, outputRoot, directory }
+  return { service, outputRoot, directory, leases, acquire }
 }
 function task(taskId = 'task-test', mode = '/ok') {
   return {
@@ -70,6 +77,31 @@ function task(taskId = 'task-test', mode = '/ok') {
 }
 
 describe('worker service output boundary', () => {
+  it('revokes private control leases on success, protocol failure and cancellation', async () => {
+    const { service, leases, outputRoot } = setup()
+    await service.run(task('one'))
+    await service.run(task('two', '/mismatch'))
+    const waiting = service.run(task('three', '/wait'))
+    await vi.waitFor(() =>
+      expect(
+        readdirSync(outputRoot).some((name) =>
+          readFileSync(join(outputRoot, name, 'screenshot.png'), 'utf8').match(/^\d+$/),
+        ),
+      ).toBe(true),
+    )
+    service.cancel('three')
+    await waiting
+    expect(leases).toHaveLength(3)
+    for (const lease of leases) expect(lease.revoke).toHaveBeenCalled()
+  })
+  it('discards its owned output if the environment stops before a private lease is acquired', async () => {
+    const { service, outputRoot, acquire } = setup()
+    acquire.mockImplementation(() => {
+      throw new Error('ENVIRONMENT_NOT_RUNNING')
+    })
+    expect(await service.run(task())).toMatchObject({ ok: false, code: 'WORKER_FAILED' })
+    expect(readdirSync(outputRoot)).toEqual([])
+  })
   it('returns only Main-owned screenshots and isolates repeated task IDs', async () => {
     const { service, outputRoot } = setup()
     const first = await service.run(task())
@@ -186,7 +218,7 @@ describe('worker service output boundary', () => {
   it('cleans output after a process fails to run the worker entry', async () => {
     const { directory, outputRoot } = setup()
     const service = createWorkerService(
-      { session: () => ({ port: 9222 }) },
+      { session: () => ({}), leaseControl },
       join(directory, 'missing.cjs'),
       outputRoot,
     )

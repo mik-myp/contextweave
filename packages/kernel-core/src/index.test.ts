@@ -33,7 +33,7 @@ const adapter: BrowserKernelAdapter = {
     executablePath: 'chrome.exe',
     args: [],
     userDataDir: 'data',
-    controlPort: 9222,
+    controlTransport: 'pipe',
   }),
   getCapabilities: () => adapter.getManifest().capabilities,
 }
@@ -44,7 +44,6 @@ describe('kernel core', () => {
       buildChromiumArgs({
         environmentId: 'env-test',
         userDataDir: 'C:\\data',
-        controlPort: 9222,
         executablePath: 'chrome.exe',
         proxyArgs: ['--proxy-server=http://127.0.0.1:8080'],
         commonArgs: ['--lang=zh-CN'],
@@ -52,8 +51,7 @@ describe('kernel core', () => {
       }),
     ).toEqual([
       '--user-data-dir=C:\\data',
-      '--remote-debugging-port=9222',
-      '--remote-debugging-address=127.0.0.1',
+      '--remote-debugging-pipe',
       '--no-first-run',
       '--no-default-browser-check',
       '--restore-last-session',
@@ -63,6 +61,11 @@ describe('kernel core', () => {
       '--lang=zh-CN',
       '--kernel-test=true',
     ])
+  })
+
+  it.each(['proxyArgs', 'commonArgs', 'kernelArgs'] as const)('rejects a debug transport override in %s', (key) => {
+    const input = { environmentId: 'env', userDataDir: '/profile', executablePath: 'chrome', proxyArgs: [], commonArgs: [], kernelArgs: [], [key]: ['--remote-debugging-port=9222'] }
+    expect(() => buildChromiumArgs(input)).toThrow('CONTROL_TRANSPORT_OVERRIDE')
   })
 
   it('rejects duplicate adapter ids and unknown lookups', () => {

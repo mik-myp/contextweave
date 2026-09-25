@@ -193,6 +193,8 @@ export const lifecycleMessages = {
   'error.BROWSER_PROFILE_UNSAFE':
     '浏览器配置目录或文件不是受支持的普通目录/文件，已停止写入。请先备份并检查链接或异常文件。',
   'error.START_FAILED': '浏览器启动失败，请查看预检和运行记录。',
+  'error.CONTROL_UNAVAILABLE': '浏览器私有控制连接不可用，请停止或恢复环境后重试。',
+  'error.CONTROL_PIPE_UNAVAILABLE': '该浏览器无法建立私有控制管道，请使用受支持的内核。',
   'error.CONTROL_TIMEOUT': '浏览器控制连接超时，请检查内核或恢复环境。',
   'error.STOP_TIMEOUT': '浏览器未能停止，已保留运行锁，请手动关闭后恢复。',
   'error.SPAWN_FAILED': '无法创建浏览器进程，请检查内核和权限。',

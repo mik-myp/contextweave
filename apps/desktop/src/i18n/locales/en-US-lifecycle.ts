@@ -232,6 +232,10 @@ export const lifecycleMessages = {
   'error.BROWSER_PROFILE_UNSAFE':
     'The browser preferences directory or file is not a supported regular directory/file. Writing stopped. Back up the environment and inspect links or unusual files.',
   'error.START_FAILED': 'Browser launch failed. Review preflight and runtime history.',
+  'error.CONTROL_UNAVAILABLE':
+    'Private browser control is unavailable. Stop or recover the environment and retry.',
+  'error.CONTROL_PIPE_UNAVAILABLE':
+    'This browser cannot establish a private control pipe. Use a supported kernel.',
   'error.CONTROL_TIMEOUT':
     'The browser control connection timed out. Check the kernel or recover the environment.',
   'error.STOP_TIMEOUT':

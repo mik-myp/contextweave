@@ -1,11 +1,9 @@
 import { applyIpLocale, type IpLocaleService } from './ip-locale'
 import { openProxyTransport, type ProxyTransport } from './proxy-transport'
-import { closeBrowserGracefully } from './browser-close'
+import { createBrowserControl, type BrowserControl } from './browser-control'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { z } from 'zod'
 import {
   environmentConfigSchema,
   type EnvironmentSummary,
@@ -30,7 +28,7 @@ import { ok, fail, toSummary } from './result'
 
 type Session = {
   child: ChildProcess
-  port: number
+  control: BrowserControl
   sessionId: string
   dataDir: string
   stopReason?: 'USER_STOPPED' | 'BROWSER_CLOSED'
@@ -42,10 +40,11 @@ type Session = {
   closeSettings?: () => void
 }
 type RuntimeDriver = {
+  openControl(): Promise<BrowserControl>
   launch(plan: LaunchPlan): ChildProcess
-  ready(port: number, signal: AbortSignal): Promise<string | undefined>
+  ready(control: BrowserControl, signal: AbortSignal): Promise<string | undefined>
   settings: typeof connectBrowserSettings
-  close?: (port: number) => Promise<void>
+  close?: (control: BrowserControl) => Promise<void>
 }
 export function isChildRunning(child: ChildProcess) {
   return child.exitCode === null && child.signalCode === null
@@ -79,43 +78,16 @@ export async function waitForChildExit(child: ChildProcess, timeoutMs = 3000): P
     child.once('exit', onExit)
   })
 }
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      if (!address || typeof address === 'string') {
-        server.close()
-        reject(new Error('PORT_ALLOCATION_FAILED'))
-        return
-      }
-      server.close((error) => (error ? reject(error) : resolve(address.port)))
-    })
-  })
-}
-export async function waitForCdp(port: number, signal: AbortSignal): Promise<string | undefined> {
-  // A fresh profile can take longer on cold or busy machines. Cancellation stays immediate.
-  const deadline = Date.now() + 30000
-  while (Date.now() < deadline) {
-    signal.throwIfAborted()
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(700)]),
-      })
-      if (response.ok) return z.object({ Browser: z.string() }).parse(await response.json()).Browser
-    } catch {
-      signal.throwIfAborted()
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
-  throw new Error('CONTROL_TIMEOUT')
-}
 const defaultDriver: RuntimeDriver = {
-  launch: (plan) => spawn(plan.executablePath, plan.args, { stdio: 'ignore', windowsHide: false }),
-  ready: waitForCdp,
+  openControl: createBrowserControl,
+  launch: (plan) =>
+    spawn(plan.executablePath, plan.args, {
+      stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'],
+      windowsHide: false,
+    }),
+  ready: (control, signal) => control.ready(signal),
   settings: connectBrowserSettings,
-  close: closeBrowserGracefully,
+  close: (control) => control.closeBrowser(),
 }
 
 export function createRuntimeSupervisor(options: {
@@ -170,6 +142,7 @@ export function createRuntimeSupervisor(options: {
     const controller = new AbortController()
     starting.set(id, controller)
     let managed: Session | undefined
+    let control: BrowserControl | undefined
     let transport: ProxyTransport | undefined
     let releaseKernel: (() => void) | undefined
     let locked = false
@@ -192,7 +165,8 @@ export function createRuntimeSupervisor(options: {
         repository,
         environmentConfigSchema.parse(JSON.parse(record.configJson)),
       )
-      const port = await freePort()
+      control = await driver.openControl()
+      const port = control.port
       controller.signal.throwIfAborted()
       const startedAt = new Date().toISOString()
       const lock = acquireRuntimeLock(record.dataDir, {
@@ -223,7 +197,7 @@ export function createRuntimeSupervisor(options: {
         config.commonConfig = applyIpLocale(config.commonConfig, locale)
         phase('launch')
       }
-      const plan = kernels.buildLaunchPlan(record, config, port, transport?.args)
+      const plan = kernels.buildLaunchPlan(record, config, transport?.args)
       prepareBrowserProfile(record.dataDir, config.commonConfig.language, Boolean(config.proxy))
       const child = driver.launch(plan)
       child.once('error', () => {
@@ -234,7 +208,7 @@ export function createRuntimeSupervisor(options: {
       const processIdentity = readProcessIdentity(child.pid)
       managed = {
         child,
-        port,
+        control,
         sessionId,
         dataDir: record.dataDir,
         stopRequested: false,
@@ -272,6 +246,7 @@ export function createRuntimeSupervisor(options: {
           controller.abort()
         }
         session.closeSettings?.()
+        session.control.close()
         void session.closeProxy?.()
         if (sessions.get(id) === session) sessions.delete(id)
         const failed = session.startFailed || (code !== 0 && !session.stopRequested)
@@ -293,7 +268,8 @@ export function createRuntimeSupervisor(options: {
         session.releaseKernel()
         changed()
       })
-      const browserVersion = await driver.ready(port, controller.signal)
+      control.attach(child)
+      const browserVersion = await driver.ready(control, controller.signal)
       controller.signal.throwIfAborted()
       if (
         record.kernelVersion !== 'local' &&
@@ -307,8 +283,14 @@ export function createRuntimeSupervisor(options: {
           browserVersion.match(/\d+\.\d+\.\d+\.\d+/)?.[0] ?? browserVersion,
         )
       phase('configure')
-      session.closeSettings = await driver.settings(
-        port,
+      const settingsLease = control.lease()
+      const settingsConnection: { close?: () => void } = {}
+      session.closeSettings = () => {
+        settingsConnection.close?.()
+        settingsLease.revoke()
+      }
+      settingsConnection.close = await driver.settings(
+        settingsLease.access,
         config.commonConfig,
         () => {
           // Closing the browser normally disconnects CDP before the OS reports process exit.
@@ -334,6 +316,7 @@ export function createRuntimeSupervisor(options: {
       changed()
       return ok(toSummary(repository.get(id)!))
     } catch (error) {
+      control?.close()
       await transport?.close()
       const cancelled = controller.signal.aborted && !managed?.startFailed
       if (managed) {
@@ -367,6 +350,8 @@ export function createRuntimeSupervisor(options: {
         'IP_LOCALE_INVALID_RESPONSE',
         'CREDENTIAL_UNAVAILABLE',
         'CONTROL_TIMEOUT',
+        'CONTROL_UNAVAILABLE',
+        'CONTROL_PIPE_UNAVAILABLE',
         'SPAWN_FAILED',
         'PROVIDER_UNVERIFIED',
         'KERNEL_VERSION_MISMATCH',
@@ -382,7 +367,10 @@ export function createRuntimeSupervisor(options: {
       )
     } finally {
       starting.delete(id)
-      if (!managed || !isChildRunning(managed.child)) releaseKernel?.()
+      if (!managed || !isChildRunning(managed.child)) {
+        control?.close()
+        releaseKernel?.()
+      }
     }
   }
   function start(id: string, phase?: (value: string) => void) {
@@ -409,7 +397,7 @@ export function createRuntimeSupervisor(options: {
     changed()
     session.closeSettings?.()
     try {
-      await driver.close?.(session.port)
+      await driver.close?.(session.control)
     } catch {
       /* Fall back to the owned child handle. */
     }
@@ -423,6 +411,7 @@ export function createRuntimeSupervisor(options: {
         return fail('STOP_TIMEOUT')
       }
     }
+    session.control.close()
     await session.closeProxy?.()
     sessions.delete(id)
     releaseRuntimeLock(record.dataDir, session.sessionId)
@@ -474,6 +463,12 @@ export function createRuntimeSupervisor(options: {
     },
     cancelStart: (id: string) => starting.get(id)?.abort(),
     session: (id: string) => sessions.get(id),
+    leaseControl(id: string) {
+      const session = sessions.get(id)
+      if (!session || session.stopRequested || session.startFailed || starting.has(id))
+        throw new Error('ENVIRONMENT_NOT_RUNNING')
+      return session.control.lease()
+    },
     async shutdown() {
       shuttingDown = true
       for (const controller of starting.values()) controller.abort()

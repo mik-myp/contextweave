@@ -3,6 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connectBrowserSettings, prepareBrowserProfile } from './browser-settings'
+vi.mock('ws', () => ({
+  default: class {
+    constructor(url: string, options: unknown) {
+      return Reflect.construct(globalThis.WebSocket, [url, options])
+    }
+  },
+}))
+const access = { port: 9222, token: 'a'.repeat(64) }
 
 type Command = { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
 class MockSocket extends EventTarget {
@@ -85,7 +93,7 @@ describe('browser settings runtime', () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     const close = await connectBrowserSettings(
-      9222,
+      access,
       { ...settings, language: 'system', timezone: 'system' },
       vi.fn(),
     )
@@ -95,7 +103,7 @@ describe('browser settings runtime', () => {
   it('applies settings before resuming existing and future targets, and reports lost connections once', async () => {
     mockCdp()
     const failure = vi.fn()
-    const close = await connectBrowserSettings(9222, settings, failure)
+    const close = await connectBrowserSettings(access, settings, failure)
     const socket = MockSocket.instance
     expect(
       socket.commands
@@ -136,7 +144,7 @@ describe('browser settings runtime', () => {
       original.call(this, text)
     })
     const failure = vi.fn()
-    await expect(connectBrowserSettings(9222, settings, failure)).rejects.toThrow(
+    await expect(connectBrowserSettings(access, settings, failure)).rejects.toThrow(
       'Invalid timezone',
     )
     vi.restoreAllMocks()
@@ -146,7 +154,7 @@ describe('browser settings runtime', () => {
 
 it('only supplies credentials to the configured proxy, never an origin, and cancels repeated challenges', async () => {
   mockCdp()
-  const close = await connectBrowserSettings(9222, settings, vi.fn(), {
+  const close = await connectBrowserSettings(access, settings, vi.fn(), {
     host: '127.0.0.1',
     port: 8080,
     username: 'fixture-user',
@@ -194,7 +202,7 @@ it('stops only after the last top-level page disappears, not during a short tab 
   const empty = vi.fn(),
     fail = vi.fn()
   const close = await connectBrowserSettings(
-    9222,
+    access,
     { ...settings, language: 'system', timezone: 'system' },
     fail,
     undefined,
@@ -223,7 +231,7 @@ it('stops only after the last top-level page disappears, not during a short tab 
 it('uses explicit request-stage HTTP patterns; authentication never waits for page response bodies', async () => {
   mockCdp()
   const failure = vi.fn()
-  const close = await connectBrowserSettings(9222, settings, failure, {
+  const close = await connectBrowserSettings(access, settings, failure, {
     username: 'u',
     password: 'p',
     host: '127.0.0.1',
@@ -260,7 +268,7 @@ it('uses explicit request-stage HTTP patterns; authentication never waits for pa
 it('ignores a cancelled request ID but does not hide a real authentication/control error', async () => {
   mockCdp()
   const failure = vi.fn()
-  const close = await connectBrowserSettings(9222, settings, failure)
+  const close = await connectBrowserSettings(access, settings, failure)
   const original = MockSocket.prototype.send
   let error = 'Invalid InterceptionId.'
   vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
@@ -297,7 +305,7 @@ it('ignores a cancelled request ID but does not hide a real authentication/contr
 it('settles pending commands when their target detaches instead of failing the whole runtime', async () => {
   mockCdp()
   const failure = vi.fn()
-  const close = await connectBrowserSettings(9222, settings, failure)
+  const close = await connectBrowserSettings(access, settings, failure)
   const original = MockSocket.prototype.send
   vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
     this: MockSocket,
@@ -344,7 +352,7 @@ it('cancels during configuration without reporting a runtime failure or leaving 
   const controller = new AbortController(),
     failure = vi.fn()
   const opening = connectBrowserSettings(
-    9222,
+    access,
     settings,
     failure,
     undefined,
@@ -377,7 +385,7 @@ it('still fails a genuinely unresponsive control command within a bounded deadli
   })
   vi.useFakeTimers()
   try {
-    const opening = connectBrowserSettings(9222, settings, vi.fn())
+    const opening = connectBrowserSettings(access, settings, vi.fn())
     const failure = expect(opening).rejects.toThrow(
       'command timed out: Emulation.setTimezoneOverride',
     )

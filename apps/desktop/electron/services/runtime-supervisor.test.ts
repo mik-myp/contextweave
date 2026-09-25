@@ -1,3 +1,4 @@
+import type { BrowserControl } from './browser-control'
 import { createIpLocaleService, parseIpLocale } from './ip-locale'
 import { ChildProcess } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -79,7 +80,7 @@ function fixture(
     executablePath: 'fixture',
     args: [],
     userDataDir: dir,
-    controlPort: 9000,
+    controlTransport: 'pipe',
   })
   const preflight = vi.fn<() => Promise<PreflightReport>>().mockResolvedValue({
     environmentId: 'env-a',
@@ -89,10 +90,19 @@ function fixture(
     issues: [],
     executableVersion: '123.0.0.1',
   })
+  const control: BrowserControl = {
+    port: 9000,
+    attach: vi.fn(),
+    close: vi.fn(),
+    ready: vi.fn(),
+    closeBrowser: vi.fn(),
+    lease: vi.fn(() => ({ access: { port: 9000, token: 'a'.repeat(64) }, revoke: vi.fn() })),
+  }
   const driver = {
+    openControl: vi.fn(async () => control),
     launch: vi.fn(() => child),
     ready: vi
-      .fn<(port: number, signal: AbortSignal) => Promise<string | undefined>>()
+      .fn<(control: BrowserControl, signal: AbortSignal) => Promise<string | undefined>>()
       .mockResolvedValue('Chrome/123.0.0.1'),
     settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
     // Ordinary stop tests should model Browser.close, not spend three seconds
@@ -132,9 +142,22 @@ function fixture(
     }
     await runtime.shutdown()
   })
-  return { dir, repository, child, runtime, driver, preflight, detect, kernels }
+  return { dir, repository, child, runtime, driver, preflight, detect, kernels, control }
 }
 describe('runtime supervisor', () => {
+  it('issues only Main leases for a fully running environment and never persists tokens', async () => {
+    const f = fixture()
+    expect(() => f.runtime.leaseControl('env-a')).toThrow('ENVIRONMENT_NOT_RUNNING')
+    expect((await f.runtime.start('env-a')).ok).toBe(true)
+    const lease = f.runtime.leaseControl('env-a')
+    expect(lease.access).toEqual({ port: 9000, token: 'a'.repeat(64) })
+    expect(readFileSync(runtimeLockPath(f.dir), 'utf8')).not.toContain('token')
+    expect(JSON.stringify(f.repository.listRuntimeSessions())).not.toContain('token')
+    expect(f.control.attach).toHaveBeenCalledWith(f.child)
+    expect((await f.runtime.stop('env-a')).ok).toBe(true)
+    expect(f.control.close).toHaveBeenCalled()
+    expect(() => f.runtime.leaseControl('env-a')).toThrow('ENVIRONMENT_NOT_RUNNING')
+  })
   it('preserves corrupt preferences, reports the specific error, and never spawns a browser', async () => {
     const f = fixture()
     mkdirSync(join(f.dir, 'Default'))
@@ -146,6 +169,7 @@ describe('runtime supervisor', () => {
       code: 'BROWSER_PREFERENCES_INVALID',
     })
     expect(f.driver.launch).not.toHaveBeenCalled()
+    expect(f.control.close).toHaveBeenCalled()
     expect(readFileSync(path, 'utf8')).toBe(original)
     expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
     expect(f.repository.get('env-a')?.status).toBe('error')
@@ -167,7 +191,7 @@ describe('runtime supervisor', () => {
         timezone: 'Asia/Tokyo',
       })
       expect(f.driver.settings).toHaveBeenCalledWith(
-        expect.any(Number),
+        { port: 9000, token: 'a'.repeat(64) },
         expect.objectContaining({ language: 'ja-JP', timezone: 'Asia/Tokyo' }),
         expect.any(Function),
         type ? expect.objectContaining({ host: '127.0.0.1' }) : undefined,

@@ -1,3 +1,4 @@
+import { connectManagedBrowser } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
 import { findPackagedArchive } from './release-tools.mjs'
@@ -13,7 +14,7 @@ import assert from 'node:assert/strict'
 // A trailing Windows backslash escapes the launcher's closing argument quote.
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
-const { _electron, chromium } = require('playwright-core')
+const { _electron } = require('playwright-core')
 const directory = await mkdtemp(join(tmpdir(), 'cw-desktop-smoke-'))
 // Run the exact ASAR with the matching Electron runtime outside the repository, so missing
 // production dependencies cannot accidentally resolve from workspace node_modules. This is
@@ -42,6 +43,7 @@ try {
     undefined,
     { timeout: 10000 },
   )
+  assert.equal(await page.evaluate(() => typeof window.contextweave.acquireControlLease), 'undefined')
   assert.equal(
     await page.evaluate(() => typeof window.__electronLog),
     'undefined',
@@ -262,7 +264,7 @@ try {
         console.error(JSON.stringify({ missingIdentityPid: lock.pid, diagnostic }))
       }
       assert(lock.processIdentity, 'New locks must capture the OS process start identity')
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
+      const browser = await connectManagedBrowser(desktop, id, lock.controlPort)
       const context = browser.contexts()[0]
       const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]
       if (run === 0) {
@@ -400,6 +402,7 @@ try {
         duplicateLaunch: 'blocked',
         runningDelete: 'blocked',
         workerScreenshot: 'passed-main-owned-descriptor',
+        privateControl: 'pipe-with-one-use-authenticated-broker',
         sessions: sessions.data.length,
         platform: process.platform,
         arch: process.arch,

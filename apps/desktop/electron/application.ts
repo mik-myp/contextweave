@@ -253,6 +253,8 @@ export function createApplication(options: {
   ])
   return {
     channels: Object.keys(handlers),
+    // Host-side capability; intentionally absent from handlers and the Preload whitelist.
+    acquireControlLease: (environmentId: string) => runtime.leaseControl(environmentId),
     setUpdating(value: boolean) {
       updating = value
     },

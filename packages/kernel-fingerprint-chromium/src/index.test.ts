@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FingerprintChromiumAdapter, createFingerprintChromiumManifest } from './index'
-const input = { environmentId: 'env-test', userDataDir: '/isolated/data', controlPort: 9333, executablePath: 'chromium', proxyArgs: [], commonArgs: ['--timezone=Asia/Shanghai'], kernelArgs: [] }
+const input = { environmentId: 'env-test', userDataDir: '/isolated/data', executablePath: 'chromium', proxyArgs: [], commonArgs: ['--timezone=Asia/Shanghai'], kernelArgs: [] }
 describe('fingerprint Chromium adapter', () => {
   it('reuses the persisted seed and only emits real upstream parameters', () => {
     const adapter = new FingerprintChromiumAdapter(createFingerprintChromiumManifest('darwin', 'arm64'))

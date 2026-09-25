@@ -31,7 +31,7 @@ const RENDERER_ENTRY_URL =
 const targetPlatform = platformSchema.parse(process.platform)
 const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
-let application: ReturnType<typeof createApplication> | undefined
+export let application: ReturnType<typeof createApplication> | undefined
 let updates: ReturnType<typeof createAppUpdateService> | undefined
 let isQuitting = false
 const hasInstanceLock = app.requestSingleInstanceLock()

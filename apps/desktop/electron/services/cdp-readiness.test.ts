@@ -1,51 +1,44 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { waitForCdp } from './runtime-supervisor'
+import { createBrowserControl } from './browser-control'
+import { controlFixture } from './fixtures/browser-control'
 
+const cleanup: (() => void)[] = []
 afterEach(() => {
-  vi.unstubAllGlobals()
+  for (const close of cleanup.splice(0)) close()
   vi.useRealTimers()
 })
-
-describe('browser control readiness', () => {
-  it('allows a cold browser to become ready after the old eight-second deadline', async () => {
+async function fixture() {
+  const control = await createBrowserControl(),
+    browser = controlFixture()
+  cleanup.push(control.close)
+  control.attach(browser.child)
+  browser.handle((message) => message.method === 'Browser.getVersion')
+  return { control, browser }
+}
+describe('private browser control readiness', () => {
+  it('allows a cold browser to acknowledge its private pipe after the old eight-second deadline', async () => {
+    const { control, browser } = await fixture()
     vi.useFakeTimers()
-    const readyAt = Date.now() + 12000
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>().mockImplementation(async () => {
-        if (Date.now() < readyAt) throw new Error('connection refused')
-        return new Response(JSON.stringify({ Browser: 'Chrome/153.0.0.0' }))
-      }),
-    )
-    const ready = waitForCdp(9222, new AbortController().signal)
+    const ready = control.ready(new AbortController().signal)
     await vi.advanceTimersByTimeAsync(12000)
+    browser.emit({ id: browser.commands[0].id, result: { product: 'Chrome/153.0.0.0' } })
     expect(await ready).toBe('Chrome/153.0.0.0')
   })
-
-  it('still fails after the bounded startup deadline', async () => {
+  it('still fails after the bounded startup deadline and closes the broker', async () => {
+    const { control } = await fixture()
     vi.useFakeTimers()
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('connection refused')))
-    const result = expect(waitForCdp(9222, new AbortController().signal)).rejects.toThrow(
+    const result = expect(control.ready(new AbortController().signal)).rejects.toThrow(
       'CONTROL_TIMEOUT',
     )
     await vi.advanceTimersByTimeAsync(30000)
     await result
+    expect(() => control.lease()).toThrow('CONTROL_UNAVAILABLE')
   })
-
-  it('aborts an in-flight readiness request when startup is cancelled', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>().mockImplementation(
-        (_url, options) =>
-          new Promise<Response>((_resolve, reject) => {
-            const signal = options?.signal
-            signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
-          }),
-      ),
-    )
+  it('cancels an in-flight pipe request immediately without HTTP polling', async () => {
+    const { control } = await fixture()
     const controller = new AbortController()
-    const result = expect(waitForCdp(9222, controller.signal)).rejects.toThrow('cancelled')
-    controller.abort(new Error('cancelled'))
+    const result = expect(control.ready(controller.signal)).rejects.toThrow('CONTROL_CANCELLED')
+    controller.abort()
     await result
   })
 })

@@ -365,7 +365,6 @@ export function createKernelService(
   function buildLaunchPlan(
     record: EnvironmentRecord,
     config: EnvironmentConfig,
-    port: number,
     proxyArgs?: string[],
   ): LaunchPlan {
     if (config.commonConfig.language === 'auto' || config.commonConfig.timezone === 'auto')
@@ -380,7 +379,6 @@ export function createKernelService(
       {
         environmentId: record.environmentId,
         userDataDir: record.dataDir,
-        controlPort: port,
         executablePath,
         proxyArgs:
           proxyArgs ??

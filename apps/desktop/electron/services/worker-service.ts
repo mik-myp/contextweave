@@ -1,3 +1,4 @@
+import type { BrowserControlLease } from './browser-control-access'
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
   maxWorkerProtocolBytes,
@@ -10,7 +11,7 @@ import { terminateChild } from './runtime-supervisor'
 import { ok, fail } from './result'
 import { createWorkerOutput } from './worker-output'
 export function createWorkerService(
-  runtime: { session(id: string): { port: number } | undefined },
+  runtime: { session(id: string): unknown; leaseControl(id: string): BrowserControlLease },
   workerPath: string,
   outputRoot: string,
 ) {
@@ -28,7 +29,7 @@ export function createWorkerService(
         workers.has(task.taskId)
       )
         return fail('WORKER_BUSY')
-      const request = workerProcessRequestSchema.parse({ task, controlPort: session.port })
+
       let outputFile: ReturnType<typeof createWorkerOutput>
       try {
         outputFile = createWorkerOutput(outputRoot)
@@ -36,7 +37,11 @@ export function createWorkerService(
         return fail('WORKER_OUTPUT_UNAVAILABLE')
       }
       let child: ChildProcess
+      let lease: BrowserControlLease | undefined
+      let request: ReturnType<typeof workerProcessRequestSchema.parse>
       try {
+        lease = runtime.leaseControl(task.environmentId)
+        request = workerProcessRequestSchema.parse({ task, control: lease.access })
         child = spawn(process.execPath, [workerPath], {
           env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
           // Descriptor 3 is the only screenshot destination the worker receives.
@@ -44,6 +49,7 @@ export function createWorkerService(
           windowsHide: true,
         })
       } catch {
+        lease?.revoke()
         outputFile.discard()
         return fail('WORKER_FAILED')
       } finally {
@@ -60,6 +66,7 @@ export function createWorkerService(
           ) => {
             if (settled) return
             settled = true
+            lease?.revoke()
             clearTimeout(timer)
             workers.delete(task.taskId)
             if (!result.ok || !result.data.ok) {
@@ -75,6 +82,7 @@ export function createWorkerService(
           const stop = (code: string) => {
             if (settled || stopResult) return
             stopResult = fail(code)
+            lease?.revoke()
             terminateChild(child, 'SIGKILL')
             // Retain ownership until close: the child may still hold the output fd on Windows.
           }

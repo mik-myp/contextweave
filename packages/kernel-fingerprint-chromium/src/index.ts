@@ -47,7 +47,7 @@ export class FingerprintChromiumAdapter implements BrowserKernelAdapter<Fingerpr
         `--fingerprint-platform=${identity.platform}`,
         `--fingerprint-hardware-concurrency=${identity.hardwareConcurrency}`,
       ] }),
-      userDataDir: input.userDataDir, controlPort: input.controlPort,
+      userDataDir: input.userDataDir, controlTransport: 'pipe',
     }
   }
   getCapabilities() { return this.manifest.capabilities }

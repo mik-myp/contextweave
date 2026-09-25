@@ -87,7 +87,7 @@ export class StandardChromiumAdapter implements BrowserKernelAdapter<StandardChr
       executablePath: input.executablePath,
       args: buildChromiumArgs({ ...input, commonArgs, kernelArgs: [] }),
       userDataDir: input.userDataDir,
-      controlPort: input.controlPort,
+      controlTransport: 'pipe',
     }
   }
 

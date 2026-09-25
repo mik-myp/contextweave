@@ -1,3 +1,5 @@
+import WebSocket from 'ws'
+import { browserControlUrl, type BrowserControlAccess } from './services/browser-control-access'
 import { z } from 'zod'
 import type { BrowserSettings } from '@contextweave/contracts'
 
@@ -31,7 +33,7 @@ type PendingCommand = {
 
 /** Keep a CDP session for settings on existing pages, new tabs and cross-origin frames. */
 export async function connectBrowserSettings(
-  port: number,
+  access: BrowserControlAccess,
   settings: BrowserSettings,
   onFailure: (error: Error) => void,
   proxy?: { username: string; password: string; host: string; port: number },
@@ -43,21 +45,12 @@ export async function connectBrowserSettings(
     throw new Error('IP_LOCALE_FAILED')
   const needsOverrides = !!proxy || settings.language !== 'system' || settings.timezone !== 'system'
   if (!needsOverrides && !onNoPages) return () => {}
-  const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-    signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]),
+  const socket = new WebSocket(browserControlUrl(access), {
+    headers: { Authorization: `Bearer ${access.token}` },
+    handshakeTimeout: 5000,
+    maxPayload: 64 * 1024 * 1024,
+    perMessageDeflate: false,
   })
-  const { webSocketDebuggerUrl } = z
-    .object({ webSocketDebuggerUrl: z.string().url() })
-    .parse(await response.json())
-  const endpoint = new URL(webSocketDebuggerUrl)
-  if (
-    !['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname) ||
-    endpoint.port !== String(port) ||
-    endpoint.protocol !== 'ws:'
-  ) {
-    throw new Error('Browser settings require a local control endpoint')
-  }
-  const socket = new WebSocket(endpoint)
   const pending = new Map<number, PendingCommand>()
   const attached = new Set<string>()
   const initializing = new Set<Promise<void>>()

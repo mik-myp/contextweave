@@ -78,18 +78,22 @@ describe('private Main / Worker envelopes', () => {
     input: { url: 'http://127.0.0.1/' },
   }
 
-  it('accepts only a valid local control port, not caller-supplied connection URLs', () => {
-    expect(workerProcessRequestSchema.safeParse({ task, controlPort: 9222 }).success).toBe(true)
-    for (const controlPort of [0, -1, 65536, 1.5, '9222']) {
-      expect(workerProcessRequestSchema.safeParse({ task, controlPort }).success).toBe(false)
+  it('accepts only a Main-issued port/token pair, not caller-supplied connection URLs', () => {
+    expect(workerProcessRequestSchema.safeParse({ task, controlPort: 9222 }).success).toBe(false)
+    for (const token of ['', 'short', 'a'.repeat(65), 'A'.repeat(64), 'x\r\nAuthorization: stolen']) {
+      expect(workerProcessRequestSchema.safeParse({ task, control: { port: 9222, token } }).success).toBe(false)
     }
-    expect(workerProcessRequestSchema.safeParse({ task, controlPort: 9222, controlUrl: 'http://other/' }).success).toBe(false)
+    expect(workerProcessRequestSchema.safeParse({ task, control: { port: 9222, token: 'a'.repeat(64) } }).success).toBe(true)
+    for (const controlPort of [0, -1, 65536, 1.5, '9222']) {
+      expect(workerProcessRequestSchema.safeParse({ task, control: { port: controlPort, token: 'a'.repeat(64) } }).success).toBe(false)
+    }
+    expect(workerProcessRequestSchema.safeParse({ task, control: { port: 9222, token: 'a'.repeat(64) }, controlUrl: 'http://other/' }).success).toBe(false)
   })
 
   it('also rejects task traversal and output paths inside the worker process', () => {
-    expect(workerProcessRequestSchema.safeParse({ task: { ...task, taskId: '../outside' }, controlPort: 9222 }).success).toBe(false)
-    expect(workerProcessRequestSchema.safeParse({ task, controlPort: 9222, outputDirectory: '/outside' }).success).toBe(false)
-    expect(workerProcessRequestSchema.safeParse({ task: { ...task, input: { ...task.input, screenshotPath: '/outside' } }, controlPort: 9222 }).success).toBe(false)
+    expect(workerProcessRequestSchema.safeParse({ task: { ...task, taskId: '../outside' }, control: { port: 9222, token: 'a'.repeat(64) } }).success).toBe(false)
+    expect(workerProcessRequestSchema.safeParse({ task, control: { port: 9222, token: 'a'.repeat(64) }, outputDirectory: '/outside' }).success).toBe(false)
+    expect(workerProcessRequestSchema.safeParse({ task: { ...task, input: { ...task.input, screenshotPath: '/outside' } }, control: { port: 9222, token: 'a'.repeat(64) } }).success).toBe(false)
   })
 
   it('allows only Main to attach a screenshot path to the public result', () => {
@@ -117,11 +121,11 @@ it('rejects unbounded navigation, credential-bearing URLs, and unused private se
   expect(workerTaskSchema.safeParse({ ...task, environmentId: 'e'.repeat(201) }).success).toBe(
     false,
   )
-  expect(workerTaskSchema.safeParse({ ...task, controlPort: 9222 }).success).toBe(false)
+  expect(workerTaskSchema.safeParse({ ...task, control: { port: 9222, token: 'a'.repeat(64) } }).success).toBe(false)
   expect(
     workerProcessRequestSchema.safeParse({
       task,
-      controlPort: 9222,
+      control: { port: 9222, token: 'a'.repeat(64) },
       proxyCredentials: { username: 'u', password: 'secret' },
     }).success,
   ).toBe(false)

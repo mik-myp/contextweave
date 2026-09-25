@@ -1,3 +1,4 @@
+import { browserControlUrl } from './services/browser-control-access'
 import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import {
@@ -26,7 +27,10 @@ async function run(): Promise<WorkerProcessResult> {
   const payload = await readPayload()
   request = payload
   const task = payload.task
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${payload.controlPort}`)
+  const browser = await chromium.connectOverCDP(browserControlUrl(payload.control), {
+    headers: { Authorization: `Bearer ${payload.control.token}` },
+    timeout: Math.min(task.input.timeoutMs, 15000),
+  })
   try {
     const context = browser.contexts()[0] ?? (await browser.newContext())
     const page = context.pages()[0] ?? (await context.newPage())
@@ -66,8 +70,9 @@ run()
     process.stdout.write(`${JSON.stringify(result)}\n`)
     process.exit(0)
   })
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'Worker failed'
+  .catch(() => {
+    // Connection errors can contain request headers; never serialize private transport metadata.
+    const message = 'Worker execution failed'
     const result: WorkerProcessResult = {
       protocolVersion: 1,
       taskId: request?.task.taskId ?? 'unknown',

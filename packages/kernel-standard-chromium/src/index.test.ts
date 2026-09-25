@@ -7,7 +7,6 @@ describe('standard Chromium adapter', () => {
     const result = adapter.buildLaunchPlan({
       environmentId: 'env-test',
       userDataDir: '/tmp/contextweave',
-      controlPort: 9444,
       executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
       proxyArgs: [],
       commonArgs: ['--lang=zh-CN'],

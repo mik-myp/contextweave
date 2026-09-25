@@ -54,7 +54,7 @@ export type WorkerResult = z.infer<typeof workerResultSchema>
 // This private Main -> Worker envelope is never accepted from Renderer as a task.
 export const workerProcessRequestSchema = z.object({
   task: workerTaskSchema,
-  controlPort: z.number().int().min(1).max(65535),
+  control: z.object({ port: z.number().int().min(1).max(65535), token: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 }).strict()
 export type WorkerProcessRequest = z.infer<typeof workerProcessRequestSchema>
 

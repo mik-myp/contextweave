@@ -1,3 +1,4 @@
+import { connectManagedBrowser } from './smoke-control.mjs'
 // Real official-package acceptance. No credentials or browser data are kept in the repository.
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import assert from 'node:assert/strict'
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
-const { _electron, chromium } = require('playwright-core')
+const { _electron } = require('playwright-core')
 const { Server } = require('proxy-chain')
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
 const customSource = process.argv.includes('--custom-source')
@@ -155,7 +156,7 @@ try {
         ),
       )
       assert(lock.processIdentity, 'New locks must capture the OS process start identity')
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
+      const browser = await connectManagedBrowser(desktop, id, lock.controlPort)
       const context = browser.contexts()[0]
       if (run) {
         const deadline = Date.now() + 10000
@@ -316,7 +317,7 @@ try {
         ),
       )
       assert(lock.processIdentity, 'New locks must capture the OS process start identity')
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${lock.controlPort}`)
+      const browser = await connectManagedBrowser(desktop, liveId, lock.controlPort)
       const tab = await browser.contexts()[0].newPage()
       await tab.goto('https://api.ipify.org?format=json', { timeout: 45000 })
       const result = JSON.parse(await tab.locator('body').innerText())
@@ -353,7 +354,7 @@ try {
     const restoredLock = JSON.parse(
       await readFile(join(directory, 'contextweave', 'environments', id, '.runtime.lock'), 'utf8'),
     )
-    const reopened = await chromium.connectOverCDP(`http://127.0.0.1:${restoredLock.controlPort}`)
+    const reopened = await connectManagedBrowser(desktop, id, restoredLock.controlPort)
     const retained = await reopened.contexts()[0].newPage()
     await retained.goto(fixtureUrl)
     assert.equal(await retained.evaluate(() => localStorage.getItem('cw-acceptance')), 'retained')

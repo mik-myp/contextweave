@@ -8,7 +8,6 @@ import type {
 export type LaunchInput = {
   environmentId: string
   userDataDir: string
-  controlPort: number
   executablePath: string
   proxyArgs: string[]
   commonArgs: string[]
@@ -19,7 +18,7 @@ export type LaunchPlan = {
   executablePath: string
   args: string[]
   userDataDir: string
-  controlPort: number
+  controlTransport: 'pipe'
 }
 
 export type ConfigValidationResult = { ok: true } | { ok: false; issues: string[] }
@@ -68,10 +67,11 @@ export class KernelRegistry {
 }
 
 export function buildChromiumArgs(input: LaunchInput): string[] {
+  if ([...input.proxyArgs, ...input.commonArgs, ...input.kernelArgs].some((arg) => arg.startsWith('--remote-debugging-')))
+    throw new Error('CONTROL_TRANSPORT_OVERRIDE')
   return [
     `--user-data-dir=${input.userDataDir}`,
-    `--remote-debugging-port=${input.controlPort}`,
-    '--remote-debugging-address=127.0.0.1',
+    '--remote-debugging-pipe',
     '--no-first-run',
     '--no-default-browser-check',
     '--restore-last-session',

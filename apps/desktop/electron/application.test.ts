@@ -36,14 +36,19 @@ function fixture() {
 }
 
 describe('application command boundary', () => {
-  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__', 'unknown:command'])(
-    'does not dispatch inherited or unknown command %s',
-    async (channel) => {
-      const { app } = fixture()
-      expect(await app.invoke(channel)).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
-      expect(app.channels).not.toContain(channel)
-    },
-  )
+  it.each([
+    'constructor',
+    'toString',
+    'hasOwnProperty',
+    '__proto__',
+    'unknown:command',
+    'acquireControlLease',
+    'runtime:lease-control',
+  ])('does not dispatch inherited or unknown command %s', async (channel) => {
+    const { app } = fixture()
+    expect(await app.invoke(channel)).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
+    expect(app.channels).not.toContain(channel)
+  })
 
   it.each([
     'kernel:providers',

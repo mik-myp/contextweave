@@ -25,6 +25,9 @@ function fixture() {
       decryptString: (value: Buffer) => value.toString(),
     },
     workerPath: join(root, 'must-not-run.js'),
+    forkWorker: () => {
+      throw new Error('Worker must not run in boundary tests')
+    },
     changed: () => {},
   })
   cleanups.push(async () => {

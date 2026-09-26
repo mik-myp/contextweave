@@ -39,6 +39,9 @@ async function setup() {
     arch: 'x64',
     secure,
     workerPath: join(directory, 'unused-worker.cjs'),
+    forkWorker: () => {
+      throw new Error('Worker must not run in boundary tests')
+    },
     changed: () => {},
   })
   cleanups.push(async () => {

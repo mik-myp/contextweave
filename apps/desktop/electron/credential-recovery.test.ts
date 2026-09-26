@@ -58,6 +58,9 @@ function fixture() {
         arch: 'arm64',
         secure,
         workerPath: join(root, 'unused.js'),
+        forkWorker: () => {
+          throw new Error('Worker must not run in boundary tests')
+        },
         changed: () => {},
       })
       cleanups.push(() => app.shutdown())

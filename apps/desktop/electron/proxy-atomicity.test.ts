@@ -28,6 +28,9 @@ async function fixture() {
     platform: 'darwin',
     arch: 'arm64',
     workerPath: join(root, 'unused.js'),
+    forkWorker: () => {
+      throw new Error('Worker must not run in boundary tests')
+    },
     changed: () => {},
     secure,
   })

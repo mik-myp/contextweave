@@ -6,8 +6,9 @@ export type WorkerTaskKind = z.infer<typeof workerTaskKindSchema>
 
 export const workerTaskIdSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
 
-// Main owns the file; the worker receives only this inherited writable descriptor.
-export const workerScreenshotDescriptor = 3
+// Main owns all output descriptors; the child only sends bounded private messages.
+export const maxWorkerScreenshotChunkBytes = 64 * 1024
+export const workerTransportVersion = 1
 export const maxWorkerScreenshotBytes = 32 * 1024 * 1024
 export const maxWorkerProtocolBytes = 1024 * 1024
 
@@ -59,5 +60,43 @@ export const workerProcessRequestSchema = z.object({
 export type WorkerProcessRequest = z.infer<typeof workerProcessRequestSchema>
 
 // Only Main may attach a filesystem path to the public result.
-export const workerProcessResultSchema = workerResultSchema.omit({ screenshotPath: true }).strict()
+const workerResultIdentity = workerResultSchema.pick({
+  protocolVersion: true, taskId: true, environmentId: true,
+})
+export const workerProcessResultSchema = z.discriminatedUnion('ok', [
+  workerResultIdentity.extend({ ok: z.literal(true), title: z.string().max(4096).optional() }).strict(),
+  workerResultIdentity.extend({
+    ok: z.literal(false),
+    errorCode: z.literal('WORKER_ERROR'),
+    errorMessage: z.literal('Worker execution failed'),
+  }).strict(),
+])
 export type WorkerProcessResult = z.infer<typeof workerProcessResultSchema>
+
+
+const transportVersion = z.literal(workerTransportVersion)
+const chunkSequence = z.number().int().min(0).max(maxWorkerScreenshotBytes / maxWorkerScreenshotChunkBytes - 1)
+const screenshotSize = z.number().int().min(8).max(maxWorkerScreenshotBytes)
+const screenshotChunk = z.instanceof(Uint8Array).refine((data) =>
+  data.byteLength > 0 && data.byteLength <= maxWorkerScreenshotChunkBytes &&
+  data.buffer instanceof ArrayBuffer && data.byteOffset === 0 &&
+  data.buffer.byteLength === data.byteLength,
+)
+
+export const workerChildMessageSchema = z.discriminatedUnion('type', [
+  z.object({ version: transportVersion, type: z.literal('ready') }).strict(),
+  z.object({ version: transportVersion, type: z.literal('screenshot-start'), bytes: screenshotSize }).strict(),
+  z.object({ version: transportVersion, type: z.literal('screenshot-chunk'), sequence: chunkSequence, data: screenshotChunk }).strict(),
+  z.object({ version: transportVersion, type: z.literal('screenshot-end'), bytes: screenshotSize,
+    chunks: z.number().int().min(1).max(maxWorkerScreenshotBytes / maxWorkerScreenshotChunkBytes),
+  }).strict(),
+  z.object({ version: transportVersion, type: z.literal('result'), result: workerProcessResultSchema }).strict(),
+])
+export type WorkerChildMessage = z.infer<typeof workerChildMessageSchema>
+
+export const workerParentMessageSchema = z.discriminatedUnion('type', [
+  z.object({ version: transportVersion, type: z.literal('request'), request: workerProcessRequestSchema }).strict(),
+  z.object({ version: transportVersion, type: z.literal('chunk-ack'), sequence: chunkSequence }).strict(),
+  z.object({ version: transportVersion, type: z.literal('result-ack') }).strict(),
+])
+export type WorkerParentMessage = z.infer<typeof workerParentMessageSchema>

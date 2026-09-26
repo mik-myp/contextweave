@@ -1,4 +1,10 @@
 export const lifecycleMessages = {
+  'error.WORKER_STOP_FAILED':
+    'The task process has not confirmed that it stopped. Control access was revoked, but its environment remains reserved until the process exits. Do not start another task for this environment.',
+  'error.WORKER_OUTPUT_FAILED':
+    'The screenshot could not be saved or verified. Check available disk space and permissions, then retry.',
+  'error.WORKER_OUTPUT_CLEANUP_FAILED':
+    'Task output cleanup could not be confirmed. Any in-flight write must finish before the output can be released.',
   'error.IPC_UNAVAILABLE':
     'The application could not be reached. Reopen the application interface and try again.',
   'env.ipLocaleAuto': 'Follow exit IP (on each launch)',

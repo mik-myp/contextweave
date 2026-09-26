@@ -42,6 +42,7 @@ import { createEnvironmentService } from './services/environment-service'
 import { checkEnvironment } from './services/preflight'
 import { createRuntimeSupervisor } from './services/runtime-supervisor'
 import { createWorkerService } from './services/worker-service'
+import type { ForkWorker } from './services/worker-process'
 import { createCommandCoordinator } from './services/command-coordinator'
 import { ok, fail, toSummary } from './services/result'
 
@@ -52,6 +53,7 @@ export function createApplication(options: {
   arch: TargetArchitecture
   secure: SecureStorage
   workerPath: string
+  forkWorker: ForkWorker
   changed(domains: DataDomain[]): void
 }) {
   const { repository, dataRoot, platform, arch, changed } = options
@@ -97,7 +99,12 @@ export function createApplication(options: {
     preflight,
     changed: () => changed(['environments', 'activity', 'kernels']),
   })
-  const workers = createWorkerService(runtime, options.workerPath, join(dataRoot, 'worker-results'))
+  const workers = createWorkerService(
+    runtime,
+    options.workerPath,
+    join(dataRoot, 'worker-results'),
+    options.forkWorker,
+  )
   const commands = createCommandCoordinator(repository, () =>
     changed(['environments', 'operations', 'activity', 'storage']),
   )
@@ -285,10 +292,10 @@ export function createApplication(options: {
     recover: () => runtime.recoverOnStartup(),
     async shutdown() {
       closing = true
-      workers.shutdown()
+      const workerDrain = workers.shutdown()
       kernels.cancelAll()
       runtime.cancelStarts()
-      await Promise.all([localePreview.shutdown(), locale.shutdown()])
+      await Promise.all([workerDrain, localePreview.shutdown(), locale.shutdown()])
       await commands.drain()
       await runtime.shutdown()
     },

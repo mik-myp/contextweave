@@ -1,4 +1,14 @@
-import { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell, dialog } from 'electron'
+import { createUtilityWorkerLauncher } from './services/worker-process'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  ipcMain,
+  safeStorage,
+  shell,
+  dialog,
+  utilityProcess,
+} from 'electron'
 // The Electron entry auto-registers unrestricted logging IPC even without initialize().
 import log from 'electron-log/node'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -166,6 +176,7 @@ if (hasInstanceLock)
         arch: targetArch,
         secure: safeStorage,
         workerPath: join(__dirname, 'worker.js'),
+        forkWorker: createUtilityWorkerLauncher(utilityProcess),
         changed: (domains) => {
           if (domains.includes('environments')) {
             for (const record of repository.listAll()) {

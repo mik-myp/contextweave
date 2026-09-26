@@ -5,14 +5,33 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readSync,
   realpathSync,
   rmSync,
+  write,
 } from 'node:fs'
 import { join } from 'node:path'
-import { maxWorkerScreenshotBytes } from '@contextweave/worker-protocol'
+import {
+  maxWorkerScreenshotBytes,
+  maxWorkerScreenshotChunkBytes,
+} from '@contextweave/worker-protocol'
 
-/** No caller-provided task ID or filename participates in filesystem allocation. */
-export function createWorkerOutput(root: string) {
+export type WorkerOutputWriter = (
+  descriptor: number,
+  data: Uint8Array,
+  offset: number,
+) => Promise<number>
+const writeChunk: WorkerOutputWriter = (descriptor, data, offset) =>
+  new Promise((resolve, reject) => {
+    write(descriptor, data, offset, data.byteLength - offset, null, (error, bytes) => {
+      if (error) reject(error)
+      else resolve(bytes)
+    })
+  })
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+/** The descriptor never leaves Main. No caller ID or filename participates in allocation. */
+export function createWorkerOutput(root: string, writer: WorkerOutputWriter = writeChunk) {
   mkdirSync(root, { recursive: true, mode: 0o700 })
   const rootInfo = lstatSync(root)
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink())
@@ -22,19 +41,62 @@ export function createWorkerOutput(root: string) {
   const screenshotPath = join(directory, 'screenshot.png')
   let descriptor: number | undefined
   try {
-    // Exclusive creation refuses pre-existing files and symlinks; the inherited fd pins the inode.
     descriptor = openSync(screenshotPath, 'wx', 0o600)
     const identity = fstatSync(descriptor, { bigint: true })
+    let pending: Promise<void> | undefined
+    let closing = false
+    let failed = false
+    let size = 0
+    const close = async () => {
+      closing = true
+      // Never close/reuse a descriptor while libuv may still be writing to it.
+      await pending?.catch(() => {})
+      if (descriptor !== undefined) {
+        closeSync(descriptor)
+        descriptor = undefined
+      }
+    }
     return {
       directory,
       screenshotPath,
-      descriptor,
-      closeDescriptor() {
-        if (descriptor === undefined) return
-        closeSync(descriptor)
-        descriptor = undefined
+      append(data: Uint8Array): Promise<void> {
+        if (
+          closing ||
+          failed ||
+          pending ||
+          descriptor === undefined ||
+          data.byteLength === 0 ||
+          data.byteLength > maxWorkerScreenshotChunkBytes ||
+          size + data.byteLength > maxWorkerScreenshotBytes
+        )
+          return Promise.reject(new Error('WORKER_OUTPUT_INVALID'))
+        const fd = descriptor
+        // Reserve the slot synchronously; even re-entrant delivery cannot schedule a second write.
+        const copy = new Uint8Array(data)
+        pending = Promise.resolve()
+          .then(async () => {
+            let offset = 0
+            while (offset < copy.byteLength) {
+              const bytes = await writer(fd, copy, offset)
+              if (!Number.isInteger(bytes) || bytes <= 0 || bytes > copy.byteLength - offset)
+                throw new Error('WORKER_OUTPUT_INVALID')
+              offset += bytes
+            }
+            size += copy.byteLength
+          })
+          .catch(() => {
+            failed = true
+            throw new Error('WORKER_OUTPUT_FAILED')
+          })
+          .finally(() => {
+            pending = undefined
+          })
+        return pending
       },
+      close,
       validate() {
+        if (!closing || descriptor !== undefined || pending || failed)
+          throw new Error('WORKER_OUTPUT_INVALID')
         const parent = lstatSync(directory)
         const file = lstatSync(screenshotPath)
         if (
@@ -47,16 +109,19 @@ export function createWorkerOutput(root: string) {
           throw new Error('WORKER_OUTPUT_INVALID')
         const verificationDescriptor = openSync(screenshotPath, 'r')
         try {
-          // Compare handle stats on both sides: Windows path stats can report a different
-          // volume ID from fstat. BigInts retain the exact 64-bit file identity.
+          // Compare 64-bit handle identities on both sides (Windows path dev differs from fstat).
           const current = fstatSync(verificationDescriptor, { bigint: true })
+          const header = Buffer.alloc(pngSignature.length)
           if (
             !current.isFile() ||
             current.nlink !== 1n ||
             current.dev !== identity.dev ||
             current.ino !== identity.ino ||
-            current.size === 0n ||
-            current.size > BigInt(maxWorkerScreenshotBytes)
+            current.size !== BigInt(size) ||
+            current.size < BigInt(header.length) ||
+            current.size > BigInt(maxWorkerScreenshotBytes) ||
+            readSync(verificationDescriptor, header, 0, header.length, 0) !== header.length ||
+            !header.equals(pngSignature)
           )
             throw new Error('WORKER_OUTPUT_INVALID')
           return screenshotPath
@@ -64,8 +129,8 @@ export function createWorkerOutput(root: string) {
           closeSync(verificationDescriptor)
         }
       },
-      discard() {
-        this.closeDescriptor()
+      async discard() {
+        await close()
         rmSync(directory, { recursive: true, force: true })
       },
     }

@@ -1,3 +1,4 @@
+import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
 import { installRuntimeDiagnostics, readRuntimeDiagnostics, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
 import { connectManagedBrowser } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
@@ -157,7 +158,14 @@ try {
       }),
     )
   } else {
-    fixtureServer = createServer((_request, response) => {
+    let onWorkerWait = () => {}
+    let waitingResponse
+    fixtureServer = createServer((request, response) => {
+      if (request.url === '/worker-wait') {
+        waitingResponse = response
+        onWorkerWait()
+        return
+      }
       response.setHeader('Content-Type', 'text/html')
       response.end(
         '<!doctype html><title>ContextWeave worker fixture</title><h1>Safe screenshot</h1>',
@@ -294,17 +302,13 @@ try {
           }),
         )
       }
-      const screenshot = await page.evaluate(
-        ({ environmentId, url, run }) =>
-          window.contextweave.worker.runSmoke({
-            protocolVersion: 1,
-            taskId: `task-smoke-${run}`,
-            environmentId,
-            kind: 'browser-smoke',
-            input: { url, timeoutMs: 10000 },
-          }),
-        { environmentId: id, url: fixtureUrl, run },
-      )
+      const screenshot = await runWorkerWithHostileEnvironment(desktop, page, {
+        protocolVersion: 1,
+        taskId: `task-smoke-${run}`,
+        environmentId: id,
+        kind: 'browser-smoke',
+        input: { url: fixtureUrl, timeoutMs: 10000 },
+      }, directory)
       assert(screenshot.ok && screenshot.data.ok, JSON.stringify({ run, screenshot }))
       const capturedPage = context.pages().find((tab) => tab.url() === `${fixtureUrl}/`)
       assert(capturedPage, 'The screenshot task must use an existing fixture page')
@@ -324,6 +328,31 @@ try {
       const png = await readFile(screenshotPath)
       assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
       screenshots.push(screenshotPath)
+      if (run === 0) {
+        const navigationSeen = new Promise((resolve) => { onWorkerWait = resolve })
+        const cancellation = page.evaluate(({ environmentId, url }) => window.contextweave.worker.runSmoke({
+          protocolVersion: 1,
+          taskId: 'task-cancel-smoke',
+          environmentId,
+          kind: 'browser-smoke',
+          input: { url, timeoutMs: 10000 },
+        }), { environmentId: id, url: `${fixtureUrl}/worker-wait` })
+        void cancellation.catch(() => {})
+        let waitTimer
+        try {
+          await Promise.race([navigationSeen, new Promise((_resolve, reject) => {
+            waitTimer = setTimeout(() => reject(new Error('Worker did not navigate before cancellation')), 15000)
+          })])
+          assert.deepEqual(await page.evaluate(() => window.contextweave.worker.cancel('task-cancel-smoke')), { ok: true, data: true })
+          assert.deepEqual(await cancellation, { ok: false, code: 'CANCELLED', message: 'CANCELLED' })
+          await assertUtilityWorkersExited(desktop)
+          const { readdir } = await import('node:fs/promises')
+          assert.equal((await readdir(outputRoot)).length, 1, 'Cancellation must not retain partial output')
+        } finally {
+          clearTimeout(waitTimer)
+          if (waitingResponse) await finishCancelledNavigation(context, `${fixtureUrl}/worker-wait`, () => waitingResponse.end('<!doctype html><title>Cancelled fixture</title>'))
+        }
+      }
       // Independent CDP clients can enumerate pages in different orders. The smoke
       // worker navigates its first page, which is not necessarily our first page.
       // Normalize both existing pages before testing persistence (do not create replacements).
@@ -423,7 +452,9 @@ try {
         trashRestore: 'passed',
         duplicateLaunch: 'blocked',
         runningDelete: 'blocked',
-        workerScreenshot: 'passed-main-owned-descriptor',
+        workerScreenshot: 'passed-utility-process-main-owned-chunks',
+        workerNodeInjection: 'rejected-in-actual-utility-child',
+        workerCancellation: 'passed-actual-exit-and-output-cleanup',
         privateControl: 'pipe-with-one-use-authenticated-broker',
         sessions: sessions.data.length,
         platform: process.platform,

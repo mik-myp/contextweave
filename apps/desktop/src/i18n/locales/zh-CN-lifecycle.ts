@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'error.WORKER_STOP_FAILED':
+    '尚未确认任务进程已停止。控制权限已撤销，但退出前会继续保留环境占用，请勿重复启动该环境的任务。',
+  'error.WORKER_OUTPUT_FAILED': '截图写入或校验失败。请检查磁盘空间和目录权限后重试。',
+  'error.WORKER_OUTPUT_CLEANUP_FAILED':
+    '尚未确认任务输出已安全清理。正在进行的写入完成前不会释放或复用文件描述符。',
   'error.IPC_UNAVAILABLE': '无法连接应用后台，请重新打开应用界面后重试。',
   'env.ipLocaleAuto': '跟随出口 IP（每次启动获取）',
   'env.ipLocaleTitle': '根据出口 IP 获取语言与时区',

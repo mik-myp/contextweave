@@ -1,30 +1,13 @@
 import { browserControlUrl } from './services/browser-control-access'
-import { writeFileSync } from 'node:fs'
+import { createWorkerChannel } from './services/worker-channel'
 import { chromium } from 'playwright-core'
-import {
-  maxWorkerScreenshotBytes,
-  maxWorkerProtocolBytes,
-  workerProcessRequestSchema,
-  workerScreenshotDescriptor,
-  type WorkerProcessRequest,
-  type WorkerProcessResult,
-} from '@contextweave/worker-protocol'
+import type { WorkerProcessRequest, WorkerProcessResult } from '@contextweave/worker-protocol'
 
 let request: WorkerProcessRequest | undefined
-
-async function readPayload(): Promise<WorkerProcessRequest> {
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of process.stdin) {
-    size += chunk.length
-    if (size > maxWorkerProtocolBytes) throw new Error('WORKER_INPUT_LIMIT')
-    chunks.push(Buffer.from(chunk))
-  }
-  return workerProcessRequestSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-}
+const channel = createWorkerChannel(process.parentPort)
 
 async function run(): Promise<WorkerProcessResult> {
-  const payload = await readPayload()
+  const payload = await channel.request()
   request = payload
   const task = payload.task
   const browser = await chromium.connectOverCDP(browserControlUrl(payload.control), {
@@ -35,23 +18,20 @@ async function run(): Promise<WorkerProcessResult> {
     const context = browser.contexts()[0] ?? (await browser.newContext())
     const page = context.pages()[0] ?? (await context.newPage())
     // Proxy authentication is owned by Main's runtime/bridge, never by a worker task.
-    // Restored sessions may contain multiple tabs. Headful Chromium can defer
-    // screenshot composition for a background tab, especially on Windows.
-    // Activate the page this Worker actually selected, not another CDP client's first page.
+    // Headful Chromium may defer screenshot composition for a background tab on Windows.
     await page.bringToFront()
     await page.goto(task.input.url, {
       waitUntil: 'domcontentloaded',
       timeout: task.input.timeoutMs,
     })
-    const title = await page.title()
-    // Never give Playwright a path derived from task input. Main opened this descriptor.
+    const title = (await page.title()).slice(0, 4096)
     const screenshot = await page.screenshot({
       type: 'png',
       fullPage: false,
       timeout: task.input.timeoutMs,
     })
-    if (screenshot.length > maxWorkerScreenshotBytes) throw new Error('WORKER_OUTPUT_LIMIT')
-    writeFileSync(workerScreenshotDescriptor, screenshot)
+    // Main owns the output file. The child receives no path or inherited writable fd.
+    await channel.screenshot(screenshot)
     return {
       protocolVersion: task.protocolVersion,
       taskId: task.taskId,
@@ -60,27 +40,32 @@ async function run(): Promise<WorkerProcessResult> {
       title,
     }
   } finally {
-    // The CDP connection is detached with the browser connection below.
     await browser.close()
   }
 }
 
-run()
-  .then((result) => {
-    process.stdout.write(`${JSON.stringify(result)}\n`)
-    process.exit(0)
-  })
-  .catch(() => {
-    // Connection errors can contain request headers; never serialize private transport metadata.
-    const message = 'Worker execution failed'
-    const result: WorkerProcessResult = {
-      protocolVersion: 1,
-      taskId: request?.task.taskId ?? 'unknown',
-      environmentId: request?.task.environmentId ?? 'unknown',
+async function main() {
+  let result: WorkerProcessResult
+  try {
+    result = await run()
+  } catch {
+    // Request/connection errors may contain credentials or headers. Never serialize them.
+    if (!request) return process.exit(1)
+    result = {
+      protocolVersion: request.task.protocolVersion,
+      taskId: request.task.taskId,
+      environmentId: request.task.environmentId,
       ok: false,
       errorCode: 'WORKER_ERROR',
-      errorMessage: message,
+      errorMessage: 'Worker execution failed',
     }
-    process.stdout.write(`${JSON.stringify(result)}\n`)
+  }
+  try {
+    await channel.result(result)
+    // The result was received by Main; it still waits for this actual exit before succeeding.
+    process.exit(result.ok ? 0 : 1)
+  } catch {
     process.exit(1)
-  })
+  }
+}
+void main()

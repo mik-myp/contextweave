@@ -717,3 +717,19 @@ Windows 复验记录了“约 20.6 秒首次收到管道数据，约 26.2 秒以
 - attach 尝试、bundle 校验和复制均进入共同的清理路径。detach 使用自己的有界清理时间、不继承已取消信号；之后只调用非递归 rmdir。attach 失败不代表没有挂载，detach 失败也不授权递归清理。
 - 非递归目录删除无法完成时，以明确的内部清理错误阻止安装提交；安装器保留 backing archive/stage，服务层优先报告清理失败，不能被“已取消”掩盖。只暴露稳定本地化错误码，不返回 hdiutil 原文或本机路径，不自动 force detach 或删除不确定残留。
 - 不变更数据 schema、凭据和下载信任边界，不启动定时挂载扫描，不自动清理用户自行挂载的镜像。正常卸载后的普通失败仍可清理自己创建的 stage；未知状态宁可保留资源并提示处理，不把资源已释放当作未经证实的事实。
+
+## 23. v0.1.10 Worker utility process 与截图消息边界
+
+- 使用当前锁定 Electron 的原生 `utilityProcess.fork`；Main 启动器与业务服务依赖注入分离，Node 单元测试不能冒充真实 Electron utility 验收。`process.parentPort` 仅连接该 Main/child，不暴露给 Renderer、外部网页或通用 IPC。无新包、原生模块或外联服务。
+- 启动参数固定，`execArgv: []`、stdio 忽略、`allowLoadingUnsignedLibraries: false`。使用必要 OS 环境变量白名单，丢弃 `NODE_OPTIONS`、`NODE_PATH`、`ELECTRON_RUN_AS_NODE`、动态库注入及无关凭据；不能假设 Main 的 Fuses 自动保护 utility child。Electron 把空 env map 视为继承全部，因此固定加入无凭据的 Worker 标识，保证即使没有允许的宿主变量也不会回退继承。
+- 私有协议有独立版本、ready/request、截图声明/分块/结束、结果及 ACK。接收端严格校验类型、字节数、顺序和状态；32 MiB 截图总量、64 KiB 分块、1 MiB 累计元数据上限不变宽。生产端每块复制为精确长度的独立 Uint8Array，不让结构化克隆反复复制整张截图的 backing buffer。只允许一个未 ACK 的块。
+- 输出目录由 Main 随机分配，任务输入不参与路径。Main 独占 FD，异步写入前同步保留写槽；退出/取消先撤销控制租约并请求停进程，再排空写入后关闭、验证或删除。成功要求消息完整、文件写入完整、子进程 exit 0、64-bit 文件身份/单链接/长度和 PNG 魔数一致；魔数检查不是完整图片解码或内容安全证明。
+- 对停止请求设置独立有界等待；未确认退出时可返回明确停止失败，但继续保留任务/环境所有权直至实际 exit。不得误用 ChildProcess 的信号/exitCode 语义，不以 kill 返回 true 等同已退出，不按裸 PID 回收。应用退出收敛遵循相同所有权规则。
+- `utilityProcess` 是生命周期和私有 IPC 边界，不是 OS 权限沙箱；本版只运行应用内置的受信任 Worker，不加载用户脚本、任意模块或 shell。没有宣称操作系统禁止该进程访问所有文件。
+- 版本拆分的理由是避免迁移与实际二进制 Fuses/签名构建变化混在一次发布中。后续必须读取实际发布 executable 的 fuse wire、确认 Electron/tooling schema、验证 utility child 的注入拒绝和真实硬化包启动；stock Electron 加载 ASAR 或单元 mock 均不能替代这一门槛。本版不改变 fuse 值，也不解决签名/公证、根许可证和 Intel 指纹准入。
+
+### 23.1 utility exit 通知与 OS 退出之间的窗口
+
+当前 Electron `44.4.3` 的 `UtilityProcessWrapper::OnServiceProcessDisconnected` 在收到 `process_exit_termination` 时即可触发 JS exit，早于 OS 完全退出。独立 ARM64 原生实验的 12 个子进程在 exit 回调当时均仍可被只读 PID 查询发现；其中一个在下一事件循环仍存在，随后退出。因此不能把 exit 通知、kill 返回 true 或一次指标快照当成已经释放。
+
+启动器记录自己创建的 PID；仅在 exit 通知和只读 OS 不存在证据同时成立后才完成任务、关闭输出并释放占用。拒绝访问/未知错误或 PID 被复用时保守保留，不向裸 PID 发送终止信号；仍只能通过原 UtilityProcess 对象在其有效期内请求停止。超过独立 5 秒收敛预算可返回停止失败，但继续保留归属并低频检查，不能把失败响应当成已清理。没有扩大 Worker 执行预算或跳过真实进程退出门槛。

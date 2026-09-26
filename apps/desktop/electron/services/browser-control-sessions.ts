@@ -18,6 +18,7 @@ type Client = {
   root?: string
   closed: boolean
   pending: Set<number>
+  retired: Set<string>
   rootRequests: number
   active: number
   bytes: number
@@ -50,6 +51,7 @@ export function createControlSessions(
       pipe.close()
       throw new Error('CONTROL_SESSION_LIMIT')
     }
+    client.retired.delete(id)
     sessions.set(id, { client, parent })
   }
 
@@ -58,13 +60,26 @@ export function createControlSessions(
     // Iterative traversal avoids stack growth for deeply nested iframe sessions.
     for (const parent of removed)
       for (const [child, owner] of sessions) if (owner.parent === parent) removed.add(child)
-    for (const child of removed) sessions.delete(child)
+    for (const child of removed) {
+      const client = sessions.get(child)?.client
+      if (client && !client.closed) {
+        client.retired.add(child)
+        // Recent ownership is enough to reject buffered commands without treating a
+        // normal detach as a peer-session attack. Never retain an unbounded history.
+        if (client.retired.size > sessionLimit) {
+          const oldest = client.retired.values().next().value
+          if (oldest !== undefined) client.retired.delete(oldest)
+        }
+      }
+      sessions.delete(child)
+    }
   }
 
   function closeClient(client: Client) {
     if (client.closed) return
     client.closed = true
     client.pending.clear()
+    client.retired.clear()
     client.controller.abort()
     for (const waiting of client.waiters.splice(0)) waiting(false)
     clients.delete(client)
@@ -134,6 +149,7 @@ export function createControlSessions(
       const client: Client = {
         closed: false,
         pending: new Set(),
+        retired: new Set(),
         rootRequests: 0,
         active: 0,
         bytes: 0,
@@ -182,12 +198,15 @@ export function createControlSessions(
               throw new Error('CONTROL_COMMAND_LIMIT')
             const request = requestSchema.parse(JSON.parse(text))
             const sessionId = request.sessionId ?? client.root
-            if (
-              sessions.get(sessionId)?.client !== client ||
-              client.pending.has(request.id) ||
-              client.pending.size >= 128
-            )
+            if (client.pending.has(request.id) || client.pending.size >= 128)
               throw new Error('CONTROL_SESSION_OWNERSHIP')
+            const ownedSession = (id: string) => {
+              const owner = sessions.get(id)
+              if (owner?.client === client) return owner
+              if (!owner && client.retired.has(id)) return undefined
+              throw new Error('CONTROL_SESSION_OWNERSHIP')
+            }
+            const owner = ownedSession(sessionId)
             const params = request.params ?? {}
             if (
               [
@@ -197,16 +216,29 @@ export function createControlSessions(
               ].includes(request.method)
             )
               throw new Error('CONTROL_LEGACY_SESSION')
-            if (request.method === 'Target.detachFromTarget') {
-              const target = detachSchema.parse(params).sessionId
-              if (target === client.root || sessions.get(target)?.client !== client)
-                throw new Error('CONTROL_SESSION_OWNERSHIP')
-            }
+            const detachedId =
+              request.method === 'Target.detachFromTarget'
+                ? detachSchema.parse(params).sessionId
+                : undefined
+            if (detachedId === client.root) throw new Error('CONTROL_SESSION_OWNERSHIP')
+            const detachedOwner = detachedId ? ownedSession(detachedId) : undefined
             if (
               ['Target.attachToTarget', 'Target.setAutoAttach'].includes(request.method) &&
               params.flatten !== true
             )
               throw new Error('CONTROL_LEGACY_SESSION')
+            const rejectDetached = (addressedSession: boolean) =>
+              client.send({
+                id: request.id,
+                sessionId: request.sessionId,
+                error: addressedSession
+                  ? { code: -32001, message: 'Session with given id not found.' }
+                  : { code: -32602, message: 'No session with given id' },
+              })
+            if (!owner || (detachedId && !detachedOwner)) {
+              rejectDetached(!owner)
+              return
+            }
             client.pending.add(request.id)
             admittedId = request.id
             client.bytes += bytes
@@ -215,13 +247,15 @@ export function createControlSessions(
               acquired = true
             } else acquired = await new Promise<boolean>((resolve) => client.waiters.push(resolve))
             if (!acquired || client.closed) return
-            // A queued command must not outlive a detach/revoke observed while waiting.
+            // Admission captured the exact ownership object. A detach (even followed by
+            // history eviction or ID reuse) invalidates this command, not healthy peers.
             if (
-              sessions.get(sessionId)?.client !== client ||
-              (request.method === 'Target.detachFromTarget' &&
-                sessions.get(detachSchema.parse(params).sessionId)?.client !== client)
-            )
-              throw new Error('CONTROL_SESSION_OWNERSHIP')
+              sessions.get(sessionId) !== owner ||
+              (detachedId && sessions.get(detachedId) !== detachedOwner)
+            ) {
+              rejectDetached(sessions.get(sessionId) !== owner)
+              return
+            }
             // Browser-root attachment is issued at the transport root, never borrowed from another client.
             const browserRoot = request.method === 'Target.attachToBrowserTarget'
             if (browserRoot) {
@@ -255,10 +289,14 @@ export function createControlSessions(
                     .catch(() => pipe.close())
                 return
               }
-              register(attached, client, browserRoot ? undefined : sessionId)
+              // Chromium emits attachedToTarget before its attachToTarget response.
+              // That event owns child registration: a detach may already have removed
+              // it before this promise resumes. Never resurrect it from a late reply.
+              // Browser roots are attached at the pipe root, whose events are private.
+              if (browserRoot) register(attached, client)
             }
-            if (!response.error && request.method === 'Target.detachFromTarget')
-              removeTree(sessionSchema.parse(params).sessionId)
+            if (!response.error && detachedId && sessions.get(detachedId) === detachedOwner)
+              removeTree(detachedId)
             if (!client.closed)
               client.send({ id: request.id, ...response, sessionId: request.sessionId })
           } catch {

@@ -7,10 +7,10 @@ const cleanups: (() => void)[] = []
 afterEach(() => {
   for (const clean of cleanups.splice(0).reverse()) clean()
 })
-async function fixture() {
+async function fixture(sessionLimit = 1024) {
   const browser = controlFixture()
   const pipe = createControlPipe(browser.input, browser.output)
-  const routing = createControlSessions(pipe)
+  const routing = createControlSessions(pipe, sessionLimit)
   cleanups.push(pipe.close, routing.close)
   const messagesA: ControlMessage[] = [],
     messagesB: ControlMessage[] = []
@@ -52,6 +52,8 @@ describe('isolated browser control sessions', () => {
   })
   it.each([
     encode('Runtime.evaluate', {}, 'root-2'),
+    encode('Runtime.evaluate', {}, 'never-owned'),
+    encode('Target.detachFromTarget', { sessionId: 'never-owned' }),
     encode('Target.detachFromTarget', { sessionId: 'root-2' }),
     encode('Target.detachFromTarget', { targetId: 'foreign-target' }),
     encode('Target.detachFromTarget', { sessionId: 'root-1' }),
@@ -96,7 +98,7 @@ describe('isolated browser control sessions', () => {
     await b.receive(encode('Browser.getVersion'))
   })
   it('removes detached descendant trees and rejects their subsequent reuse', async () => {
-    const { a, browser, terminateA } = await fixture()
+    const { a, browser, messagesA, terminateA } = await fixture()
     await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
     browser.emit({
       method: 'Target.attachedToTarget',
@@ -109,7 +111,11 @@ describe('isolated browser control sessions', () => {
       params: { sessionId: 'page-3' },
     })
     await a.receive(encode('Runtime.evaluate', {}, 'frame-4'))
-    expect(terminateA).toHaveBeenCalledOnce()
+    expect(terminateA).not.toHaveBeenCalled()
+    expect(messagesA.at(-1)?.error?.code).toBe(-32001)
+    expect(
+      browser.commands.filter((message) => message.method === 'Runtime.evaluate'),
+    ).toHaveLength(0)
   })
   it('rejects duplicate in-flight IDs and cancels pending work when a client disconnects', async () => {
     const { a, b, browser, pipe, terminateA } = await fixture()
@@ -158,11 +164,12 @@ it('caps extra browser roots while leaving a peer connected and detaches all own
   await b.receive(encode('Browser.getVersion'))
 })
 it('removes explicit root attachments even when no parent-session detach event is emitted', async () => {
-  const { a, browser, terminateA } = await fixture()
+  const { a, browser, messagesA, terminateA } = await fixture()
   await a.receive(encode('Target.attachToBrowserTarget'))
   await a.receive(encode('Target.detachFromTarget', { sessionId: 'root-3' }, undefined, 2))
   await a.receive(encode('Browser.getVersion', {}, 'root-3', 3))
-  expect(terminateA).toHaveBeenCalledOnce()
+  expect(terminateA).not.toHaveBeenCalled()
+  expect(messagesA.at(-1)?.error?.code).toBe(-32001)
   expect(browser.commands.filter((m) => m.method === 'Browser.getVersion')).toHaveLength(0)
 })
 
@@ -217,4 +224,196 @@ it('fails closed before an unbounded target session tree can be allocated', asyn
   )
   expect(pipe.closed).toBe(true)
   expect(terminate).toHaveBeenCalledOnce()
+})
+
+it('rejects a late command to an owned detached page without disconnecting healthy sessions', async () => {
+  const { a, b, browser, pipe, messagesA, terminateA, terminateB } = await fixture()
+  await a.receive(encode('Target.attachToTarget', { targetId: 'closing-page', flatten: true }))
+  browser.emit({
+    method: 'Target.detachedFromTarget',
+    sessionId: 'root-1',
+    params: { sessionId: 'page-3' },
+  })
+  await a.receive(encode('Runtime.evaluate', { expression: '1' }, 'page-3', 2))
+  expect(messagesA.at(-1)).toEqual({
+    id: 2,
+    sessionId: 'page-3',
+    error: { code: -32001, message: 'Session with given id not found.' },
+  })
+  expect(browser.commands.filter((message) => message.method === 'Runtime.evaluate')).toHaveLength(
+    0,
+  )
+  expect(terminateA).not.toHaveBeenCalled()
+  expect(terminateB).not.toHaveBeenCalled()
+  expect(pipe.closed).toBe(false)
+  await a.receive(encode('Browser.getVersion', {}, undefined, 3))
+  expect(messagesA.at(-1)?.result).toEqual({ product: 'Chrome/123.0.0.1' })
+  await b.receive(encode('Browser.getVersion'))
+})
+
+it.each(['detached', 'evicted', 'reused'])(
+  'rejects queued commands whose admitted session is %s without forwarding or disconnecting',
+  async (state) => {
+    const { a, browser, messagesA, terminateA } = await fixture(3)
+    await a.receive(encode('Target.attachToTarget', { targetId: 'closing-page', flatten: true }))
+    const waiting: ControlMessage[] = []
+    browser.handle((message) => {
+      if (message.method !== 'Browser.getVersion') return false
+      waiting.push(message)
+      return true
+    })
+    const active = Array.from({ length: 24 }, (_, index) =>
+      a.receive(encode('Browser.getVersion', {}, undefined, index + 10)),
+    )
+    const queued = a.receive(encode('Runtime.evaluate', { expression: '1' }, 'page-3', 100))
+    expect(waiting).toHaveLength(24)
+    browser.emit({
+      method: 'Target.detachedFromTarget',
+      sessionId: 'root-1',
+      params: { sessionId: 'page-3' },
+    })
+    if (state === 'evicted') {
+      for (let index = 0; index < 4; index++) {
+        const params = { sessionId: `temporary-${index}` }
+        browser.emit({ method: 'Target.attachedToTarget', sessionId: 'root-1', params })
+        browser.emit({ method: 'Target.detachedFromTarget', sessionId: 'root-1', params })
+      }
+    } else if (state === 'reused') {
+      browser.emit({
+        method: 'Target.attachedToTarget',
+        sessionId: 'root-1',
+        params: { sessionId: 'page-3' },
+      })
+    }
+    for (const message of waiting) browser.emit({ id: message.id, result: {} })
+    await Promise.all([...active, queued])
+    expect(messagesA.find((message) => message.id === 100)).toEqual({
+      id: 100,
+      sessionId: 'page-3',
+      error: { code: -32001, message: 'Session with given id not found.' },
+    })
+    expect(
+      browser.commands.filter((message) => message.method === 'Runtime.evaluate'),
+    ).toHaveLength(0)
+    expect(terminateA).not.toHaveBeenCalled()
+  },
+)
+
+it('rejects a duplicate detach for an owned session without ever forwarding it twice', async () => {
+  const { a, browser, messagesA, terminateA } = await fixture()
+  await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
+  await a.receive(encode('Target.detachFromTarget', { sessionId: 'page-3' }, undefined, 2))
+  await a.receive(encode('Target.detachFromTarget', { sessionId: 'page-3' }, undefined, 3))
+  expect(messagesA.at(-1)).toEqual({
+    id: 3,
+    sessionId: undefined,
+    error: { code: -32602, message: 'No session with given id' },
+  })
+  expect(
+    browser.commands.filter((message) => message.method === 'Target.detachFromTarget'),
+  ).toHaveLength(1)
+  expect(terminateA).not.toHaveBeenCalled()
+})
+
+it.each(['address', 'parameter'])(
+  "never treats a peer's retired session as previously owned (%s)",
+  async (kind) => {
+    const { a, b, browser, terminateA, terminateB } = await fixture()
+    await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
+    browser.emit({
+      method: 'Target.detachedFromTarget',
+      sessionId: 'root-1',
+      params: { sessionId: 'page-3' },
+    })
+    await b.receive(
+      kind === 'address'
+        ? encode('Runtime.evaluate', {}, 'page-3')
+        : encode('Target.detachFromTarget', { sessionId: 'page-3' }),
+    )
+    expect(terminateA).not.toHaveBeenCalled()
+    expect(terminateB).toHaveBeenCalledOnce()
+    expect(browser.commands.some((message) => message.method === 'Runtime.evaluate')).toBe(false)
+    expect(
+      browser.commands.some(
+        (message) =>
+          message.method === 'Target.detachFromTarget' && message.params?.sessionId === 'page-3',
+      ),
+    ).toBe(false)
+  },
+)
+
+it('does not let a known retired address hide a peer session in detach parameters', async () => {
+  const { a, browser, terminateA } = await fixture()
+  await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
+  browser.emit({
+    method: 'Target.detachedFromTarget',
+    sessionId: 'root-1',
+    params: { sessionId: 'page-3' },
+  })
+  await a.receive(encode('Target.detachFromTarget', { sessionId: 'root-2' }, 'page-3', 2))
+  expect(terminateA).toHaveBeenCalledOnce()
+  expect(
+    browser.commands.some(
+      (message) =>
+        message.method === 'Target.detachFromTarget' && message.params?.sessionId === 'root-2',
+    ),
+  ).toBe(false)
+})
+
+it('bounds retired ownership and conservatively rejects identifiers no longer remembered', async () => {
+  const { a, browser, messagesA, terminateA } = await fixture(3)
+  for (let index = 0; index < 4; index++) {
+    await a.receive(
+      encode(
+        'Target.attachToTarget',
+        { targetId: `page-${index}`, flatten: true },
+        undefined,
+        index,
+      ),
+    )
+    browser.emit({
+      method: 'Target.detachedFromTarget',
+      sessionId: 'root-1',
+      params: { sessionId: `page-${index + 3}` },
+    })
+  }
+  await a.receive(encode('Runtime.evaluate', {}, 'page-6', 5))
+  expect(messagesA.at(-1)?.error?.code).toBe(-32001)
+  expect(terminateA).not.toHaveBeenCalled()
+  await a.receive(encode('Runtime.evaluate', {}, 'page-3', 6))
+  expect(terminateA).toHaveBeenCalledOnce()
+  expect(browser.commands.some((message) => message.method === 'Runtime.evaluate')).toBe(false)
+})
+
+it('retired session handling cannot bypass the duplicate in-flight request limit', async () => {
+  const { a, browser, terminateA } = await fixture()
+  await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
+  browser.emit({
+    method: 'Target.detachedFromTarget',
+    sessionId: 'root-1',
+    params: { sessionId: 'page-3' },
+  })
+  browser.handle((message) => message.method === 'Browser.getVersion')
+  const running = a.receive(encode('Browser.getVersion', {}, undefined, 2))
+  await a.receive(encode('Runtime.evaluate', {}, 'page-3', 2))
+  await running
+  expect(terminateA).toHaveBeenCalledOnce()
+  expect(browser.commands.some((message) => message.method === 'Runtime.evaluate')).toBe(false)
+})
+
+it('does not revive a detached session when its earlier attach response resumes on a microtask', async () => {
+  const { a, browser, messagesA, terminateA } = await fixture()
+  browser.handle((message) => {
+    if (message.method !== 'Target.attachToTarget') return false
+    const params = { sessionId: 'late-attachment' }
+    browser.emit({ method: 'Target.attachedToTarget', sessionId: 'root-1', params })
+    browser.emit({ id: message.id, result: params })
+    browser.emit({ method: 'Target.detachedFromTarget', sessionId: 'root-1', params })
+    return true
+  })
+  await a.receive(encode('Target.attachToTarget', { targetId: 'page', flatten: true }))
+  await a.receive(encode('Runtime.evaluate', {}, 'late-attachment', 2))
+  expect(messagesA.at(-1)?.error?.code).toBe(-32001)
+  expect(terminateA).not.toHaveBeenCalled()
+  expect(browser.commands.some((message) => message.method === 'Runtime.evaluate')).toBe(false)
 })

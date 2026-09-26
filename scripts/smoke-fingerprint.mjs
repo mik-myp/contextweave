@@ -1,4 +1,4 @@
-import { connectManagedBrowser } from './smoke-control.mjs'
+import { connectManagedBrowser, verifyDetachedControlSession } from './smoke-control.mjs'
 // Real official-package acceptance. No credentials or browser data are kept in the repository.
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -187,6 +187,7 @@ try {
       await diagnostic.close()
       const tab = await context.newPage()
       await tab.goto(fixtureUrl)
+      if (run === 0) await verifyDetachedControlSession(desktop, id, browser)
       if (run === 0) {
         const blockedRemoval = await page.evaluate(
           (id) => window.contextweave.kernel.remove(id),

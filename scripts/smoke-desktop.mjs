@@ -1,6 +1,6 @@
 import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
 import { installRuntimeDiagnostics, readRuntimeDiagnostics, readRuntimeFailureEvidence, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
-import { connectManagedBrowser } from './smoke-control.mjs'
+import { connectManagedBrowser, verifyDetachedControlSession } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
 import { findPackagedArchive } from './release-tools.mjs'
@@ -38,6 +38,7 @@ const desktop = await _electron.launch({
   timeout: 20000,
 })
 let id, fixtureServer, localeProxy
+const controlClients = []
 try {
   const page = await desktop.firstWindow()
   await page.waitForFunction(
@@ -280,12 +281,25 @@ try {
       assert.deepEqual(processEvidence.controlArguments, ['--remote-debugging-pipe'])
       const browser = await connectManagedBrowser(desktop, id, lock.controlPort)
       const context = browser.contexts()[0]
+      const controlState = { run, disconnected: false, closedPages: 0, crashedPages: 0 }
+      controlClients.push(controlState)
+      browser.once('disconnected', () => { controlState.disconnected = true })
+      const observedPages = new WeakSet()
+      const observePage = (tab) => {
+        if (observedPages.has(tab)) return
+        observedPages.add(tab)
+        tab.once('close', () => { controlState.closedPages++ })
+        tab.once('crash', () => { controlState.crashedPages++ })
+      }
+      for (const tab of context.pages()) observePage(tab)
+      context.on('page', observePage)
       const expectedTabs = [`${fixtureUrl}/?saved=one`, `${fixtureUrl}/?saved=two`]
       if (run === 0) {
         // CDP can be ready before Chromium creates its initial tab (notably on Windows).
         // Creating a replacement here races that native tab and makes a three-tab fixture.
         const first = context.pages()[0] ?? (await context.waitForEvent('page', { timeout: 10000 }))
         await first.goto(expectedTabs[0])
+        await verifyDetachedControlSession(desktop, id, browser)
         await (await context.newPage()).goto(expectedTabs[1])
       } else {
         const deadline = Date.now() + 10000
@@ -498,7 +512,7 @@ try {
       })
     } catch { /* Keep the original failure if the manager is already unavailable. */ }
   }
-  console.error(JSON.stringify({ runtimeFailureEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })), runtimeStates }))
+  console.error(JSON.stringify({ runtimeFailureEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })), runtimeStates, controlClients }))
   throw error
 } finally {
   await restoreRuntimeDiagnostics(desktop)

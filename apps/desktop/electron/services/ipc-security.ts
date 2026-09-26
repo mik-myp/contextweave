@@ -1,3 +1,4 @@
+import { APP_ENTRY_URL } from './app-protocol'
 type Frame = { readonly url: string }
 type Contents = { readonly mainFrame: Frame; isDestroyed(): boolean }
 type Window = { readonly webContents: Contents; isDestroyed(): boolean }
@@ -7,11 +8,12 @@ export function isTrustedRendererUrl(value: string, expected: string): boolean {
   try {
     const actual = new URL(value)
     const entry = new URL(expected)
-    if (!['file:', 'http:', 'https:'].includes(entry.protocol)) return false
+    if (!['contextweave:', 'http:', 'https:'].includes(entry.protocol)) return false
     if (actual.username || actual.password || entry.username || entry.password) return false
     // The application uses hash routing. Everything before the fragment must be the exact entry.
     actual.hash = ''
     entry.hash = ''
+    if (entry.protocol === 'contextweave:' && entry.href !== APP_ENTRY_URL) return false
     return actual.href === entry.href
   } catch {
     return false

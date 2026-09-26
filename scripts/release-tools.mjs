@@ -13,6 +13,13 @@ import {
 import { createRequire } from 'node:module'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  packagedLayout,
+  qualifiedElectronVersion,
+  readFuses,
+  verifyEmbeddedIntegrity,
+  verifyBundleSignature,
+} from './electron-fuses.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const desktopRequire = createRequire(join(root, 'apps/desktop/package.json'))
@@ -134,7 +141,26 @@ export async function auditPackage(archive, target, expectedVersion) {
     ],
   }
 }
-export async function stageArtifacts({ versionRoot, destination, target, version }) {
+export async function inspectPackagedElectron(archive, platform) {
+  const layout = packagedLayout(archive, platform)
+  const fuses = await readFuses(layout.fuseBinary)
+  const integrity = await verifyEmbeddedIntegrity(layout)
+  if (platform === 'darwin') await verifyBundleSignature(layout.bundle)
+  return {
+    qualifiedVersion: qualifiedElectronVersion,
+    fuseBinarySha256: await sha256File(layout.fuseBinary),
+    fuses,
+    integrity,
+    signatureVerification:
+      platform === 'darwin'
+        ? 'codesign-deep-strict-not-distribution-notarization'
+        : 'not-a-code-signing-attestation',
+  }
+}
+export async function stageArtifacts(
+  { versionRoot, destination, target, version },
+  { inspectElectron = inspectPackagedElectron } = {},
+) {
   const names = expectedArtifacts(version, target)
   if (existsSync(destination)) throw new Error('ARTIFACT_OUTPUT_EXISTS')
   for (const name of names) {
@@ -142,7 +168,10 @@ export async function stageArtifacts({ versionRoot, destination, target, version
     if (!lstatSync(path).isFile() || statSync(path).size === 0)
       throw new Error(`MISSING_INSTALLER: ${name}`)
   }
-  const inventory = await auditPackage(findPackagedArchive(versionRoot), target, version)
+  const archive = findPackagedArchive(versionRoot)
+  const inventory = await auditPackage(archive, target, version)
+  inventory.formatVersion = 2
+  inventory.electron = await inspectElectron(archive, getTarget(target).platform)
   // Publish the inventory together with installers, and include all three files in this platform's hash list.
   mkdirSync(destination, { recursive: true })
   for (const name of names) copyFileSync(join(versionRoot, name), join(destination, name))

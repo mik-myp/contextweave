@@ -1,0 +1,191 @@
+// Tests the actual hardened executable, not stock Electron loading app.asar.
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import { mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { findPackagedArchive } from './release-tools.mjs'
+import {
+  packagedLayout,
+  readFuses,
+  verifyEmbeddedIntegrity,
+  verifyBundleSignature,
+} from './electron-fuses.mjs'
+import { launchNative, withDeadline } from './native-packaged-host.mjs'
+
+const root = fileURLToPath(new URL('../apps/desktop/', import.meta.url))
+const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+const layout = packagedLayout(findPackagedArchive(join(root, 'release', version)), process.platform)
+const directory = await mkdtemp(join(tmpdir(), 'cw-native-packaged-'))
+let host,
+  id,
+  fixtureServer,
+  waitingResponse,
+  allowCleanup = true,
+  failure
+try {
+  await readFuses(layout.fuseBinary)
+  await verifyEmbeddedIntegrity(layout)
+  if (process.platform === 'darwin') await verifyBundleSignature(layout.bundle)
+  host = await launchNative(layout, directory)
+  const { page } = host
+  await page.waitForFunction(
+    () => document.querySelectorAll('#root button').length > 0,
+    undefined,
+    { timeout: 10000 },
+  )
+  // getInfo also probes the real OS credential store, which is NOT isolated by --user-data-dir.
+  // The packaged manifest is audited separately; this smoke must not prompt for the user's keychain.
+  const call = (...args) => withDeadline(page.evaluate(...args), 35000, 'NATIVE_TYPED_API_TIMEOUT')
+  const environments = await call(() => window.contextweave.environment.list())
+  assert(environments.ok && environments.data.length === 0, 'NATIVE_PROFILE_NOT_FRESH')
+  const kernels = await call(() => window.contextweave.kernel.list())
+  assert(
+    kernels.ok &&
+      kernels.data.some(
+        (kernel) => kernel.id === 'standard-chromium' && kernel.status === 'available',
+      ),
+    'NATIVE_REQUIRED_BROWSER_UNAVAILABLE',
+  )
+  let navigationSeen
+  fixtureServer = createServer((request, response) => {
+    if (request.url === '/wait') {
+      waitingResponse = response
+      navigationSeen?.()
+      return
+    }
+    response.setHeader('Content-Type', 'text/html; charset=utf-8')
+    response.end(
+      '<!doctype html><title>Native packaged worker</title><h1>Loopback screenshot fixture</h1>',
+    )
+  })
+  fixtureServer.listen(0, '127.0.0.1')
+  await once(fixtureServer, 'listening')
+  const url = `http://127.0.0.1:${fixtureServer.address().port}`
+  const created = await call(() =>
+    window.contextweave.environment.create({
+      name: 'Native packaged fixture',
+      kernelId: 'standard-chromium',
+      commonConfig: { language: 'system', timezone: 'system' },
+    }),
+  )
+  assert(created.ok, 'NATIVE_ENVIRONMENT_CREATE_FAILED')
+  id = created.data.id
+  for (let run = 0; run < 2; run++) {
+    const started = await call((id) => window.contextweave.environment.start(id), id)
+    assert(started.ok, 'NATIVE_ENVIRONMENT_START_FAILED')
+    const screenshot = await call(
+      ({ environmentId, url, run }) =>
+        window.contextweave.worker.runSmoke({
+          protocolVersion: 1,
+          taskId: `native-screenshot-${run}`,
+          environmentId,
+          kind: 'browser-smoke',
+          input: { url, timeoutMs: 10000 },
+        }),
+      { environmentId: id, url, run },
+    )
+    assert(screenshot.ok && screenshot.data.ok, 'NATIVE_UTILITY_SCREENSHOT_FAILED')
+    assert.equal(screenshot.data.title, 'Native packaged worker')
+    const outputRoot = await realpath(join(directory, 'contextweave/worker-results'))
+    const path = await realpath(screenshot.data.screenshotPath)
+    assert.equal(dirname(dirname(path)), outputRoot, 'NATIVE_OUTPUT_ESCAPED')
+    assert.equal(basename(path), 'screenshot.png')
+    assert.deepEqual([...(await readFile(path)).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+    if (run === 0) {
+      const seen = new Promise((resolve) => {
+        navigationSeen = resolve
+      })
+      const cancelled = call(
+        ({ environmentId, url }) =>
+          window.contextweave.worker.runSmoke({
+            protocolVersion: 1,
+            taskId: 'native-cancel',
+            environmentId,
+            kind: 'browser-smoke',
+            input: { url: `${url}/wait`, timeoutMs: 10000 },
+          }),
+        { environmentId: id, url },
+      )
+      void cancelled.catch(() => {})
+      let timer
+      try {
+        await Promise.race([
+          seen,
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('NATIVE_CANCEL_NAVIGATION_NOT_OBSERVED')),
+              10000,
+            )
+          }),
+        ])
+        assert.deepEqual(await call(() => window.contextweave.worker.cancel('native-cancel')), {
+          ok: true,
+          data: true,
+        })
+        assert.deepEqual(await cancelled, { ok: false, code: 'CANCELLED', message: 'CANCELLED' })
+        assert.equal((await readdir(outputRoot)).length, 1, 'NATIVE_CANCEL_LEFT_PARTIAL_OUTPUT')
+      } finally {
+        clearTimeout(timer)
+        waitingResponse?.end('<!doctype html><title>Cancelled fixture</title>')
+        navigationSeen = undefined
+      }
+    }
+    const stopped = await call((id) => window.contextweave.environment.stop(id), id)
+    assert(stopped.ok, 'NATIVE_ENVIRONMENT_STOP_FAILED')
+    const detail = await call((id) => window.contextweave.environment.get(id), id)
+    assert(detail.ok && detail.data.status === 'stopped', 'NATIVE_ENVIRONMENT_NOT_STOPPED')
+  }
+  const deleted = await call((id) => window.contextweave.environment.delete(id), id)
+  assert(deleted.ok, 'NATIVE_ENVIRONMENT_DELETE_FAILED')
+  id = undefined
+  await host.quit()
+} catch (error) {
+  failure = error
+  allowCleanup = !error.nativeProcessUnconfirmed
+  throw error
+} finally {
+  let cleanupFailure
+  if (host && !host.state.exit && id) {
+    const result = await withDeadline(
+      host.page.evaluate((id) => window.contextweave.environment.stop(id), id),
+      10000,
+      'NATIVE_CLEANUP_STOP_TIMEOUT',
+    ).catch(() => undefined)
+    if (!result?.ok) allowCleanup = false
+  }
+  try {
+    await host?.close()
+  } catch (error) {
+    allowCleanup = false
+    cleanupFailure = error
+    console.error('NATIVE_CLEANUP_FAILED')
+  }
+  waitingResponse?.end()
+  fixtureServer?.closeAllConnections()
+  fixtureServer?.close()
+  if (allowCleanup) {
+    try {
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+    } catch (error) {
+      cleanupFailure ??= error
+      console.error('NATIVE_FIXTURE_CLEANUP_FAILED')
+    }
+  } else console.error('NATIVE_FIXTURE_RETAINED_AFTER_UNCONFIRMED_CLEANUP')
+  if (!failure && cleanupFailure) throw cleanupFailure
+}
+
+console.log(
+  JSON.stringify({
+    nativePackagedExecutable: 'passed',
+    fuses: 'all-nine-policy-readback',
+    utilityWorker: 'two-screenshots-and-real-navigation-cancel-passed',
+    lifecycle: 'start-stop-restart-delete-quit',
+    userData: 'isolated-via-existing-typed-api',
+    version,
+    platform: process.platform,
+    arch: process.arch,
+  }),
+)

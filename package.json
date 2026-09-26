@@ -1,6 +1,6 @@
 {
   "name": "contextweave",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "description": "An open-source multi-kernel browser workspace for personal and team operations.",
   "engines": {
@@ -17,7 +17,9 @@
     "format:check": "pnpm --filter @contextweave/desktop format:check",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "test:desktop": "node scripts/smoke-desktop.mjs",
+    "test:packaged-native": "node scripts/smoke-native-packaged.mjs",
+    "test:packaged-fuses": "node scripts/smoke-fuses.mjs",
     "test:fingerprint": "node scripts/smoke-fingerprint.mjs",
-    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs"
+    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs scripts/electron-fuses.test.mjs scripts/native-packaged-host.test.mjs"
   }
 }

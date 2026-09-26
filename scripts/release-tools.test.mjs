@@ -83,12 +83,24 @@ for (const target of ['windows-x64', 'macos-x64', 'macos-arm64'])
     const { versionRoot, archive } = await bundle(root, target)
     write(versionRoot, 'unrelated-installer.exe', 'must not publish')
     const destination = join(root, 'artifacts', target)
-    const names = await stageArtifacts({ versionRoot, destination, target, version: '0.1.6' })
+    const electronEvidence = { fixture: 'not-real-binary-evidence' }
+    const names = await stageArtifacts(
+      { versionRoot, destination, target, version: '0.1.6' },
+      {
+        inspectElectron: async (candidate, platform) => {
+          assert.equal(candidate, archive)
+          assert.equal(platform, getTarget(target).platform)
+          return electronEvidence
+        },
+      },
+    )
     assert.equal(names.length, 4)
     assert.deepEqual(readdirSync(destination).sort(), names.sort())
     const inventory = JSON.parse(
       readFileSync(join(destination, `contextweave-packaged-${target}.json`), 'utf8'),
     )
+    assert.equal(inventory.formatVersion, 2)
+    assert.deepEqual(inventory.electron, electronEvidence)
     assert.equal(inventory.application.arch, getTarget(target).arch)
     assert.equal(inventory.application.version, '0.1.6')
     assert.equal(inventory.asar.sha256, await sha256File(archive))
@@ -136,5 +148,19 @@ test('checks only actual tag refs, not branch or pull-request names', () => {
   assert.equal(
     releaseTagFromEnvironment({ GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v0.1.6' }),
     'v0.1.6',
+  )
+})
+
+test('default artifact staging refuses fixture installers without a real hardened Electron binary', async () => {
+  const root = temp()
+  const { versionRoot } = await bundle(root, 'windows-x64')
+  const destination = join(root, 'artifacts')
+  await assert.rejects(
+    stageArtifacts({ versionRoot, destination, target: 'windows-x64', version: '0.1.6' }),
+    /ENOENT/,
+  )
+  assert(
+    !readdirSync(root).includes('artifacts'),
+    'No attachment should be staged after a binary audit failure',
   )
 })

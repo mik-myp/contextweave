@@ -67,6 +67,12 @@ jobs:
       - name: Verify isolated packaged application bundle
         run: pnpm test:desktop --packaged --require-native
 
+      - name: Verify actual hardened executable and utility worker
+        run: pnpm test:packaged-native
+
+      - name: Verify fuse rejection with disposable positive controls
+        run: pnpm test:packaged-fuses
+
       - name: Audit packaged dependencies and stage verified artifacts
         run: node scripts/release-tools.mjs stage ${{ matrix.name }}
 

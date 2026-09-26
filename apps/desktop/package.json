@@ -1,7 +1,7 @@
 {
   "name": "@contextweave/desktop",
   "private": true,
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "ContextWeave personal browser workspace desktop client.",
   "author": "mik-myp",
   "type": "module",
@@ -38,6 +38,7 @@
     "@contextweave/storage": "workspace:*",
     "@contextweave/worker-protocol": "workspace:*",
     "@electron/asar": "3.4.1",
+    "@electron/fuses": "2.1.3",
     "@electron/rebuild": "^4.2.0",
     "@fontsource-variable/public-sans": "5.3.0",
     "@hookform/resolvers": "^5.9.1",

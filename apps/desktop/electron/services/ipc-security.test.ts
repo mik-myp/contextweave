@@ -18,7 +18,7 @@ describe('trusted IPC sender', () => {
     expect(isTrustedIpcSender(event, window, entry, false)).toBe(true)
     const file = pathToFileURL(resolve('fixture with spaces', '中文', 'index.html')).href
     const packaged = fixture(`${file}#/settings`)
-    expect(isTrustedIpcSender(packaged.event, packaged.window, file, false)).toBe(true)
+    expect(isTrustedIpcSender(packaged.event, packaged.window, file, false)).toBe(false)
   })
 
   it.each([
@@ -71,5 +71,28 @@ describe('trusted IPC sender', () => {
       },
     }
     expect(isTrustedIpcSender(detached, window, entry, false)).toBe(false)
+  })
+})
+
+describe('custom protocol IPC origin boundary', () => {
+  const expected = 'contextweave://app/index.html'
+  it('allows hash routing only for the current main frame at the exact app entry', () => {
+    const { window, event } = fixture(`${expected}#/settings`)
+    expect(isTrustedIpcSender(event, window, expected, false)).toBe(true)
+  })
+  it.each([
+    'contextweave://other/index.html',
+    'contextweave://app/assets/index.js',
+    'contextweave://app/index.html?new=true',
+    'contextweave://user:pass@app/index.html',
+    'file:///index.html',
+  ])('rejects %s', (url) => {
+    const { window, event } = fixture(url)
+    expect(isTrustedIpcSender(event, window, expected, false)).toBe(false)
+  })
+  it('does not let an arbitrary expected custom URL become a trusted origin', () => {
+    expect(
+      isTrustedRendererUrl('contextweave://other/index.html', 'contextweave://other/index.html'),
+    ).toBe(false)
   })
 })

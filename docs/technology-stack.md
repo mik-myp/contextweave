@@ -739,10 +739,24 @@ Windows 复验记录了“约 20.6 秒首次收到管道数据，约 26.2 秒以
 
 启动器记录自己创建的 PID；仅在 exit 通知和只读 OS 不存在证据同时成立后才完成任务、关闭输出并释放占用。拒绝访问/未知错误或 PID 被复用时保守保留，不向裸 PID 发送终止信号；仍只能通过原 UtilityProcess 对象在其有效期内请求停止。超过独立 5 秒收敛预算可返回停止失败，但继续保留归属并低频检查，不能把失败响应当成已清理。没有扩大 Worker 执行预算或跳过真实进程退出门槛。
 
-## 24. v0.1.12 Fuses 与原生包体验证（冻结方向，尚未实施）
+## 24. v0.1.12 Fuses 与原生包体验证（实施中，尚未发布）
 
-- **拟用工具：** `@electron/fuses@2.1.3`，MIT、仅开发依赖、ESM，Node >=22.12，与当前 CI Node 22.15.0 匹配；不加入生产 ASAR，没有原生扩展、默认外联或遥测。用途是修改/读取打包后二进制的 fuse wire，替换影响限定于打包钩子与验证工具。当前尚未新增依赖或锁文件变更。
+- **开发工具：** `@electron/fuses@2.1.3`，MIT、仅开发依赖、ESM，Node >=22.12，与当前 CI Node 22.15.0 匹配；不加入生产 ASAR，没有原生扩展、默认外联或遥测。用途是修改/读取打包后二进制的 fuse wire，替换影响限定于打包钩子与验证工具。引入时同步锁文件，保持 builder 的传递工具不变，禁止二次翻转。
 - **策略与升级：** 固定 v1 全部九项并启用 strictlyRequireAllFuses。关闭 RunAsNode / EnableNodeOptionsEnvironmentVariable / EnableNodeCliInspectArguments / GrantFileProtocolExtraPrivileges；开启 EnableCookieEncryption / EnableEmbeddedAsarIntegrityValidation / OnlyLoadAppFromAsar；保留 LoadBrowserProcessSpecificV8Snapshot=false、WasmTrapHandlers=true。未知 wire/条目失败，Electron 升级必须重验，不声称所有版本天然兼容。
-- **构建顺序：** 当前 builder 26.15.3 的 ASAR 元数据生成独立于 electronFuses 配置，先写 Mac ElectronAsarIntegrity / Windows INTEGRITY 资源，再进入 afterPack 和签名阶段。拟使用独立工具处理九项，避免 builder 传递工具遗漏 WasmTrapHandlers 或二次翻转。签名路径必须精确指向当前 app，不能依赖任意父目录中 `.app` 子串截断；ARM64 签名可执行性与最终二进制值都须实际验收。
+- **构建顺序：** 当前 builder 26.15.3 的 ASAR 元数据生成独立于 electronFuses 配置，先写 Mac ElectronAsarIntegrity / Windows INTEGRITY 资源，再进入 afterPack 和签名阶段。使用独立工具处理九项，避免 builder 传递工具遗漏 WasmTrapHandlers 或二次翻转。签名路径必须精确指向当前 app，不能依赖任意父目录中 `.app` 子串截断；ARM64 签名可执行性与最终二进制值都须实际验收。
 - **验证分层：** stock Electron 加载隔离 ASAR 继续用于内容/依赖与私有控制测试；新增的真实安装包验证使用已从固定版本源码与原生 ARM64 确认的 `--user-data-dir` 隔离，不使用仅开发宿主支持的环境变量。只用已有 getPaths/getInfo/environment/worker 等白名单 API，不新增 Main inspector/测试 token/Renderer 任意 IPC。失败与清理仍须有界并仅管理本次拥有的进程/文件。
-- **限制：** Fuses 不是 OS 沙箱，不覆盖外部 Chromium 的内核安全、完整供应链信任或未签名二进制被同用户替换的风险；ASAR/目录回退的负面测试须排除签名与 fixture 错误。策略尚未写入产品二进制，九项兼容性、Windows/Intel、真正启用后的截图/取消与最终附件验收仍未完成。
+- **限制：** Fuses 不是 OS 沙箱，不覆盖外部 Chromium 的内核安全、完整供应链信任或未签名二进制被同用户替换的风险；ASAR/目录回退的负面测试须排除签名与 fixture 错误。本地 ARM64 已写入并通过原生截图/取消测试，Windows/Intel、最终同源码的三平台构建及附件验收仍须通过，未发布前不得宣称全部完成。
+
+### 24.1 原生包体发现的资源协议前置条件
+
+首轮真实 ARM64 包体在关闭 GrantFileProtocolExtraPrivileges 后，管理页面的 file URL 返回 ERR_FILE_NOT_FOUND；仅在独立副本恢复该项即能启动，确认不是增加超时可解决的问题。v0.1.12 因此一并迁移静态管理资源至 `contextweave://app/index.html`，不恢复 file 额外权限。Main 注册 standard/secure/corsEnabled/supportFetchAPI 协议，不启用 bypassCSP 或 Service Worker；只映射 dist 内的 index 和单层 assets 白名单，通过 Electron 原生 net.fetch 读取 ASAR，保留原生完整性校验。不支持任意路径、网络转发、查询参数、非 GET/HEAD 或 dist-electron 资源。IPC 仍同时校验当前窗口、主 frame 与唯一管理入口，开发服务器的精确 URL 校验保留。该变更不增加 Renderer API；需补充路径攻击回归及真实打包截图/取消验收。
+
+### 24.2 测试隔离、对照有效性和迁移限制
+
+`--user-data-dir` 只隔离应用文件，不隔离 macOS Keychain。getInfo 会触发安全存储可用性检测；ad-hoc 包体原生测试不访问它，也不改钥匙串、ACL 或生产安全存储实现。版本由包体 manifest 审计，原生 UI 仍用既有 getPaths 验证实际隔离目录。自动化测试拥有并回收自己的进程；任务失败不得被清理错误覆盖。
+
+NODE_OPTIONS 的负面对照不能用 packaged Electron 原已过滤的 `--require` 假称 fuse 生效。当前用有效元数据的专用 ASAR 读取受支持的 `--max-http-header-size`：无环境变量基线、fuse 关闭和仅打开该 fuse 三次结果必须符合预期。其余 RunAsNode、Node inspect、ASAR 替换、app 目录回退都带逐项单 fuse 正向对照；只检测 inspector 在 loopback 是否存在，不连接求值。缺失早期日志不能代替行为证据，ASAR 篡改必须有原生完整性拒绝证据，目录回退必须退出 1 且不执行标记、对照执行成功。
+
+`net.fetch` 使用固定 Electron 的 `bypassCustomProtocolHandlers` 选项，ASAR 由原生 loader 读取，不用任意文件读取 API 代替完整性验证。标准资源协议导致旧 file 源的界面语言偏好不自动迁移（可重新选择）；环境配置、主题、数据库和浏览器用户目录不变。开发工具复用 builder 锁定的 resedit 公共 PE 读取接口，不新增生产依赖；其版本变更必须重新验证 Windows 资源格式。
+
+测试不会再启动后改写同一路径的包体。每次观测从模板生成独立、不可变的可执行副本并核验二进制 SHA-256 与 Mac 签名，匹配真实构建后再运行的顺序。早期复用路径的 ASAR 正向退出和恢复后页面等待失败未获得唯一根因；改进隔离后本地五类对照全部通过，但不把这些旧失败追记为产品缺陷已唯一定位。

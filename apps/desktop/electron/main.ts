@@ -8,12 +8,13 @@ import {
   shell,
   dialog,
   utilityProcess,
+  protocol,
+  net,
 } from 'electron'
 // The Electron entry auto-registers unrestricted logging IPC even without initialize().
 import log from 'electron-log/node'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { dataChangedSchema, platformSchema, architectureSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
@@ -27,6 +28,13 @@ import { classifyStartupError, recoverStartup } from './services/startup-recover
 import { fail } from './services/result'
 import { createAppHandlers } from './app-ipc'
 import { isTrustedIpcSender } from './services/ipc-security'
+import { APP_ENTRY_URL, APP_SCHEME, createAppProtocolHandler } from './services/app-protocol'
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, corsEnabled: true, supportFetchAPI: true },
+  },
+])
 if (!app.isPackaged && process.env.CONTEXTWEAVE_USER_DATA)
   app.setPath('userData', resolve(process.env.CONTEXTWEAVE_USER_DATA))
 log.transports.file.resolvePathFn = () =>
@@ -36,8 +44,7 @@ const APP_ROOT = resolve(__dirname, '..')
 const DEV_SERVER_URL = app.isPackaged
   ? undefined
   : (process.env.ELECTRON_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL)
-const RENDERER_ENTRY_URL =
-  DEV_SERVER_URL ?? pathToFileURL(join(APP_ROOT, 'dist', 'index.html')).href
+const RENDERER_ENTRY_URL = DEV_SERVER_URL ?? APP_ENTRY_URL
 const targetPlatform = platformSchema.parse(process.platform)
 const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
@@ -127,6 +134,12 @@ if (hasInstanceLock)
   app
     .whenReady()
     .then(() => {
+      protocol.handle(
+        APP_SCHEME,
+        createAppProtocolHandler(join(APP_ROOT, 'dist'), (url, method) =>
+          net.fetch(url, { method, bypassCustomProtocolHandlers: true }),
+        ),
+      )
       const dataRoot = join(app.getPath('userData'), 'contextweave')
       const environmentRoot = join(dataRoot, 'environments')
       mkdirSync(environmentRoot, { recursive: true })

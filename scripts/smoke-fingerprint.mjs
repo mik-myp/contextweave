@@ -1,3 +1,4 @@
+import { installKernelDiagnostics, readKernelDiagnostics, restoreKernelDiagnostics } from './smoke-kernel-diagnostics.mjs'
 import { connectManagedBrowser, verifyDetachedControlSession } from './smoke-control.mjs'
 // Real official-package acceptance. No credentials or browser data are kept in the repository.
 import { createRequire } from 'node:module'
@@ -64,6 +65,7 @@ const desktop = await _electron.launch({
 })
 let id, liveId
 try {
+  await installKernelDiagnostics(desktop)
   const page = await desktop.firstWindow()
   await page.waitForFunction(() => !!window.contextweave?.kernel?.install)
   const kernels = await page.evaluate(() => window.contextweave.kernel.list())
@@ -379,7 +381,11 @@ try {
       }),
     )
   }
+} catch (error) {
+  console.error(JSON.stringify({ kernelInstallEvidence: await readKernelDiagnostics(desktop).catch(() => ['unavailable']) }))
+  throw error
 } finally {
+  await restoreKernelDiagnostics(desktop)
   const page = await desktop.firstWindow().catch(() => undefined)
   for (const envId of [id, liveId].filter(Boolean))
     await page?.evaluate((id) => window.contextweave.environment.stop(id), envId).catch(() => {})

@@ -78,7 +78,7 @@ export async function connectBrowserSettings(
         .then((result) => {
           if (closed || pages.size) return
           const targets = z.object({ targetInfos: z.array(targetSchema) }).parse(result).targetInfos
-          if (!targets.some(isPage)) onNoPages()
+          if (!targets.some(isPage)) closeForNoPages()
         })
         .catch(fail)
     }, 750)
@@ -100,6 +100,12 @@ export async function connectBrowserSettings(
     pending.clear()
     attached.clear()
     authAttempts.clear()
+  }
+  const closeForNoPages = () => {
+    if (closed || !onNoPages) return
+    close()
+    // This requests the supervisor's normal stop path; only it can confirm OS exit.
+    onNoPages()
   }
   signal?.addEventListener('abort', close, { once: true })
   if (signal?.aborted) close()
@@ -269,8 +275,20 @@ export async function connectBrowserSettings(
       fail(cause)
     }
   })
-  socket.addEventListener('close', () => fail(new Error('Browser settings connection lost')))
-  socket.addEventListener('error', () => fail(new Error('Browser settings connection failed')))
+  const connectionLost = (error: Error) => {
+    if (closed) return
+    // Chromium can drop CDP after destroying its last page, before the 750 ms
+    // empty-page probe. Preserve observed close intent instead of reporting a
+    // settings failure. Unknown/never-seen/still-live pages remain fail-closed.
+    if (ready && sawPage && pages.size === 0 && onNoPages) closeForNoPages()
+    else fail(error)
+  }
+  socket.addEventListener('close', () =>
+    connectionLost(new Error('Browser settings connection lost')),
+  )
+  socket.addEventListener('error', () =>
+    connectionLost(new Error('Browser settings connection failed')),
+  )
   try {
     signal?.throwIfAborted()
     await new Promise<void>((resolve, reject) => {

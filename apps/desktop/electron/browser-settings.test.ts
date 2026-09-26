@@ -464,3 +464,110 @@ it('does not allocate a fresh full timeout to each initial settings command', as
   await vi.advanceTimersByTimeAsync(10001)
   await failed
 })
+
+function mockPageDiscovery(targetIds: string[]) {
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Target.getTargets') {
+      this.commands.push(command)
+      queueMicrotask(() =>
+        this.emit({
+          id: command.id,
+          result: { targetInfos: targetIds.map((targetId) => ({ targetId, type: 'page' })) },
+        }),
+      )
+    } else original.call(this, text)
+  })
+}
+
+it.each(['close', 'error'])(
+  'preserves last-page-close intent when the settings transport emits %s before the empty check',
+  async (event) => {
+    mockPageDiscovery(['tab-a'])
+    const failed = vi.fn(),
+      empty = vi.fn()
+    const close = await connectBrowserSettings(
+      access,
+      { ...settings, language: 'system', timezone: 'system' },
+      failed,
+      undefined,
+      empty,
+    )
+    vi.useFakeTimers()
+    try {
+      const socket = MockSocket.instance
+      socket.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-a' } })
+      socket.dispatchEvent(new Event(event))
+      expect(empty).toHaveBeenCalledOnce()
+      expect(failed).not.toHaveBeenCalled()
+      socket.dispatchEvent(new Event('close'))
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(empty).toHaveBeenCalledOnce()
+      expect(
+        socket.commands.filter((command) => command.method === 'Target.getTargets'),
+      ).toHaveLength(1)
+    } finally {
+      close()
+    }
+  },
+)
+
+it.each(['remaining', 'replacement', 'never-seen'])(
+  'still fails transport loss with %s pages instead of inventing a normal close',
+  async (state) => {
+    mockPageDiscovery(state === 'never-seen' ? [] : ['tab-a'])
+    const failed = vi.fn(),
+      empty = vi.fn()
+    const close = await connectBrowserSettings(
+      access,
+      { ...settings, language: 'system', timezone: 'system' },
+      failed,
+      undefined,
+      empty,
+    )
+    try {
+      const socket = MockSocket.instance
+      if (state === 'replacement') {
+        socket.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-a' } })
+        socket.emit({
+          method: 'Target.targetCreated',
+          params: { targetInfo: { targetId: 'tab-b', type: 'page' } },
+        })
+      }
+      socket.dispatchEvent(new Event('close'))
+      expect(failed).toHaveBeenCalledOnce()
+      expect(empty).not.toHaveBeenCalled()
+    } finally {
+      close()
+    }
+  },
+)
+
+it('does not turn an explicit cancellation into a last-page-close callback', async () => {
+  mockPageDiscovery(['tab-a'])
+  const controller = new AbortController(),
+    failed = vi.fn(),
+    empty = vi.fn()
+  const close = await connectBrowserSettings(
+    access,
+    { ...settings, language: 'system', timezone: 'system' },
+    failed,
+    undefined,
+    empty,
+    controller.signal,
+  )
+  try {
+    MockSocket.instance.emit({ method: 'Target.targetDestroyed', params: { targetId: 'tab-a' } })
+    controller.abort()
+    MockSocket.instance.dispatchEvent(new Event('close'))
+    expect(failed).not.toHaveBeenCalled()
+    expect(empty).not.toHaveBeenCalled()
+  } finally {
+    close()
+  }
+})

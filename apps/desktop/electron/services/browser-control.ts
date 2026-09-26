@@ -199,14 +199,33 @@ export async function createBrowserControl() {
       tickets.add(ticket)
       return { access: { port, token }, revoke: () => revoke(ticket) }
     },
-    async ready(signal: AbortSignal): Promise<string> {
+    async ready(signal: AbortSignal, deadline = performance.now() + 30000): Promise<string> {
       if (!pipe || closed) throw new Error('CONTROL_UNAVAILABLE')
-      const response = await pipe.send('Browser.getVersion', {}, undefined, {
-        timeoutMs: 30000,
-        signal,
-      })
-      if (response.error) throw new Error('CONTROL_UNAVAILABLE')
-      return z.object({ product: z.string().min(1).max(256) }).parse(response.result).product
+      const startupPipe = pipe
+      const send = async (method: string, params: Record<string, unknown> = {}) => {
+        const remaining = deadline - performance.now()
+        if (remaining <= 0) throw new Error('CONTROL_TIMEOUT')
+        const response = await startupPipe.send(method, params, undefined, {
+          timeoutMs: remaining,
+          signal,
+        })
+        if (response.error) throw new Error('CONTROL_UNAVAILABLE')
+        return response.result
+      }
+      try {
+        const version = z
+          .object({ product: z.string().min(1).max(256) })
+          .parse(await send('Browser.getVersion')).product
+        // Version discovery alone can respond before cold browser-session initialization is ready.
+        const { sessionId } = z
+          .object({ sessionId: z.string().min(1).max(256) })
+          .parse(await send('Target.attachToBrowserTarget'))
+        await send('Target.detachFromTarget', { sessionId })
+        return version
+      } catch (error) {
+        close() // Also cleans a late/cancelled startup root; no clients have been admitted yet.
+        throw error
+      }
     },
     async closeBrowser() {
       if (pipe && !pipe.closed) await pipe.send('Browser.close', {}, undefined, { timeoutMs: 1000 })

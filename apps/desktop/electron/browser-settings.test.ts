@@ -53,6 +53,8 @@ const settings = {
 }
 const directories: string[] = []
 afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
 })
@@ -395,4 +397,70 @@ it('still fails a genuinely unresponsive control command within a bounded deadli
     vi.useRealTimers()
     vi.restoreAllMocks()
   }
+})
+
+it('uses the remaining startup deadline for initial settings but keeps runtime commands at five seconds', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'performance'] })
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    setTimeout(() => original.call(this, text), 5500)
+  })
+  const failure = vi.fn()
+  let connected = false
+  const connection = connectBrowserSettings(
+    access,
+    settings,
+    failure,
+    undefined,
+    undefined,
+    undefined,
+    performance.now() + 30000,
+  ).then((close) => {
+    connected = true
+    return close
+  })
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(connected).toBe(false)
+  expect(failure).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(25000)
+  const close = await connection
+  expect(connected).toBe(true)
+  expect(failure).not.toHaveBeenCalled()
+  MockSocket.instance.emit({
+    method: 'Target.attachedToTarget',
+    params: { sessionId: 'new-page', targetInfo: { type: 'page' } },
+  })
+  await vi.advanceTimersByTimeAsync(5001)
+  expect(failure).toHaveBeenCalledTimes(1)
+  expect(failure.mock.calls[0][0].message).toContain('timed out')
+  close()
+})
+
+it('does not allocate a fresh full timeout to each initial settings command', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'performance'] })
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    setTimeout(() => original.call(this, text), 6000)
+  })
+  const failed = expect(
+    connectBrowserSettings(
+      access,
+      settings,
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      performance.now() + 10000,
+    ),
+  ).rejects.toThrow('timed out')
+  await vi.advanceTimersByTimeAsync(10001)
+  await failed
 })

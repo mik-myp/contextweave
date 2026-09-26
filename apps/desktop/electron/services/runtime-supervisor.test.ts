@@ -15,6 +15,7 @@ import {
   EnvironmentRepository,
   acquireRuntimeLock,
   runtimeLockPath,
+  readProcessIdentity,
 } from '@contextweave/storage'
 import type { connectBrowserSettings } from '../browser-settings'
 import { createRuntimeSupervisor, terminateChild } from './runtime-supervisor'
@@ -36,6 +37,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 })
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
+  vi.useRealTimers()
   for (const clean of cleanup.splice(0).reverse()) await clean()
 })
 function fixture(
@@ -99,10 +101,19 @@ function fixture(
     lease: vi.fn(() => ({ access: { port: 9000, token: 'a'.repeat(64) }, revoke: vi.fn() })),
   }
   const driver = {
+    identity: vi.fn<(pid: number, signal?: AbortSignal) => Promise<string | undefined>>(
+      async (pid) => readProcessIdentity(pid),
+    ),
     openControl: vi.fn(async () => control),
     launch: vi.fn(() => child),
     ready: vi
-      .fn<(control: BrowserControl, signal: AbortSignal) => Promise<string | undefined>>()
+      .fn<
+        (
+          control: BrowserControl,
+          signal: AbortSignal,
+          deadline?: number,
+        ) => Promise<string | undefined>
+      >()
       .mockResolvedValue('Chrome/123.0.0.1'),
     settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
     // Ordinary stop tests should model Browser.close, not spend three seconds
@@ -197,6 +208,7 @@ describe('runtime supervisor', () => {
         type ? expect.objectContaining({ host: '127.0.0.1' }) : undefined,
         expect.any(Function),
         expect.any(AbortSignal),
+        expect.any(Number),
       )
       expect(f.detect).toHaveBeenCalledWith(
         type
@@ -508,4 +520,87 @@ it('never signals a child PID when its saved OS start identity no longer matches
   child.kill = vi.fn(() => true)
   terminateChild(child, 'SIGTERM', 'previous-instance')
   expect(child.kill).not.toHaveBeenCalled()
+})
+
+it('retains a conservative starting lock until the same live child has a confirmed identity', async () => {
+  const f = fixture()
+  const identity = readProcessIdentity(process.pid)!
+  let finish: ((value: string) => void) | undefined
+  f.driver.identity
+    .mockResolvedValueOnce(identity)
+    .mockResolvedValueOnce(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+  const result = f.runtime.start('env-a')
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  expect(f.driver.launch).toHaveBeenCalledTimes(1)
+  expect(f.repository.listRuntimeSessions()[0]).toMatchObject({
+    status: 'starting',
+    pid: process.pid,
+  })
+  expect(f.repository.listRuntimeSessions()[0].processIdentity).toBeUndefined()
+  expect(JSON.parse(readFileSync(runtimeLockPath(f.dir), 'utf8')).processIdentity).toBeUndefined()
+  expect(f.driver.settings).not.toHaveBeenCalled()
+  expect(() => f.runtime.leaseControl('env-a')).toThrow('ENVIRONMENT_NOT_RUNNING')
+  finish!(identity)
+  expect((await result).ok).toBe(true)
+  expect(f.repository.listRuntimeSessions()[0]).toMatchObject({
+    status: 'running',
+    processIdentity: identity,
+  })
+  expect(JSON.parse(readFileSync(runtimeLockPath(f.dir), 'utf8')).processIdentity).toBe(identity)
+  expect(f.driver.launch).toHaveBeenCalledTimes(1)
+})
+
+it('never declares running with an unknown identity and cancels its query at the startup deadline', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const f = fixture()
+  let childSignal: AbortSignal | undefined
+  f.driver.identity.mockResolvedValueOnce(readProcessIdentity(process.pid)).mockImplementation(
+    (_pid, signal) =>
+      new Promise((_resolve, reject) => {
+        childSignal = signal
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      }),
+  )
+  const result = f.runtime.start('env-a')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(childSignal).toBeDefined()
+  await vi.advanceTimersByTimeAsync(29999)
+  expect(f.repository.get('env-a')?.status).toBe('starting')
+  expect(f.driver.settings).not.toHaveBeenCalled()
+  expect(f.driver.launch).toHaveBeenCalledTimes(1)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await result).toMatchObject({ ok: false, code: 'CONTROL_TIMEOUT' })
+  expect(childSignal?.aborted).toBe(true)
+  expect(f.repository.listRuntimeSessions()[0].status).not.toBe('running')
+  expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+})
+
+it('passes the same signal and deadline from readiness into initial settings rather than resetting the budget', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const f = fixture()
+  f.driver.ready.mockImplementation(
+    () => new Promise((resolve) => setTimeout(() => resolve('Chrome/123.0.0.1'), 26000)),
+  )
+  f.driver.settings.mockImplementation(
+    (_access, _settings, _failure, _proxy, _pages, signal) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      }),
+  )
+  const result = f.runtime.start('env-a')
+  await vi.advanceTimersByTimeAsync(26000)
+  expect(f.driver.settings).toHaveBeenCalledTimes(1)
+  const [, signal, deadline] = f.driver.ready.mock.calls[0]
+  expect(f.driver.settings.mock.calls[0].slice(5)).toEqual([signal, deadline])
+  expect(deadline).toBe(30000)
+  await vi.advanceTimersByTimeAsync(3999)
+  expect(f.repository.get('env-a')?.status).toBe('starting')
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await result).toMatchObject({ ok: false, code: 'CONTROL_TIMEOUT' })
 })

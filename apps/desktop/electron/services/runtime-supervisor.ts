@@ -1,3 +1,4 @@
+import { createStartupBudget, confirmProcessIdentity } from './runtime-startup'
 import { applyIpLocale, type IpLocaleService } from './ip-locale'
 import { openProxyTransport, type ProxyTransport } from './proxy-transport'
 import { createBrowserControl, type BrowserControl } from './browser-control'
@@ -14,7 +15,7 @@ import {
   acquireRuntimeLock,
   inspectRuntimeLock,
   isRuntimeProcessAlive,
-  readProcessIdentity,
+  readProcessIdentityAsync,
   releaseRuntimeLock,
   updateRuntimeLockOwner,
   type EnvironmentRepository,
@@ -40,9 +41,14 @@ type Session = {
   closeSettings?: () => void
 }
 type RuntimeDriver = {
+  identity: typeof readProcessIdentityAsync
   openControl(): Promise<BrowserControl>
   launch(plan: LaunchPlan): ChildProcess
-  ready(control: BrowserControl, signal: AbortSignal): Promise<string | undefined>
+  ready(
+    control: BrowserControl,
+    signal: AbortSignal,
+    deadline?: number,
+  ): Promise<string | undefined>
   settings: typeof connectBrowserSettings
   close?: (control: BrowserControl) => Promise<void>
 }
@@ -79,13 +85,14 @@ export async function waitForChildExit(child: ChildProcess, timeoutMs = 3000): P
   })
 }
 const defaultDriver: RuntimeDriver = {
+  identity: readProcessIdentityAsync,
   openControl: createBrowserControl,
   launch: (plan) =>
     spawn(plan.executablePath, plan.args, {
       stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'],
       windowsHide: false,
     }),
-  ready: (control, signal) => control.ready(signal),
+  ready: (control, signal, deadline) => control.ready(signal, deadline),
   settings: connectBrowserSettings,
   close: (control) => control.closeBrowser(),
 }
@@ -142,6 +149,7 @@ export function createRuntimeSupervisor(options: {
     const controller = new AbortController()
     starting.set(id, controller)
     let managed: Session | undefined
+    let budget: ReturnType<typeof createStartupBudget> | undefined
     let control: BrowserControl | undefined
     let transport: ProxyTransport | undefined
     let releaseKernel: (() => void) | undefined
@@ -168,10 +176,12 @@ export function createRuntimeSupervisor(options: {
       control = await driver.openControl()
       const port = control.port
       controller.signal.throwIfAborted()
+      const ownerIdentity = await driver.identity(process.pid, controller.signal)
+      controller.signal.throwIfAborted()
       const startedAt = new Date().toISOString()
       const lock = acquireRuntimeLock(record.dataDir, {
         pid: process.pid,
-        processIdentity: readProcessIdentity(process.pid),
+        processIdentity: ownerIdentity,
         sessionId,
         controlPort: port,
         startedAt,
@@ -205,7 +215,7 @@ export function createRuntimeSupervisor(options: {
         if (managed) managed.startFailed = true
       })
       if (!child.pid) throw new Error('SPAWN_FAILED')
-      const processIdentity = readProcessIdentity(child.pid)
+      budget = createStartupBudget(controller.signal)
       managed = {
         child,
         control,
@@ -215,13 +225,11 @@ export function createRuntimeSupervisor(options: {
         startFailed: false,
         closeProxy: transport?.close,
         releaseKernel,
-        processIdentity,
       }
       const session = managed
       sessions.set(id, session)
       updateRuntimeLockOwner(record.dataDir, {
         pid: child.pid,
-        processIdentity,
         sessionId,
         controlPort: port,
         startedAt,
@@ -230,7 +238,6 @@ export function createRuntimeSupervisor(options: {
         sessionId,
         environmentId: id,
         pid: child.pid,
-        processIdentity,
         controlPort: port,
         startedAt,
         status: 'starting',
@@ -269,8 +276,27 @@ export function createRuntimeSupervisor(options: {
         changed()
       })
       control.attach(child)
-      const browserVersion = await driver.ready(control, controller.signal)
-      controller.signal.throwIfAborted()
+      const [browserVersion, processIdentity] = await Promise.all([
+        driver.ready(control, budget.signal, budget.deadline),
+        confirmProcessIdentity({
+          pid: child.pid,
+          signal: budget.signal,
+          alive: () => isChildRunning(child),
+          probe: driver.identity,
+        }),
+      ])
+      budget.throwIfAborted()
+      if (!isChildRunning(child) || session.stopRequested) throw new Error('START_FAILED')
+      session.processIdentity = processIdentity
+      if (!repository.setRuntimeProcessIdentity(sessionId, child.pid, processIdentity))
+        throw new Error('START_FAILED')
+      updateRuntimeLockOwner(record.dataDir, {
+        pid: child.pid,
+        processIdentity,
+        sessionId,
+        controlPort: port,
+        startedAt,
+      })
       if (
         record.kernelVersion !== 'local' &&
         browserVersion?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] !== record.kernelVersion
@@ -307,15 +333,19 @@ export function createRuntimeSupervisor(options: {
             terminateChild(child, 'SIGTERM', session.processIdentity)
           })
         },
-        controller.signal,
+        budget.signal,
+        budget.deadline,
       )
-      controller.signal.throwIfAborted()
+      budget.throwIfAborted()
       if (!isChildRunning(child)) throw new Error('START_FAILED')
       repository.updateRuntimeSession(sessionId, 'running')
       repository.updateStatus(id, 'running')
       changed()
       return ok(toSummary(repository.get(id)!))
     } catch (error) {
+      // Freeze the startup outcome before slower child/proxy cleanup can cross its deadline.
+      budget?.dispose()
+      budget?.abort()
       control?.close()
       await transport?.close()
       const cancelled = controller.signal.aborted && !managed?.startFailed
@@ -361,11 +391,14 @@ export function createRuntimeSupervisor(options: {
       return fail(
         cancelled
           ? 'CANCELLED'
-          : error instanceof Error && known.includes(error.message)
-            ? error.message
-            : 'START_FAILED',
+          : budget?.timedOut
+            ? 'CONTROL_TIMEOUT'
+            : error instanceof Error && known.includes(error.message)
+              ? error.message
+              : 'START_FAILED',
       )
     } finally {
+      budget?.dispose()
       starting.delete(id)
       if (!managed || !isChildRunning(managed.child)) {
         control?.close()

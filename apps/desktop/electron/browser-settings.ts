@@ -39,6 +39,7 @@ export async function connectBrowserSettings(
   proxy?: { username: string; password: string; host: string; port: number },
   onNoPages?: () => void,
   signal?: AbortSignal,
+  startupDeadline?: number,
 ): Promise<() => void> {
   signal?.throwIfAborted()
   if (settings.language === 'auto' || settings.timezone === 'auto')
@@ -114,6 +115,12 @@ export async function connectBrowserSettings(
         reject(new Error('Browser settings connection closed'))
         return
       }
+      const timeoutMs =
+        !ready && startupDeadline !== undefined ? startupDeadline - performance.now() : 5000
+      if (timeoutMs <= 0) {
+        reject(new Error(`Browser settings command timed out: ${method}`))
+        return
+      }
       const id = ++sequence
       const timer = setTimeout(() => {
         // Timers can run before queued socket messages after a busy main-loop turn.
@@ -121,7 +128,7 @@ export async function connectBrowserSettings(
           if (!pending.delete(id)) return
           reject(new Error(`Browser settings command timed out: ${method}`))
         })
-      }, 5000)
+      }, timeoutMs)
       pending.set(id, { resolve, reject, timer, sessionId })
       try {
         socket.send(JSON.stringify({ id, method, params, sessionId }))

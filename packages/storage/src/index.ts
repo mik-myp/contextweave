@@ -484,6 +484,15 @@ export class EnvironmentRepository {
     return this.getRuntimeSession(sessionId)
   }
 
+  setRuntimeProcessIdentity(sessionId: string, pid: number, identity: string): boolean {
+    const result = this.sqlite
+      .prepare(
+        "UPDATE runtime_sessions SET process_identity = ? WHERE session_id = ? AND pid = ? AND status = 'starting' AND process_identity IS NULL",
+      )
+      .run(identity, sessionId, pid)
+    return result.changes === 1
+  }
+
   setRuntimeVersion(sessionId: string, version: string): void {
     this.sqlite
       .prepare('UPDATE runtime_sessions SET executable_version = ? WHERE session_id = ?')
@@ -652,3 +661,5 @@ export {
   type RuntimeLockOwner,
   type RuntimeLockResult,
 } from './lock'
+
+export { readProcessIdentityAsync } from './process-identity-async'

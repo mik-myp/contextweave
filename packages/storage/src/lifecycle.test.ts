@@ -161,3 +161,24 @@ it('upgrades v1 proxy names without changing existing credentials, IDs or enviro
   expect(next.get('env-a')?.revision).toBe(1)
   expect(readdirSync(root).some((name) => name.includes('.before-v4-'))).toBe(true)
 })
+
+it('fills a missing runtime identity only for the same starting session and PID', () => {
+  const { repository, root } = fixture()
+  repository.create({ config, dataDir: root, platform: 'darwin', arch: 'arm64' })
+  const runtime = {
+    sessionId: 'startup', environmentId: 'env-a', pid: 123, controlPort: 9000,
+    startedAt: new Date().toISOString(), status: 'starting' as const, exitReason: null,
+  }
+  repository.createRuntimeSession(runtime)
+  expect(repository.setRuntimeProcessIdentity('missing', 123, 'os:start')).toBe(false)
+  expect(repository.setRuntimeProcessIdentity('startup', 456, 'os:start')).toBe(false)
+  expect(repository.getRuntimeSession('startup')?.processIdentity).toBeUndefined()
+  expect(repository.setRuntimeProcessIdentity('startup', 123, 'os:start')).toBe(true)
+  expect(repository.setRuntimeProcessIdentity('startup', 123, 'os:replacement')).toBe(false)
+  expect(repository.getRuntimeSession('startup')?.processIdentity).toBe('os:start')
+  for (const status of ['running', 'stopping', 'stopped', 'crashed'] as const) {
+    repository.createRuntimeSession({ ...runtime, sessionId: status, status })
+    expect(repository.setRuntimeProcessIdentity(status, 123, 'os:start')).toBe(false)
+    expect(repository.getRuntimeSession(status)?.processIdentity).toBeUndefined()
+  }
+})

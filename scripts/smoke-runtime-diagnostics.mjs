@@ -1,10 +1,11 @@
 // Failure evidence for the disposable Electron smoke host. This changes neither launch
 // arguments/stdio nor the control transport, and never reads command or response bodies.
 export async function installRuntimeDiagnostics(desktop) {
-  await desktop.evaluate(() => {
+  await desktop.evaluate(({ app }) => {
     const children = process.getBuiltinModule('node:child_process')
     const modules = process.getBuiltinModule('node:module')
-    const { basename } = process.getBuiltinModule('node:path')
+    const { basename, join } = process.getBuiltinModule('node:path')
+    const { WebSocket } = modules.createRequire(join(app.getAppPath(), 'package.json'))('ws')
     const original = children.spawn
     const records = []
     children.spawn = function (file, args, options) {
@@ -56,11 +57,125 @@ export async function installRuntimeDiagnostics(desktop) {
       return child
     }
     modules.syncBuiltinESMExports()
+    const controlEvents = []
+    const connections = new WeakMap()
+    let connectionSequence = 0
+    const started = performance.now()
+    const originalEmit = WebSocket.prototype.emit
+    const originalSend = WebSocket.prototype.send
+    const connection = (socket) => {
+      if (
+        typeof socket.url !== 'string' ||
+        !/^ws:\/\/127\.0\.0\.1:\d+\/contextweave\/browser$/.test(socket.url)
+      )
+        return undefined
+      let state = connections.get(socket)
+      if (!state) {
+        state = { id: ++connectionSequence, methods: new Map() }
+        connections.set(socket, state)
+      }
+      return state
+    }
+    const recordEvent = (state, event) => {
+      if (state && controlEvents.length < 200)
+        controlEvents.push({
+          atMs: Math.round(performance.now() - started),
+          connection: state.id,
+          ...event,
+        })
+    }
+    const parse = (data) => {
+      if ((typeof data !== 'string' && !Buffer.isBuffer(data)) || Buffer.byteLength(data) > 65536)
+        return undefined
+      try {
+        return JSON.parse(data.toString())
+      } catch {
+        return undefined
+      }
+    }
+    const allowedMethods = new Set([
+      'Target.attachToBrowserTarget',
+      'Target.attachToTarget',
+      'Target.detachFromTarget',
+      'Target.setAutoAttach',
+      'Target.setDiscoverTargets',
+      'Target.getTargets',
+      'Target.attachedToTarget',
+      'Target.detachedFromTarget',
+      'Target.targetCreated',
+      'Target.targetDestroyed',
+      'Target.targetInfoChanged',
+      'Target.targetCrashed',
+      'Runtime.runIfWaitingForDebugger',
+      'Emulation.setTimezoneOverride',
+      'Emulation.setLocaleOverride',
+      'Fetch.enable',
+      'Fetch.requestPaused',
+      'Fetch.authRequired',
+      'Fetch.continueRequest',
+      'Fetch.continueWithAuth',
+    ])
+    const methodName = (name) => (allowedMethods.has(name) ? name : undefined)
+    WebSocket.prototype.send = function (data) {
+      const state = connection(this)
+      if (state && state.methods.size < 128) {
+        const message = parse(data)
+        const method = methodName(message?.method)
+        if (Number.isSafeInteger(message?.id) && method) state.methods.set(message.id, method)
+      }
+      return Reflect.apply(originalSend, this, arguments)
+    }
+    WebSocket.prototype.emit = function (event, data) {
+      const state = connection(this)
+      if (state && controlEvents.length < 200) {
+        if (event === 'close')
+          recordEvent(state, { event, code: typeof data === 'number' ? data : null })
+        else if (event === 'error')
+          recordEvent(state, {
+            event,
+            code: /^[A-Z_]{1,64}$/.test(data?.code) ? data.code : 'TRANSPORT_ERROR',
+          })
+        else if (event === 'message') {
+          const message = parse(data)
+          if (message) {
+            const method = state.methods.get(message.id) ?? methodName(message.method)
+            if (message.id !== undefined) state.methods.delete(message.id)
+            const knownErrors = [
+              'Session with given id not found.',
+              'No session with given id',
+              'Browser target detached',
+              'CONTROL_SESSION',
+              'CONTROL_CLOSED',
+              'CONTROL_TIMEOUT',
+            ]
+            recordEvent(state, {
+              event: message.id !== undefined ? 'response' : 'event',
+              method,
+              errorCode: typeof message.error?.code === 'number' ? message.error.code : undefined,
+              errorKind: message.error
+                ? knownErrors.includes(message.error.message)
+                  ? message.error.message
+                  : 'REDACTED_PROTOCOL_ERROR'
+                : undefined,
+              targetType: ['page', 'iframe', 'browser', 'service_worker', 'other'].includes(
+                message.params?.targetInfo?.type,
+              )
+                ? message.params.targetInfo.type
+                : undefined,
+            })
+          }
+        }
+      }
+      return Reflect.apply(originalEmit, this, arguments)
+    }
     // This exists only in the inspector-controlled smoke Main, never in shipped application code.
     globalThis.__cwRuntimeDiagnostics = {
       records,
+      controlEvents,
       restore: () => {
         children.spawn = original
+        WebSocket.prototype.emit = originalEmit
+        WebSocket.prototype.send = originalSend
         modules.syncBuiltinESMExports()
       },
     }
@@ -76,4 +191,11 @@ export async function restoreRuntimeDiagnostics(desktop) {
       delete globalThis.__cwRuntimeDiagnostics
     })
     .catch(() => {})
+}
+
+export async function readRuntimeFailureEvidence(desktop) {
+  return desktop.evaluate(() => ({
+    processes: globalThis.__cwRuntimeDiagnostics?.records ?? [],
+    controlEvents: globalThis.__cwRuntimeDiagnostics?.controlEvents ?? [],
+  }))
 }

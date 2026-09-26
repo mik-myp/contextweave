@@ -1,5 +1,5 @@
 import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
-import { installRuntimeDiagnostics, readRuntimeDiagnostics, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
+import { installRuntimeDiagnostics, readRuntimeDiagnostics, readRuntimeFailureEvidence, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
 import { connectManagedBrowser } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
@@ -482,6 +482,24 @@ try {
     assert((await active.evaluate(() => window.contextweave.environment.list())).ok)
     console.log(JSON.stringify({ destroyedWindowSecondInstance: 'passed', macActivate: 'passed' }))
   }
+} catch (error) {
+  // Capture before cleanup changes the process/transport state. No URL, payload,
+  // headers, credential, arbitrary error message or screenshot bytes are recorded.
+  const manager = desktop.windows()[0]
+  let runtimeStates = []
+  if (manager) {
+    try {
+      runtimeStates = await manager.evaluate(async () => {
+        const result = await window.contextweave.activity.list()
+        return result.ok ? result.data.slice(0, 8).map((session) => ({
+          status: session.status,
+          exitReason: session.exitReason === null ? null : /^[A-Z_]{1,80}$/.test(session.exitReason) ? session.exitReason : 'REDACTED_EXIT_REASON',
+        })) : []
+      })
+    } catch { /* Keep the original failure if the manager is already unavailable. */ }
+  }
+  console.error(JSON.stringify({ runtimeFailureEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })), runtimeStates }))
+  throw error
 } finally {
   await restoreRuntimeDiagnostics(desktop)
   try {

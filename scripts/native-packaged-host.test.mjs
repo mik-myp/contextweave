@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   cleanElectronEnvironment,
+  hasCommittedAppTarget,
   requestNativeQuit,
   spawnOwned,
   stopOwned,
@@ -97,3 +98,31 @@ test('quit never masks an IPC denial, unrelated failure or an application that h
     /NATIVE_EXITED_BEFORE_REQUESTED_QUIT/,
   )
 })
+
+test('native readiness requires a committed exact app page, not an open debug socket or arbitrary target', () => {
+  assert(
+    hasCommittedAppTarget([{ type: 'page', url: 'contextweave://app/index.html#/environments' }]),
+  )
+  for (const value of [
+    null,
+    {},
+    [],
+    [{ type: 'page', url: 'about:blank' }],
+    [{ type: 'other', url: 'contextweave://app/index.html' }],
+    [{ type: 'page', url: 'contextweave://other/index.html' }],
+    [{ type: 'page', url: 'contextweave://app/index.html?altered=1' }],
+    [{ type: 'page', url: 'contextweave://user@app/index.html' }],
+  ])
+    assert.equal(hasCommittedAppTarget(value), false)
+})
+
+test(
+  'polling also bounds an asynchronous readiness predicate without extending its budget',
+  { timeout: 1000 },
+  async () => {
+    await assert.rejects(
+      until(() => new Promise(() => {}), 10, 'ASYNC_PREDICATE_DEADLINE'),
+      /ASYNC_PREDICATE_DEADLINE/,
+    )
+  },
+)

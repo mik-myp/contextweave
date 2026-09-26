@@ -22,7 +22,7 @@ import {
   validateFuseWire,
   verifyEmbeddedIntegrity,
   verifyBundleSignature,
-} from './electron-fuses.mjs'
+} from '../apps/desktop/build/electron-fuses.mjs'
 import { launchNative, spawnOwned, stopOwned, until } from './native-packaged-host.mjs'
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
 const { flipFuses, getCurrentFuseWire } = await import(

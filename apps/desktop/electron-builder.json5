@@ -3,7 +3,7 @@
   appId: 'com.mikmyp.contextweave',
   productName: 'ContextWeave',
   asar: true,
-  afterPack: '../../scripts/after-pack.mjs',
+  afterPack: 'build/after-pack.mjs',
   forceCodeSigning: false,
   directories: {
     output: 'release/${version}',

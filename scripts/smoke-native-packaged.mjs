@@ -12,7 +12,7 @@ import {
   readFuses,
   verifyEmbeddedIntegrity,
   verifyBundleSignature,
-} from './electron-fuses.mjs'
+} from '../apps/desktop/build/electron-fuses.mjs'
 import { launchNative, withDeadline } from './native-packaged-host.mjs'
 
 const root = fileURLToPath(new URL('../apps/desktop/', import.meta.url))

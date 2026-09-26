@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, test } from 'node:test'
 import {
   assertIntegrityRecord,
@@ -10,7 +11,7 @@ import {
   packagedLayout,
   readFuses,
   validateFuseWire,
-} from './electron-fuses.mjs'
+} from '../apps/desktop/build/electron-fuses.mjs'
 const roots = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -87,4 +88,14 @@ test('integrity metadata must use the exact algorithm, hash and record shape', (
     { algorithm: 'SHA256', hash, extra: 'unreviewed' },
   ])
     assert.throws(() => assertIntegrityRecord(record, hash), /ASAR_INTEGRITY_METADATA_MISMATCH/)
+})
+
+test('the configured builder hook and its fuse policy stay inside the desktop project root', async () => {
+  const root = fileURLToPath(new URL('../apps/desktop/', import.meta.url))
+  const configuration = await readFile(join(root, 'electron-builder.json5'), 'utf8')
+  const hook = configuration.match(/afterPack: '([^']+)'/)?.[1]
+  assert(hook, 'Expected an explicit afterPack hook')
+  const path = resolve(root, hook)
+  assert(!relative(root, path).startsWith('..'), 'PACKAGING_HOOK_OUTSIDE_DESKTOP_ROOT')
+  assert.equal(typeof (await import(pathToFileURL(path).href)).default, 'function')
 })

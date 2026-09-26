@@ -19,7 +19,7 @@ import {
   readFuses,
   verifyEmbeddedIntegrity,
   verifyBundleSignature,
-} from './electron-fuses.mjs'
+} from '../apps/desktop/build/electron-fuses.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const desktopRequire = createRequire(join(root, 'apps/desktop/package.json'))

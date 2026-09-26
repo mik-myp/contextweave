@@ -35,9 +35,15 @@ export async function withDeadline(promise, milliseconds, code) {
 export async function until(predicate, timeoutMs, code) {
   const deadline = performance.now() + timeoutMs
   while (performance.now() < deadline) {
-    const value = await predicate()
+    const value = await withDeadline(
+      Promise.resolve().then(predicate),
+      Math.max(1, deadline - performance.now()),
+      code,
+    )
     if (value) return value
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(25, Math.max(0, deadline - performance.now()))),
+    )
   }
   throw new Error(code)
 }
@@ -89,6 +95,21 @@ export async function requestNativeQuit(page, state) {
   const exit = await until(() => state.exit, 10000, 'NATIVE_QUIT_TIMEOUT')
   assert.deepEqual(exit, { code: 0, signal: null }, 'NATIVE_QUIT_NOT_CLEAN')
 }
+export function hasCommittedAppTarget(targets) {
+  return (
+    Array.isArray(targets) &&
+    targets.some((target) => {
+      if (!target || target.type !== 'page' || typeof target.url !== 'string') return false
+      try {
+        const url = new URL(target.url)
+        url.hash = ''
+        return url.href === 'contextweave://app/index.html'
+      } catch {
+        return false
+      }
+    })
+  )
+}
 export async function launchNative(layout, directory, options = {}) {
   const state = spawnOwned(
     layout.executable,
@@ -114,9 +135,29 @@ export async function launchNative(layout, directory, options = {}) {
       15000,
       'NATIVE_RENDERER_DEBUG_TIMEOUT',
     )
+    // A listening DevTools socket is not an initialized Electron window. Observe a
+    // committed native page before an automation client can pause newly born targets.
+    // This replaces the old post-connect 10s page-event wait, not a longer deadline.
+    const discovery = new URL(endpoint)
+    discovery.protocol = 'http:'
+    discovery.pathname = '/json/list'
+    await until(
+      async () => {
+        if (state.exit || state.spawnError) throw new Error('NATIVE_EXITED_BEFORE_PAGE_COMMITTED')
+        const response = await fetch(discovery, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(1000),
+        })
+        assert(response.ok, 'NATIVE_RENDERER_DISCOVERY_FAILED')
+        return hasCommittedAppTarget(await response.json())
+      },
+      10000,
+      'NATIVE_PAGE_NOT_COMMITTED',
+    )
     browser = await chromium.connectOverCDP(endpoint, { timeout: 10000 })
     const context = browser.contexts()[0]
-    page = context.pages()[0] ?? (await context.waitForEvent('page', { timeout: 10000 }))
+    page = context.pages()[0]
+    assert(page, 'NATIVE_COMMITTED_PAGE_NOT_ATTACHED')
     await page.waitForFunction(() => !!window.contextweave?.app?.getPaths, undefined, {
       timeout: 10000,
     })

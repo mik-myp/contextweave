@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
-const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
+const require = createRequire(new URL('../package.json', import.meta.url))
 const { FuseVersion, FuseV1Options, FuseState, flipFuses, getCurrentFuseWire } = await import(
   pathToFileURL(require.resolve('@electron/fuses')).href
 )

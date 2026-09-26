@@ -760,3 +760,9 @@ NODE_OPTIONS 的负面对照不能用 packaged Electron 原已过滤的 `--requi
 `net.fetch` 使用固定 Electron 的 `bypassCustomProtocolHandlers` 选项，ASAR 由原生 loader 读取，不用任意文件读取 API 代替完整性验证。标准资源协议导致旧 file 源的界面语言偏好不自动迁移（可重新选择）；环境配置、主题、数据库和浏览器用户目录不变。开发工具复用 builder 锁定的 resedit 公共 PE 读取接口，不新增生产依赖；其版本变更必须重新验证 Windows 资源格式。
 
 测试不会再启动后改写同一路径的包体。每次观测从模板生成独立、不可变的可执行副本并核验二进制 SHA-256 与 Mac 签名，匹配真实构建后再运行的顺序。早期复用路径的 ASAR 正向退出和恢复后页面等待失败未获得唯一根因；改进隔离后本地五类对照全部通过，但不把这些旧失败追记为产品缺陷已唯一定位。
+
+### 24.3 Windows 构建钩子的应用边界
+
+首轮 Windows Build 中，builder 26.15.3 未识别 pnpm 仓库根，将 apps/desktop 视为钩子允许根，拒绝原仓库级脚本路径。将 after-pack 与共享 fuse 构建策略归入 `apps/desktop/build/`，它只负责该应用的打包检查和签名，不是生产 Main/Renderer 业务模块，不进入 ASAR。仓库级发布审计和测试显式复用该构建策略。保留 builder 的路径校验，不设置任意外部钩子白名单，不覆盖其传递 fuses 依赖；新增钩子必须位于桌面应用根内的回归。
+
+测试宿主不把 DevTools listening 日志当作 UI 已初始化：先在相同的 10 秒页面预算内只读发现精确管理页，再连接会对新 target 做 auto-attach 的客户端，取消原连接后的页面等待，避免验证工具介入原生启动时序。缺页失败、旧路径复用失败和首次 Intel 下载失败仍保留，不以诊断再现正常页面推导唯一根因。

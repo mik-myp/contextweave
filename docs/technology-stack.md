@@ -695,7 +695,7 @@ Windows 发布验证补充：Preferences 身份校验必须使用完整 64 位�
 - **职责：** Main 下的专用控制服务管理 Chromium 继承的 fd3/fd4、NUL 分帧 CDP、连接租约与会话路由；`kernel-core` 只产出 pipe 启动参数，不知道端口/令牌。设置服务与 Worker 使用标准 CDP 客户端；不依赖 Playwright 的私有内部路径。
 - **鉴权：** 本机 `127.0.0.1` 随机端口；固定单一路径、精确 Host、拒绝所有带 Origin 的升级；256-bit 随机 token 只在 Authorization header 使用，以恒时比较校验，15 秒内一次消费；最多 16 个待消费租约、8 个活动连接，均可显式撤销。无 HTTP 调试发现接口。此边界防止未持凭据的本地连接/网页，不声称能抵抗已接管 Main 或同用户调试权限的恶意程序。
 - **会话：** 每客户端独立 `Target.attachToBrowserTarget` 根会话，使用 flattened sessions、重写请求 ID、校验 sessionId 的所有权及嵌套 Target 命令；断开/撤销时 detach 整棵树。连接内的授权是已有环境级浏览器控制，不新增团队/页面级权限声明。
-- **断开竞态（下一补丁实施边界）：** 每客户端保留最多 1024 个最近已归属但断开的会话标识，仅用于拒绝晚到命令并返回标准 CDP 会话错误；不恢复会话、不转发命令、不重试。标识不持久化、不进入日志或 Renderer，连接撤销时清空；容量淘汰后按未知标识保守拒绝。其他客户端/未知标识仍断开违规客户端；根会话断开仍关闭连接。排队时保存具体归属实例并在取槽后重验，不让被淘汰或复用的标识使旧命令重新生效。子会话只由原生 attached 事件建立，晚到 attach 响应不能复活已经断开的会话；browser 根会话仍由 Main 在私有 pipe 上单独登记。
+- **断开竞态（v0.1.11）：** 每客户端保留最多 1024 个最近已归属但断开的会话标识，仅用于拒绝晚到命令并返回标准 CDP 会话错误；不恢复会话、不转发命令、不重试。标识不持久化、不进入日志或 Renderer，连接撤销时清空；容量淘汰后按未知标识保守拒绝。其他客户端/未知标识仍断开违规客户端；根会话断开仍关闭连接。排队时保存具体归属实例并在取槽后重验，不让被淘汰或复用的标识使旧命令重新生效。子会话只由原生 attached 事件建立，晚到 attach 响应不能复活已经断开的会话；browser 根会话仍由 Main 在私有 pipe 上单独登记。
 - **资源：** 浏览器响应单帧 64 MiB（容纳现有 32 MiB 截图的 base64），客户端命令 1 MiB、管道待写 4 MiB、全局未完成命令 256 个、会话总数 1024、每客户端最多 8 个 browser 根会话和 24 个并发命令、128 个待处理命令且总请求数据不超过 4 MiB；超过并发槽位的正常突发先排队，关闭时取消未发送命令。客户端待写与启动/命令/握手时间有界。上限、取消、超时、错误均由传输服务处理，不依赖 UI 生命周期。
 - **新运行依赖：** `ws@8.21.3`（MIT），用于标准 WebSocket 服务/客户端及载荷上限，不自写帧协议。无遥测与默认外联；可选 `bufferutil` / `utf-8-validate` 不启用，不引入原生安装脚本；用 Node 内置实现。替换成本限于控制服务和设置连接，不影响业务 contracts。落锁及来源/许可证检查与实现同步；类型依赖 `@types/ws@8.18.1`（MIT）单独锁定；不在运行产物中携带。
 - **迁移：** 用户 SQLite 保持 schema v4；旧 controlPort 仅作历史字段，新记录保存鉴权转接端口，不保存 token。内部 Worker envelope 和 Adapter 输入升级，不开放外部兼容承诺。应用重启不会凭旧端口接管浏览器。
@@ -712,7 +712,7 @@ Windows 复验记录了“约 20.6 秒首次收到管道数据，约 26.2 秒以
 - 启动期间先持久化拥有的 child PID 及 starting 状态，身份未获得时维持保守占用规则；确认该 child 仍活着后，以 session/PID/starting 条件更新身份和锁，再进入 running。取消/退出/总预算耗尽必须回收连接，并依旧等实际 child 退出才释放运行锁。
 - 这些修正针对已观察到的两个问题，不宣称已唯一解释此前每次 Windows 超时或 Intel 自动停止失败。仍需故障注入、三平台和有限独立新 profile 验证；不提高测试超时、不开放裸调试端口。
 
-### 21.2 最后页面关闭与控制连接结束的顺序（v0.1.11 候选）
+### 21.2 最后页面关闭与控制连接结束的顺序（v0.1.11）
 
 页面观察器在初始化完成且曾观察到页面后，若全部页面被销毁、控制连接在既有空窗口复查前结束，向 Main 请求既有 BROWSER_CLOSED 停止流程；正常空窗口复查也只通知一次。观察器本身不能据此写 stopped 或释放运行锁。Main 仍确认实际进程退出，停止超时仍保留占用/恢复状态；不加长原有等待时间。有页面存活、从未观察到页面、初始化中或设置协议错误仍走失败路径，显式取消不触发浏览器关闭回调。
 
@@ -738,3 +738,11 @@ Windows 复验记录了“约 20.6 秒首次收到管道数据，约 26.2 秒以
 当前 Electron `44.4.3` 的 `UtilityProcessWrapper::OnServiceProcessDisconnected` 在收到 `process_exit_termination` 时即可触发 JS exit，早于 OS 完全退出。独立 ARM64 原生实验的 12 个子进程在 exit 回调当时均仍可被只读 PID 查询发现；其中一个在下一事件循环仍存在，随后退出。因此不能把 exit 通知、kill 返回 true 或一次指标快照当成已经释放。
 
 启动器记录自己创建的 PID；仅在 exit 通知和只读 OS 不存在证据同时成立后才完成任务、关闭输出并释放占用。拒绝访问/未知错误或 PID 被复用时保守保留，不向裸 PID 发送终止信号；仍只能通过原 UtilityProcess 对象在其有效期内请求停止。超过独立 5 秒收敛预算可返回停止失败，但继续保留归属并低频检查，不能把失败响应当成已清理。没有扩大 Worker 执行预算或跳过真实进程退出门槛。
+
+## 24. v0.1.12 Fuses 与原生包体验证（冻结方向，尚未实施）
+
+- **拟用工具：** `@electron/fuses@2.1.3`，MIT、仅开发依赖、ESM，Node >=22.12，与当前 CI Node 22.15.0 匹配；不加入生产 ASAR，没有原生扩展、默认外联或遥测。用途是修改/读取打包后二进制的 fuse wire，替换影响限定于打包钩子与验证工具。当前尚未新增依赖或锁文件变更。
+- **策略与升级：** 固定 v1 全部九项并启用 strictlyRequireAllFuses。关闭 RunAsNode / EnableNodeOptionsEnvironmentVariable / EnableNodeCliInspectArguments / GrantFileProtocolExtraPrivileges；开启 EnableCookieEncryption / EnableEmbeddedAsarIntegrityValidation / OnlyLoadAppFromAsar；保留 LoadBrowserProcessSpecificV8Snapshot=false、WasmTrapHandlers=true。未知 wire/条目失败，Electron 升级必须重验，不声称所有版本天然兼容。
+- **构建顺序：** 当前 builder 26.15.3 的 ASAR 元数据生成独立于 electronFuses 配置，先写 Mac ElectronAsarIntegrity / Windows INTEGRITY 资源，再进入 afterPack 和签名阶段。拟使用独立工具处理九项，避免 builder 传递工具遗漏 WasmTrapHandlers 或二次翻转。签名路径必须精确指向当前 app，不能依赖任意父目录中 `.app` 子串截断；ARM64 签名可执行性与最终二进制值都须实际验收。
+- **验证分层：** stock Electron 加载隔离 ASAR 继续用于内容/依赖与私有控制测试；新增的真实安装包验证使用已从固定版本源码与原生 ARM64 确认的 `--user-data-dir` 隔离，不使用仅开发宿主支持的环境变量。只用已有 getPaths/getInfo/environment/worker 等白名单 API，不新增 Main inspector/测试 token/Renderer 任意 IPC。失败与清理仍须有界并仅管理本次拥有的进程/文件。
+- **限制：** Fuses 不是 OS 沙箱，不覆盖外部 Chromium 的内核安全、完整供应链信任或未签名二进制被同用户替换的风险；ASAR/目录回退的负面测试须排除签名与 fixture 错误。策略尚未写入产品二进制，九项兼容性、Windows/Intel、真正启用后的截图/取消与最终附件验收仍未完成。

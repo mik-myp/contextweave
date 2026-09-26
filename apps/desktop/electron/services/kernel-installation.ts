@@ -1,3 +1,4 @@
+import { KernelDmgCleanupError } from './kernel-dmg'
 import { downloadVerifiedFile, fetchControlledDownload } from './verified-download'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rename, rm, statfs, writeFile } from 'node:fs/promises'
@@ -36,6 +37,7 @@ export async function installBrowserPackage(
   const space = await statfs(root)
   if (space.bavail * space.bsize < 2_000_000_000) throw new Error('LOW_DISK')
   const stage = await mkdtemp(join(root, '.install-'))
+  let cleanupConfirmed = true
   let totalBytes = manifest.package?.sizeBytes ?? 0
   let receivedBytes = 0,
     lastReport = 0
@@ -69,7 +71,11 @@ export async function installBrowserPackage(
       executablePath: join(installPath, manifest.executable),
       sizeBytes: receivedBytes,
     }
+  } catch (error) {
+    if (error instanceof KernelDmgCleanupError) cleanupConfirmed = false
+    throw error
   } finally {
-    await rm(stage, { recursive: true, force: true })
+    // Keep the backing image as well as the separate mount on uncertain detach.
+    if (cleanupConfirmed) await rm(stage, { recursive: true, force: true })
   }
 }

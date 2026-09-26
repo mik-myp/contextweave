@@ -90,6 +90,8 @@ export const lifecycleMessages = {
   'error.PACKAGE_SIZE_MISMATCH': '下载文件大小不正确，已取消安装，请重试。',
   'error.PACKAGE_HASH_MISMATCH': '内核 SHA-256 校验失败，已拒绝安装，请重新下载。',
   'error.ARCHIVE_UNSAFE': '内核归档包含不安全的路径或异常内容，已拒绝解包。',
+  'error.ARCHIVE_UNMOUNT_FAILED':
+    '内核镜像未能安全卸载，安装已停止并保留临时资源。请先推出占用的镜像再重试；不要直接删除挂载目录。',
   'error.ARCHIVE_INVALID': '内核归档结构无效，请重新下载。',
   'error.EXECUTABLE_INVALID': '内核包缺少有效的可执行文件。',
   'error.ARCHIVE_MOUNT_FAILED':

@@ -110,6 +110,8 @@ export const lifecycleMessages = {
   'error.PACKAGE_HASH_MISMATCH':
     'SHA-256 verification failed. Installation was blocked. Please download again.',
   'error.ARCHIVE_UNSAFE': 'The archive contains unsafe paths or excessive content and was blocked.',
+  'error.ARCHIVE_UNMOUNT_FAILED':
+    'The kernel image could not be safely unmounted. Installation stopped and temporary resources were retained. Eject the image before retrying; do not delete the mount directory.',
   'error.ARCHIVE_INVALID': 'Invalid browser archive structure. Download it again.',
   'error.EXECUTABLE_INVALID': 'The package does not contain a valid browser executable.',
   'error.ARCHIVE_MOUNT_FAILED':

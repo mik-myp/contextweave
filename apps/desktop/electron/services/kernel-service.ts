@@ -1,3 +1,4 @@
+import { KernelDmgCleanupError } from './kernel-dmg'
 import { validateKernelRemovalPath } from './kernel-removal'
 import { assertEnvironmentEditable } from '../environment-management'
 import { z } from 'zod'
@@ -467,13 +468,16 @@ export function createKernelService(
         changed()
         return list().find((item) => item.id === id)!
       } catch (error) {
-        const code = controller.signal.aborted
-          ? 'CANCELLED'
-          : signal.aborted
-            ? 'DOWNLOAD_TIMEOUT'
-            : error instanceof Error && /^[A-Z_]+$/.test(error.message)
-              ? error.message
-              : 'INSTALL_FAILED'
+        const code =
+          error instanceof KernelDmgCleanupError
+            ? 'ARCHIVE_UNMOUNT_FAILED'
+            : controller.signal.aborted
+              ? 'CANCELLED'
+              : signal.aborted
+                ? 'DOWNLOAD_TIMEOUT'
+                : error instanceof Error && /^[A-Z_]+$/.test(error.message)
+                  ? error.message
+                  : 'INSTALL_FAILED'
         progress.set(id, {
           phase: code === 'CANCELLED' ? 'cancelled' : 'failed',
           receivedBytes: 0,

@@ -2,11 +2,9 @@ import { createWriteStream } from 'node:fs'
 import { cp, lstat, mkdir, open, readdir, readlink, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { withKernelDmg } from './kernel-dmg'
 import { open as openZip, type Entry, type ZipFile } from 'yauzl'
 import type { KernelManifest } from '@contextweave/contracts'
-const execute = promisify(execFile)
 
 export function safeArchivePath(root: string, name: string): string {
   const segments = name.replace(/\/$/, '').split('/')
@@ -150,19 +148,7 @@ export async function extractBrowserArchive(
   const payload = join(stage, 'payload')
   await mkdir(payload)
   if (manifest.platform === 'darwin') {
-    const mount = join(stage, 'mount')
-    await mkdir(mount)
-    try {
-      await execute(
-        '/usr/bin/hdiutil',
-        ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, archive],
-        { signal, timeout: 60000 },
-      )
-    } catch {
-      signal.throwIfAborted()
-      throw new Error('ARCHIVE_MOUNT_FAILED')
-    }
-    try {
+    await withKernelDmg(archive, stage, signal, async (mount) => {
       const app = join(mount, 'Chromium.app')
       if (!(await lstat(app)).isDirectory()) throw new Error('ARCHIVE_INVALID')
       await assertBundleLinks(app, signal)
@@ -173,9 +159,7 @@ export async function extractBrowserArchive(
         force: false,
         errorOnExist: true,
       })
-    } finally {
-      await execute('/usr/bin/hdiutil', ['detach', mount], { timeout: 30000 })
-    }
+    })
   } else if (manifest.platform === 'win32') {
     await extractZip(archive, payload, signal)
     // Official portable ZIPs may contain one wrapping directory.

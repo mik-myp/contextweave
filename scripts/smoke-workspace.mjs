@@ -98,7 +98,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
       } finally { await desktopStage(`workspace-v${previousVersion}-close-${run}`, () => app.close(), { timeoutMs: 20000, app }) }
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
-    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v12-'))
+    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v13-'))
     assert.equal(backups.length, 1, 'WORKSPACE_MIGRATION_REPEATED')
     const before = new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
     const after = new DatabaseSync(file, { readOnly: true })
@@ -110,7 +110,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
       assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
     } finally { before.close(); after.close() }
-    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v12-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
+    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-pre-v13-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
   } catch (error) {
     preserveFixture = error?.preserveSmokeDirectory === true
     throw error

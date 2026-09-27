@@ -7,6 +7,7 @@ import {
   installRuntimeDiagnostics,
   readRuntimeFailureEvidence,
   restoreRuntimeDiagnostics,
+  summarizeFixtureCookie,
 } from './smoke-runtime-diagnostics.mjs'
 
 const appPath = fileURLToPath(new URL('../apps/desktop/', import.meta.url))
@@ -64,4 +65,88 @@ test('failure diagnostics are bounded, redact payloads and restore the original 
   assert.equal(WebSocket.prototype.emit, originalEmit)
   assert.equal(WebSocket.prototype.send, originalSend)
   assert.deepEqual(await readRuntimeFailureEvidence(desktop), { processes: [], controlEvents: [] })
+})
+
+const fixtureCookie = {
+  name: 'cw-cookie',
+  value: 'retained',
+  domain: '127.0.0.1',
+  path: '/',
+  expires: 300,
+}
+
+test('cookie evidence distinguishes an empty result from a persistent fixture', () => {
+  assert.deepEqual(summarizeFixtureCookie([], 100), {
+    present: false,
+    expectedValue: false,
+    persistent: false,
+    expectedScope: false,
+    expectedPersistentCookie: false,
+  })
+  assert.deepEqual(summarizeFixtureCookie([fixtureCookie], 100), {
+    present: true,
+    expectedValue: true,
+    persistent: true,
+    expectedScope: true,
+    expectedPersistentCookie: true,
+  })
+})
+
+test('cookie evidence does not confuse session, expired or invalid expiry with persistence', () => {
+  for (const expires of [-1, 99, 100, NaN, Infinity, '300', undefined]) {
+    const evidence = summarizeFixtureCookie([{ ...fixtureCookie, expires }], 100)
+    assert.equal(evidence.present, true)
+    assert.equal(evidence.persistent, false)
+    assert.equal(evidence.expectedPersistentCookie, false)
+  }
+})
+
+test('cookie evidence requires the expected value, host and path in the same cookie', () => {
+  for (const difference of [
+    { value: 'different' },
+    { domain: 'other.invalid' },
+    { path: '/other' },
+  ]) {
+    const evidence = summarizeFixtureCookie([{ ...fixtureCookie, ...difference }], 100)
+    assert.equal(evidence.present, true)
+    assert.equal(evidence.expectedPersistentCookie, false)
+  }
+  const evidence = summarizeFixtureCookie(
+    [
+      { ...fixtureCookie, value: 'different' },
+      { ...fixtureCookie, expires: -1 },
+    ],
+    100,
+  )
+  assert.equal(evidence.expectedValue, true)
+  assert.equal(evidence.persistent, true)
+  assert.equal(evidence.expectedPersistentCookie, false)
+})
+
+test('cookie evidence ignores unrelated cookies and never exposes payload fields', () => {
+  const secret = 'COOKIE_DIAGNOSTIC_SECRET_CANARY'
+  const evidence = summarizeFixtureCookie(
+    [
+      {
+        ...fixtureCookie,
+        name: secret,
+        value: secret,
+        domain: secret,
+        path: secret,
+      },
+      { ...fixtureCookie, value: secret, domain: secret, path: secret, secret },
+    ],
+    100,
+  )
+  assert.equal(evidence.present, true)
+  assert.equal(evidence.expectedPersistentCookie, false)
+  assert.equal(Object.keys(evidence).length, 5)
+  assert(Object.values(evidence).every((value) => typeof value === 'boolean'))
+  assert.equal(JSON.stringify(evidence).includes(secret), false)
+  assert.equal(
+    JSON.stringify(summarizeFixtureCookie([{ ...fixtureCookie, name: secret }], 100)).includes(
+      'true',
+    ),
+    false,
+  )
 })

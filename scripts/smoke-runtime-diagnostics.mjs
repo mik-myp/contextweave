@@ -199,3 +199,21 @@ export async function readRuntimeFailureEvidence(desktop) {
     controlEvents: globalThis.__cwRuntimeDiagnostics?.controlEvents ?? [],
   }))
 }
+
+// The native retention smoke owns this synthetic cookie. Never return cookie text,
+// domains, paths, expiry timestamps, or arbitrary browser response fields.
+// Future expiry is an in-memory attribute, not proof of an on-disk commit.
+export function summarizeFixtureCookie(cookies, nowSeconds = Date.now() / 1000) {
+  const fixture = cookies.filter((cookie) => cookie.name === 'cw-cookie')
+  const persistent = (cookie) => Number.isFinite(cookie.expires) && cookie.expires > nowSeconds
+  const scoped = (cookie) => cookie.domain === '127.0.0.1' && cookie.path === '/'
+  return {
+    present: fixture.length > 0,
+    expectedValue: fixture.some((cookie) => cookie.value === 'retained'),
+    persistent: fixture.some(persistent),
+    expectedScope: fixture.some(scoped),
+    expectedPersistentCookie: fixture.some(
+      (cookie) => cookie.value === 'retained' && scoped(cookie) && persistent(cookie),
+    ),
+  }
+}

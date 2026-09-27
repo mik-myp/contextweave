@@ -1,3 +1,9 @@
+import {
+  installRuntimeDiagnostics,
+  readRuntimeFailureEvidence,
+  restoreRuntimeDiagnostics,
+  summarizeFixtureCookie,
+} from './smoke-runtime-diagnostics.mjs'
 import { installKernelDiagnostics, readKernelDiagnostics, restoreKernelDiagnostics } from './smoke-kernel-diagnostics.mjs'
 import { connectManagedBrowser, verifyDetachedControlSession } from './smoke-control.mjs'
 // Real official-package acceptance. No credentials or browser data are kept in the repository.
@@ -64,8 +70,10 @@ const desktop = await _electron.launch({
   timeout: 30000,
 })
 let id, liveId
+const persistenceCheckpoints = []
 try {
   await installKernelDiagnostics(desktop)
+  await installRuntimeDiagnostics(desktop)
   const page = await desktop.firstWindow()
   await page.waitForFunction(() => !!window.contextweave?.kernel?.install)
   const kernels = await page.evaluate(async () => window.contextweave.kernel.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
@@ -244,8 +252,12 @@ try {
       assert.equal(observation.timezone, 'Europe/London')
       if (run) {
         assert.equal(observation.retained, 'retained')
+        const restoredCookies = await context.cookies()
+        persistenceCheckpoints.push({
+          run, stage: 'reopened', cookie: summarizeFixtureCookie(restoredCookies),
+        })
         assert(
-          (await context.cookies()).some(
+          restoredCookies.some(
             (cookie) => cookie.name === 'cw-cookie' && cookie.value === 'retained',
           ),
           'Cookie must survive a browser restart',
@@ -255,7 +267,12 @@ try {
         localStorage.setItem('cw-acceptance', 'retained')
         document.cookie = 'cw-cookie=retained;max-age=3600;path=/'
       })
-      assert((await context.cookies()).some((cookie) => cookie.name === 'cw-cookie'))
+      const writtenCookies = await context.cookies()
+      persistenceCheckpoints.push({
+        run, stage: 'before-close', cookie: summarizeFixtureCookie(writtenCookies),
+      })
+      assert(writtenCookies.some((cookie) => cookie.name === 'cw-cookie'))
+      const closeStarted = performance.now()
       if (run === 0) {
         const control = await browser.newBrowserCDPSession()
         await control.send('Browser.close').catch(() => {})
@@ -269,6 +286,10 @@ try {
         if (stopped.ok && stopped.data.status === 'stopped') break
         await new Promise((resolve) => setTimeout(resolve, 100))
       } while (Date.now() < closeDeadline)
+      persistenceCheckpoints.push({
+        run, stage: 'after-close', elapsedMs: Math.round(performance.now() - closeStarted),
+        stopped: stopped.ok && stopped.data.status === 'stopped',
+      })
       assert(
         stopped.ok && stopped.data.status === 'stopped',
         'Closing the browser must stop the environment without a manual stop command',
@@ -382,9 +403,14 @@ try {
     )
   }
 } catch (error) {
+  console.error(JSON.stringify({
+    persistenceCheckpoints,
+    runtimeEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })),
+  }))
   console.error(JSON.stringify({ kernelInstallEvidence: await readKernelDiagnostics(desktop).catch(() => ['unavailable']) }))
   throw error
 } finally {
+  await restoreRuntimeDiagnostics(desktop)
   await restoreKernelDiagnostics(desktop)
   const page = await desktop.firstWindow().catch(() => undefined)
   for (const envId of [id, liveId].filter(Boolean))

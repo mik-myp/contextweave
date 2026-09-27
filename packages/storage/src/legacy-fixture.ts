@@ -39,7 +39,11 @@ export function openVersion12Fixture(filePath: string) {
   return openPublishedFixture(filePath, 12)
 }
 
-function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11 | 12) {
+export function openVersion13Fixture(filePath: string) {
+  return openPublishedFixture(filePath, 13)
+}
+
+function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11 | 12 | 13) {
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
   try {

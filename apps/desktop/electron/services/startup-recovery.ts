@@ -27,6 +27,7 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
     message === 'DATABASE_FOREIGN_KEYS_UNAVAILABLE'
   )
     return message
+  if (message === 'DATABASE_VERSION_INVALID') return 'DATABASE_SCHEMA_UNSUPPORTED'
   if (message === 'UI_LOAD_FAILED') return 'UI_LOAD_FAILED'
   if (message === 'DATABASE_CORRUPT' || [11, 26].includes(sqlite)) return 'DATABASE_CORRUPT'
   if (message === 'This database requires a newer ContextWeave version')

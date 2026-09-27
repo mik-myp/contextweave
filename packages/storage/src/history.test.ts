@@ -323,7 +323,8 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   const legacy = openVersion4Fixture(file);
   legacy.sqlite.exec("PRAGMA foreign_keys = OFF; BEGIN");
   migrateIntegritySchema(legacy.sqlite);
-  legacy.sqlite.exec("COMMIT; PRAGMA foreign_keys = ON");
+  // This fixture constructs exactly step5; production version advancement belongs to the executor.
+  legacy.sqlite.exec("PRAGMA user_version = 5; COMMIT; PRAGMA foreign_keys = ON");
   expect(legacy.sqlite.prepare("PRAGMA user_version").get()?.user_version).toBe(
     5,
   );

@@ -178,8 +178,23 @@ Renderer / GUI
 
 - 版本化DDL仍是唯一schema来源；storage内部具名迁移目录定义严格连续的1～13步，执行器唯一维护user_version。应用0.2.5不需要新增表，因此仍用schema13。不存在需要清理的第二份Drizzle镜像，也不重新引入一份。
 - 迁移前SQLite一致性快照、写锁下版本复核、事务内最终领域一致性校验、提交后外键恢复形成一条链；校验失败回滚DDL、数据和版本。常规打开在只读事务重复检查，不自动修复/降级/重建。快照只含数据库事实，不含资料目录和安全存储秘密。
-- storage导出只读版本/迁移计划，供后续备份和接口适配消费；应用SemVer、数据库user_version、环境配置schemaVersion、Worker协议及传输版本独立。现有Main/Preload/Renderer随同一应用打包，类型化IPC不是公开跨版本网络协议；备份格式尚未实现，不能拿数据库版本充当归档版本。
+- storage导出只读版本/迁移计划，供后续备份和接口适配消费；应用SemVer、数据库user_version、环境配置configVersion、Worker协议及传输版本独立。现有Main/Preload/Renderer随同一应用打包，类型化IPC不是公开跨版本网络协议；备份格式尚未实现，不能拿数据库版本充当归档版本。
 - T01～T04只在隔离临时资源中研究，不进入产品运行依赖、不持有用户生产连接串。不用模拟S3代替对象权限验收，不将租约超时等价为旧浏览器死亡；未通过结论继续阻塞团队线。测试脚本若新增，放现有scripts领域范围，不新建远程服务或package。
+
+#### 当前版本边界表（v0.2.5）
+
+| 边界 | 当前权威与值 | 不应混同的含义 |
+| --- | --- | --- |
+| 应用版本 | workspace各package.json：0.2.5 | 不因此改数据库或归档格式 |
+| SQLite | migration目录1～13、执行器、`PRAGMA user_version=13` | `describeDatabaseMigration`/`readDatabaseMigrationPlan`仅描述兼容性，不证明结构、数据或备份已经完整可恢复 |
+| 环境配置 | contracts：`configVersion=1` | `revision`是每次编辑递增的配置修订，不是格式版本 |
+| Worker业务/流传输 | contracts `protocolVersion=1` / worker-protocol `workerTransportVersion=1` | 两种协议独立校验；不是数据库版本 |
+| 命令、回执、列表视图 | 对应contracts的`version=1` | 意图摘要、修订与请求ID不充当通用API版本 |
+| IPC | 同一发行包的Main/Preload/Renderer与严格contracts | 还不是公开跨版本网络API；Local API由原后续版本实现 |
+| 备份归档 | 尚未交付，不能标成format1 | SQLite一致性快照不含资料目录和安全存储；未来manifest独立定义格式 |
+
+- 历史DDL由具名目录引用，不能通过修改共享枚举悄悄改变旧schema；真实已发布v13的独立结构夹具锁定当前DDL，新结构需要新迁移和新的兼容性说明。
+- v0.2.5回归已复现旧执行器会先COMMIT、后因旧分组规范键无效而拒绝启动，此时库却已升级至13。修复把同一组领域校验放入COMMIT之前；拒绝保留原schema12、原异常行与前置快照，不猜测修复值。负数user_version也不再按新库初始化。
 
 ## 4. 本地 SQLite、文件与凭据
 
@@ -275,6 +290,15 @@ PostgreSQL 的表所有者、超级用户及具备 `BYPASSRLS` 的角色可能�
 - 迁移由授权管理员协调执行，有 schema 版本门槛与兼容客户端检查，不能由每台成员客户端抢跑 DDL。
 
 具体 SQL、驱动、ORM、角色数量与 PostgreSQL 版本范围仍待原型选定。通过普通 UI 演示不能替代直接 SQL 的对抗测试。
+
+### 5.4 v0.2.5隔离可行性证据（非生产准入）
+
+- 可重复运行的研究入口：`node scripts/probe-team-feasibility.mjs --pg-bin=/absolute/postgresql/bin --browser=/absolute/chromium`。仅接受两个本机可执行文件路径，不接受外部数据库/S3连接；创建新的临时PostgreSQL集群和浏览器资料，不读取用户浏览器会话。只绑定私有Unix socket、使用SCRAM-SHA-256独立成员登录，凭据临时随机生成、权限0600、不输出，结束后停止自己的进程并清理自己的目录。停止未确认则保留受限目录并报错，不删除仍被进程使用的数据。
+- **T01有界证据：** 本机PostgreSQL18.6通过错误成员密码拒绝、两个成员正向读取、相同environment_id跨空间隔离、直接SQL/RLS关闭/actor会话变量/SESSION AUTHORIZATION/SET ROLE伪造拒绝、授权表与DDL写入拒绝、受控函数写入、旧修订拒绝、成员撤权后有效登录仍无法读写。SQL采用非登录owner、FORCE RLS、SESSION_USER、固定search_path和显式函数执行许可。只是该部署的研究结论，不代表已完成客户端远程存储、生产TLS、成员发放/轮换或通用团队权限审计。
+- **T03反例：** 真实Chromium兼容浏览器153.0.8010.54的两个隔离进程与PostgreSQL服务端时钟试验证明：第1代租约过期后，朴素TTL函数允许第2代，但两个浏览器仍能独立响应；第1代提交被代次拒绝也不等于它停止访问网站。`unsafe_ttl_claim`仅存在研究SQL，禁止接入应用。不冒称已注入操作系统休眠或真实网络分区；这两项及正常客户端断连关闭/异常接管证据仍是团队前置。
+- **T02未通过：** 尚无被本项目验收的S3部署，未运行成员/环境级独立对象读取、列举、写入、撤销、已提交对象覆盖/删除保护和部分失败测试。不能把SQL授权或模拟对象测试当作这道门禁，也不能把个人备份上传权限直接变为团队共享权限。
+- **T04未通过：** PostgreSQL撤权已测，但没有通过验证的PG/S3凭据发放、轮换、撤权窗口及失败补偿协调机制；没有隐含官方密钥服务，不分发共享管理员密钥。需在用户自供基础设施范围内形成可操作部署，再验收团队功能。
+- PostgreSQL18的RLS及SECURITY DEFINER规则以其官方文档[T6]为依据；本次实际反例优先于“仅靠TTL足够”的设计假定。T02～T04缺口阻塞团队线，不取消独立个人存储/备份/内核里程碑。
 
 ## 6. S3：团队文件授权与对象生命周期
 

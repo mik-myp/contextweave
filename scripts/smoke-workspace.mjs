@@ -1,5 +1,5 @@
 import { desktopStage } from './smoke-desktop-stages.mjs'
-// Real migration/organization checks use isolated published v8/v9/v10/v11/v12 fixtures, never user data.
+// Real migration/organization checks use isolated published v4/v8/v9/v10/v11/v12/v13 fixtures, never user data.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,7 +21,7 @@ export async function assertWorkspaceIdentity(call) {
 }
 
 export async function verifyWorkspaceUpgrade(entry) {
-  for (const previousVersion of [8, 9, 10, 11, 12]) await verifyUpgradeFrom(entry, previousVersion)
+  for (const previousVersion of [4, 8, 9, 10, 11, 12, 13]) await verifyUpgradeFrom(entry, previousVersion)
 }
 
 async function verifyUpgradeFrom(entry, previousVersion) {
@@ -33,7 +33,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
   await writeFile(marker, 'existing browser directory: do not relocate')
   const file = join(dataRoot, 'contextweave.sqlite')
   const sqlite = new DatabaseSync(file)
-  let originalIdentity
+  let originalIdentity, originalRevisions
   try {
     sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;')
     sqlite.exec(await readFile(new URL(`../packages/storage/test-fixtures/schema-v${previousVersion}.sql`, import.meta.url), 'utf8'))
@@ -41,7 +41,9 @@ async function verifyUpgradeFrom(entry, previousVersion) {
     const at = '2026-09-27T00:00:00.000Z'
     sqlite.prepare(`INSERT INTO environments(environment_id,name,status,kernel_id,kernel_version,proxy_id,config_json,data_dir,platform,arch,created_at,updated_at,revision,lifecycle,trashed_at) VALUES(?,?,'stopped','standard-chromium','local',NULL,?,?,?,?,?,?,1,'active',NULL)`).run('old-environment', 'Existing workspace environment', config, profile, process.platform, process.arch, at, at)
     sqlite.prepare('INSERT INTO environment_revisions(environment_id,revision,config_json,created_at) VALUES(?,1,?,?)').run('old-environment', config, at)
-    sqlite.exec('UPDATE screenshot_budget SET limit_mib=64, revision=2; COMMIT;')
+    if (previousVersion >= 8) sqlite.exec('UPDATE screenshot_budget SET limit_mib=64, revision=2')
+    sqlite.exec('COMMIT')
+    originalRevisions = sqlite.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all()
     if (previousVersion >= 9) originalIdentity = sqlite.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id
   } finally { sqlite.close() }
   const { _electron } = require('playwright-core')
@@ -59,7 +61,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
         const envs = await page.evaluate(async () => window.contextweave.environment.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
         assert(envs.ok && envs.data.length === 1 && envs.data[0].id === 'old-environment', 'WORKSPACE_UPGRADE_LOST_ENVIRONMENT')
         const budget = await page.evaluate(async () => window.contextweave.storage.getArtifactBudget({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
-        assert(budget.ok && budget.data.limitMiB === 64 && budget.data.revision === 2, 'WORKSPACE_UPGRADE_CHANGED_BUDGET')
+        assert(budget.ok && budget.data.limitMiB === (previousVersion >= 8 ? 64 : 1024) && budget.data.revision === (previousVersion >= 8 ? 2 : 1), 'WORKSPACE_UPGRADE_CHANGED_BUDGET')
         await page.getByRole('button', { name: '工作空间详情', exact: true }).click()
         await page.locator('[data-workspace-id]').waitFor()
         assert.equal(await page.locator('[data-workspace-id]').textContent(), identity.workspaceId)
@@ -99,18 +101,21 @@ async function verifyUpgradeFrom(entry, previousVersion) {
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
     const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v13-'))
-    assert.equal(backups.length, 1, 'WORKSPACE_MIGRATION_REPEATED')
-    const before = new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
+    assert.equal(backups.length, previousVersion === 13 ? 0 : 1, 'WORKSPACE_MIGRATION_REPEATED')
+    const before = previousVersion === 13 ? null : new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
     const after = new DatabaseSync(file, { readOnly: true })
     try {
-      assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
+      if (before) assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
       assert.equal(after.prepare('PRAGMA user_version').get().user_version, 13)
       assert.equal(after.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id, identity.workspaceId)
       assert.equal(after.prepare('SELECT data_dir FROM environments').get().data_dir, profile)
-      assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())
+      const revisions = after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all()
+      assert.deepEqual(revisions, originalRevisions, 'WORKSPACE_ORIGINAL_REVISIONS_CHANGED')
+      if (before) assert.deepEqual(revisions, before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())
+      assert.equal(after.prepare('SELECT revision FROM environments').get().revision, 1)
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
-    } finally { before.close(); after.close() }
-    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-pre-v13-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
+    } finally { before?.close(); after.close() }
+    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: previousVersion === 13 ? 'unchanged-current-schema-no-extra-backup' : 'single-consistent-pre-v13-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
   } catch (error) {
     preserveFixture = error?.preserveSmokeDirectory === true
     throw error

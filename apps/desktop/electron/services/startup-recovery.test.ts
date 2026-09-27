@@ -3,6 +3,7 @@ import { classifyStartupError, recoverStartup, startupFailureMessage } from './s
 
 describe('safe startup recovery', () => {
   it.each([
+    [new Error('DATABASE_VERSION_INVALID'), 'DATABASE_SCHEMA_UNSUPPORTED'],
     [Object.assign(new Error('secret SQL path'), { errcode: 26 }), 'DATABASE_CORRUPT'],
     [{ errcode: 267 }, 'DATABASE_CORRUPT'],
     [{ code: 'EACCES' }, 'DATA_ACCESS_DENIED'],

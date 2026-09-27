@@ -13,6 +13,8 @@ for (const failure of [
   'DATABASE_CORRUPT',
   'DATABASE_VERSION_UNSUPPORTED',
   'DATABASE_INTEGRITY_FAILED',
+  'DATABASE_SCHEMA_UNSUPPORTED',
+  'FINAL_DOMAIN_VALIDATION',
 ]) {
   const root = await mkdtemp(join(tmpdir(), 'cw-startup-smoke-'))
   try {
@@ -35,6 +37,16 @@ for (const failure of [
       } finally {
         db.close()
       }
+    } else if (failure === 'FINAL_DOMAIN_VALIDATION') {
+      const db = new DatabaseSync(file)
+      try {
+        db.exec(await readFile(new URL('../packages/storage/test-fixtures/schema-v12.sql', import.meta.url), 'utf8'))
+        db.prepare(`INSERT INTO environment_groups(group_id,name,name_key,revision,updated_at) VALUES(?,?,'wrong-key',1,'2026-09-27T00:00:00.000Z')`).run('df7f011b-a755-48d1-8967-c604fc6b07cc','fixture private data')
+      } finally { db.close() }
+    } else if (failure === 'DATABASE_SCHEMA_UNSUPPORTED') {
+      const db = new DatabaseSync(file)
+      db.exec('PRAGMA user_version=-1')
+      db.close()
     } else {
       const db = new DatabaseSync(file)
       db.exec(
@@ -92,7 +104,7 @@ for (const failure of [
     assert.equal(options.type, 'error')
     assert.equal(options.cancelId, 2)
     assert.equal(options.buttons.length, 3)
-    assert(options.detail.includes(failure))
+    assert(options.detail.includes(failure === 'FINAL_DOMAIN_VALIDATION' ? 'DATABASE_INTEGRITY_FAILED' : failure))
     assert(!JSON.stringify(options).includes('fixture private data'))
     assert.equal(observed[1].path, dataRoot)
     const backups = (await readdir(dataRoot)).filter((name) => name.endsWith('.bak'))
@@ -116,6 +128,17 @@ for (const failure of [
         } finally {
           db.close()
         }
+      }
+    } else if (failure === 'FINAL_DOMAIN_VALIDATION') {
+      assert.equal(backups.length, 1, 'FINAL_VALIDATION_MUST_KEEP_PRE_MIGRATION_COPY')
+      for (const path of [file, join(dataRoot, backups[0])]) {
+        const db = new DatabaseSync(path, { readOnly: true })
+        try {
+          assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12, 'FINAL_VALIDATION_MUST_ROLL_BACK_VERSION')
+          assert.equal(db.prepare("SELECT name FROM sqlite_schema WHERE name='environment_commands'").get(), undefined, 'FINAL_VALIDATION_MUST_ROLL_BACK_DDL')
+          assert.equal(db.prepare('SELECT name FROM environment_groups').get().name, 'fixture private data')
+          assert.equal(db.prepare('SELECT name_key FROM environment_groups').get().name_key, 'wrong-key')
+        } finally { db.close() }
       }
     } else {
       assert.deepEqual(

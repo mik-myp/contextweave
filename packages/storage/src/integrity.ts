@@ -300,5 +300,4 @@ export function migrateIntegritySchema(sqlite: DatabaseSync): void {
     )
   sqlite.exec('CREATE INDEX idx_environments_proxy ON environments(proxy_id)')
   verifyDatabaseRelations(sqlite)
-  sqlite.exec('PRAGMA user_version = 5')
 }

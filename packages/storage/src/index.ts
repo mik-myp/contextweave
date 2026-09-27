@@ -1,6 +1,6 @@
-import { EnvironmentCommandRepository, verifyCommandStorage } from './commands'
-import { BatchRepository, verifyBatchStorage } from './batches'
-import { OrganizationRepository, verifyOrganizationStorage } from './organization'
+import { EnvironmentCommandRepository } from './commands'
+import { BatchRepository } from './batches'
+import { OrganizationRepository } from './organization'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
@@ -31,11 +31,11 @@ import {
   deleteHistoryCleanupCandidates,
   type HistoryCleanupCandidates,
 } from './history-cleanup'
-import { migrateDatabase, databaseVersion } from './migrations'
-import { verifyDatabaseRelations } from './integrity'
+import { migrateDatabase } from './migrations'
+import { readDatabaseMigrationPlan } from './storage-compatibility'
+import { verifyLocalDatabase } from './database-validation'
 import { WorkspaceRepository, databaseFilePath } from './workspaces'
 import { WorkspacePaths } from './workspace-paths'
-import { verifyWorkspaceScope } from './workspace-scope'
 
 type Row = Record<string, unknown>
 
@@ -50,18 +50,13 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
   try {
     const integrity = sqlite.prepare('PRAGMA quick_check(1)').get()
     if (integrity?.quick_check !== 'ok') throw new Error('DATABASE_CORRUPT')
-    if (Number(sqlite.prepare('PRAGMA user_version').get()?.user_version) > databaseVersion)
-      throw new Error('This database requires a newer ContextWeave version')
+    readDatabaseMigrationPlan(sqlite)
     sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
     migrateDatabase(sqlite, filePath)
     if (sqlite.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1)
       throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
     sqlite.exec('BEGIN')
-    verifyDatabaseRelations(sqlite)
-    verifyWorkspaceScope(sqlite)
-    verifyOrganizationStorage(sqlite)
-    verifyBatchStorage(sqlite)
-    verifyCommandStorage(sqlite)
+    verifyLocalDatabase(sqlite)
     sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
@@ -820,3 +815,5 @@ export function isSqliteFailure(error: unknown): boolean {
   return error instanceof Error && 'code' in error &&
     typeof error.code === 'string' && error.code.startsWith('ERR_SQLITE_')
 }
+
+export { databaseVersion, describeDatabaseMigration, readDatabaseMigrationPlan, type DatabaseMigrationPlan } from './storage-compatibility'

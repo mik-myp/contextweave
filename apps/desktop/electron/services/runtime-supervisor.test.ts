@@ -153,7 +153,18 @@ function fixture(
     }
     await runtime.shutdown()
   })
-  return { dir, repository, child, runtime, driver, preflight, detect, kernels, control }
+  return {
+    dir,
+    repository,
+    child,
+    runtime,
+    driver,
+    preflight,
+    detect,
+    kernels,
+    control,
+    sqlite: db.sqlite,
+  }
 }
 describe('runtime supervisor', () => {
   it('issues only Main leases for a fully running environment and never persists tokens', async () => {
@@ -606,17 +617,27 @@ it('passes the same signal and deadline from readiness into initial settings rat
 })
 
 it('recovers every old active session through one complete query, never the paged history list', async () => {
-  const { runtime, repository } = fixture()
-  for (let i = 0; i < 230; i++)
-    repository.createRuntimeSession({
-      sessionId: `history-${String(i).padStart(4, '0')}`,
-      environmentId: 'env-a',
-      pid: 2147483647,
-      controlPort: 9000,
-      startedAt: '2026-01-01T00:00:00.000Z',
-      status: i < 110 ? 'running' : 'stopped',
-      exitReason: null,
-    })
+  const { runtime, repository, sqlite } = fixture()
+  // Seed the historical dataset in one commit, not 230 unrelated disk flushes.
+  // Recovery below still runs outside this transaction with the real file/WAL settings.
+  sqlite.exec('BEGIN')
+  try {
+    for (let i = 0; i < 230; i++)
+      repository.createRuntimeSession({
+        sessionId: `history-${String(i).padStart(4, '0')}`,
+        environmentId: 'env-a',
+        pid: 2147483647,
+        controlPort: 9000,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        status: i < 110 ? 'running' : 'stopped',
+        exitReason: null,
+      })
+    sqlite.exec('COMMIT')
+  } catch (error) {
+    sqlite.exec('ROLLBACK')
+    throw error
+  }
+  expect(repository.listRuntimeSessions()).toHaveLength(100)
   expect(repository.listRuntimeSessions().every((row) => row.status === 'stopped')).toBe(true)
   const fullList = vi.spyOn(repository, 'listRuntimeSessions').mockImplementation(() => {
     throw new Error('Unbounded recovery read')
@@ -634,6 +655,16 @@ it('recovers every old active session through one complete query, never the page
     exitReason: 'CLIENT_INTERRUPTED',
   })
   expect(repository.listActiveRuntimeSessions()).toEqual([])
+  expect(
+    sqlite
+      .prepare(
+        'SELECT status, COUNT(*) AS total FROM runtime_sessions GROUP BY status ORDER BY status',
+      )
+      .all(),
+  ).toEqual([
+    { status: 'crashed', total: 110 },
+    { status: 'stopped', total: 120 },
+  ])
   expect(await runtime.recover('env-a')).toMatchObject({ ok: true })
   expect(fullList).not.toHaveBeenCalled()
 })

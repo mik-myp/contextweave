@@ -1,3 +1,4 @@
+import { desktopStage } from './smoke-desktop-stages.mjs'
 import { assertWorkspaceIdentity } from './smoke-workspace.mjs'
 // Real screenshot registration and restart through the public sandboxed bridge. No path IPC.
 import assert from 'node:assert/strict'
@@ -29,10 +30,10 @@ export async function verifyArtifactRestart(entry, directory, expected, workspac
   const legacy = join(directory, 'contextweave', 'worker-results', 'run-legacy')
   await mkdir(legacy, { recursive: true })
   await writeFile(join(legacy, 'screenshot.png'), 'unknown output: must remain unowned')
-  const app = await _electron.launch({ executablePath: require('electron'), args: [entry],
-    env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory }, timeout: 20000 })
+  const app = await desktopStage('artifact-restart-launch', () => _electron.launch({ executablePath: require('electron'), args: [entry],
+    env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory }, timeout: 20000 }), { timeoutMs: 20000 })
   try {
-    const page = await app.firstWindow()
+    const page = await desktopStage('artifact-restart-first-window', () => app.firstWindow(), { timeoutMs: 10000, app })
     await page.waitForFunction(() => typeof window.contextweave?.storage?.pageArtifacts === 'function', undefined, { timeout: 10000 })
     assert.deepEqual(await assertWorkspaceIdentity((...args) => page.evaluate(...args)), workspaceIdentity)
     const budget = await page.evaluate(async () => window.contextweave.storage.getArtifactBudget({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
@@ -65,5 +66,5 @@ export async function verifyArtifactRestart(entry, directory, expected, workspac
     await section.getByText(/不是全盘用量/).waitFor()
     assert.equal(await readFile(join(legacy, 'screenshot.png'), 'utf8'), 'unknown output: must remain unowned')
     console.log(JSON.stringify({ artifactInventory: 'registered-sha256-bytes-real-restart-pagination-read-only-ui', artifacts: expected.length, legacyOutput: 'retained-unowned' }))
-  } finally { await app.close() }
+  } finally { await desktopStage('artifact-restart-close', () => app.close(), { timeoutMs: 20000, app }) }
 }

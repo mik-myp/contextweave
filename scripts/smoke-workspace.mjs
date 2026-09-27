@@ -1,3 +1,4 @@
+import { desktopStage } from './smoke-desktop-stages.mjs'
 // Real migration/organization checks use isolated published v8/v9/v10/v11 fixtures, never user data.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -44,12 +45,12 @@ async function verifyUpgradeFrom(entry, previousVersion) {
     if (previousVersion >= 9) originalIdentity = sqlite.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id
   } finally { sqlite.close() }
   const { _electron } = require('playwright-core')
-  let identity
+  let identity, preserveFixture = false
   try {
     for (let run = 0; run < 2; run++) {
-      const app = await _electron.launch({ executablePath: require('electron'), args: [entry], env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory }, timeout: 20000 })
+      const app = await desktopStage(`workspace-v${previousVersion}-launch-${run}`, () => _electron.launch({ executablePath: require('electron'), args: [entry], env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory }, timeout: 20000 }), { timeoutMs: 20000 })
       try {
-        const page = await app.firstWindow()
+        const page = await desktopStage(`workspace-v${previousVersion}-first-window-${run}`, () => app.firstWindow(), { timeoutMs: 10000, app })
         await page.waitForFunction(() => typeof window.contextweave?.workspace?.current === 'function', undefined, { timeout: 10000 })
         const current = await assertWorkspaceIdentity((...args) => page.evaluate(...args))
         if (identity) assert.deepEqual(current, identity, 'WORKSPACE_CHANGED_ON_RESTART')
@@ -94,7 +95,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
         assert.equal(batch.data.items[0].status,'completed')
         assert.equal(batch.data.items[0].counts.skipped,1)
 
-      } finally { await app.close() }
+      } finally { await desktopStage(`workspace-v${previousVersion}-close-${run}`, () => app.close(), { timeoutMs: 20000, app }) }
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
     const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v12-'))
@@ -110,5 +111,8 @@ async function verifyUpgradeFrom(entry, previousVersion) {
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
     } finally { before.close(); after.close() }
     console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v12-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
-  } finally { await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
+  } catch (error) {
+    preserveFixture = error?.preserveSmokeDirectory === true
+    throw error
+  } finally { if (!preserveFixture) await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
 }

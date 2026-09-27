@@ -1,3 +1,4 @@
+import { desktopStage } from './smoke-desktop-stages.mjs'
 import { verifyBackendBatches } from './smoke-batches.mjs'
 import { assertWorkspaceIdentity, verifyWorkspaceUpgrade } from './smoke-workspace.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
@@ -36,12 +37,12 @@ if (process.argv.includes('--packaged')) {
   if (existsSync(`${archive}.unpacked`))
     await cp(`${archive}.unpacked`, `${entry}.unpacked`, { recursive: true })
 }
-const desktop = await _electron.launch({
+const desktop = await desktopStage('primary-launch', () => _electron.launch({
   executablePath: require('electron'),
   args: [entry],
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
-})
+}), { timeoutMs: 20000 })
 let id, fixtureServer, localeProxy, workspaceIdentity
 let preserveSmokeDirectory = false
 let completed = false
@@ -519,22 +520,26 @@ try {
   console.error(JSON.stringify({ runtimeFailureEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })), runtimeStates, controlClients }))
   throw error
 } finally {
-  await restoreRuntimeDiagnostics(desktop)
+  await desktopStage('primary-restore-diagnostics', () => restoreRuntimeDiagnostics(desktop), { timeoutMs: 5000, app: desktop })
   try {
     if (id) {
       const page = desktop.windows()[0]
-      if (page) await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
+      if (page) await desktopStage('primary-final-stop', () => page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id), { timeoutMs: 20000, app: desktop })
     }
-  } catch {
+  } catch (error) {
+    if (completed) throw error
     /* Preserve the original test error; application shutdown also stops owned children. */
   }
-  await desktop.close()
+  await desktopStage('primary-close', () => desktop.close(), { timeoutMs: 20000, app: desktop })
   try {
     if (completed) {
       await verifyArtifactRestart(entry, directory, registeredArtifacts, workspaceIdentity)
       // The isolated ASAR lives inside directory and must still exist for this second fixture.
       await verifyWorkspaceUpgrade(entry)
     }
+  } catch (error) {
+    preserveSmokeDirectory ||= error?.preserveSmokeDirectory === true
+    throw error
   } finally {
     if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
     if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))

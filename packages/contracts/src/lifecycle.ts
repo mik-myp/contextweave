@@ -1,3 +1,4 @@
+import { historyPageSchema } from './history'
 import { z } from 'zod'
 
 export const capabilityStateSchema = z.enum(['unverified', 'verified', 'unsupported', 'failed'])
@@ -101,6 +102,7 @@ export const operationSummarySchema = z.object({
   endedAt: z.string().datetime().nullable(),
   errorCode: z.string().nullable(),
 })
+export const operationHistoryPageSchema = historyPageSchema(operationSummarySchema)
 export type OperationSummary = z.infer<typeof operationSummarySchema>
 export const dataDomainSchema = z.enum([
   'environments',

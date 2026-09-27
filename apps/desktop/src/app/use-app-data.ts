@@ -4,7 +4,7 @@ import type { EnvironmentSummary } from '@contextweave/contracts'
 import type { EnvironmentAction } from '@/shared/types/app'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { AppDataContext } from './app-data-context'
-export type AppDomain = 'environments' | 'proxies' | 'kernels' | 'activity' | 'app'
+export type AppDomain = 'environments' | 'proxies' | 'kernels' | 'app'
 const noDomains: readonly AppDomain[] = []
 
 /** Queries are enabled by their consuming page; this hook does not poll other domains. */
@@ -26,11 +26,6 @@ export function useAppData(domains: readonly AppDomain[] = noDomains) {
     queryKey: ['local', 'kernels'],
     queryFn: () => unwrapIpc(window.contextweave.kernel.list()),
     enabled: domains.includes('kernels'),
-  })
-  const activity = useQuery({
-    queryKey: ['local', 'activity'],
-    queryFn: () => unwrapIpc(window.contextweave.activity.list()),
-    enabled: domains.includes('activity'),
   })
   const appInfo = useQuery({
     queryKey: ['local', 'app', 'info'],
@@ -81,20 +76,18 @@ export function useAppData(domains: readonly AppDomain[] = noDomains) {
     },
     [refresh, setNotice],
   )
-  const queries = { environments, proxies, kernels, activity, app: appInfo }
+  const queries = { environments, proxies, kernels, app: appInfo }
   return {
     ...context,
     environments: environments.data ?? [],
     proxies: proxies.data ?? [],
     kernels: kernels.data ?? [],
-    activity: activity.data ?? [],
     appInfo: appInfo.data,
     paths: paths.data,
     loading: domains.some((domain) => queries[domain].isPending),
     error: environments.error?.message,
     proxyError: proxies.error?.message,
     kernelError: kernels.error?.message,
-    activityError: activity.error?.message,
     appError: appInfo.error?.message ?? paths.error?.message,
     configurationError: kernels.error?.message ?? proxies.error?.message,
     refresh,

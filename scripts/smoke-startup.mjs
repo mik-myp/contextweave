@@ -137,3 +137,5 @@ for (const failure of [
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
 }
+
+await import('./smoke-history.mjs')

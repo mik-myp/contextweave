@@ -24,6 +24,8 @@ export function DataTable<TData extends RowData>({
   onRetry,
   countLabel,
   bulkActions,
+  pagination,
+  searchMaxLength,
 }: {
   table: ReactTable<DataTableFeatures, TData>
   label: string
@@ -37,6 +39,8 @@ export function DataTable<TData extends RowData>({
   emptyAction?: ReactNode
   error?: string
   onRetry?: () => void
+  pagination?: ReactNode
+  searchMaxLength?: number
   bulkActions?: ReactNode
   countLabel?: (count: number) => string
 }) {
@@ -52,6 +56,7 @@ export function DataTable<TData extends RowData>({
       <DataTableToolbar
         table={table}
         searchPlaceholder={searchPlaceholder}
+        searchMaxLength={searchMaxLength}
         filters={filters}
         actions={actions}
       />
@@ -80,11 +85,13 @@ export function DataTable<TData extends RowData>({
         )}
         {bulkActions}
       </div>
-      <DataTablePagination
-        table={table}
-        countLabel={countLabel}
-        disabled={loading || Boolean(error)}
-      />
+      {pagination ?? (
+        <DataTablePagination
+          table={table}
+          countLabel={countLabel}
+          disabled={loading || Boolean(error)}
+        />
+      )}
     </section>
   )
 }

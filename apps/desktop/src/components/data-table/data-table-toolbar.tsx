@@ -13,11 +13,13 @@ export function DataTableToolbar<TData extends RowData>({
   searchPlaceholder,
   filters,
   actions,
+  searchMaxLength,
 }: {
   table: ReactTable<DataTableFeatures, TData>
   searchPlaceholder: string
   filters?: ReactNode
   actions?: ReactNode
+  searchMaxLength?: number
 }) {
   const { t } = useI18n()
   const filtered = Boolean(table.state.globalFilter) || table.state.columnFilters.length > 0
@@ -34,6 +36,7 @@ export function DataTableToolbar<TData extends RowData>({
           className="h-(--control-height-sm) w-37.5 lg:w-62.5"
           aria-label={searchPlaceholder}
           placeholder={searchPlaceholder}
+          maxLength={searchMaxLength}
           value={String(table.state.globalFilter ?? '')}
           onChange={(event) => {
             table.setGlobalFilter(event.target.value)

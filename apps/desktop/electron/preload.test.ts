@@ -141,3 +141,19 @@ describe('sandboxed preload contract', () => {
     expect(bridge.listeners.get('data:changed')?.size).toBe(0)
   })
 })
+
+it('validates both directions of the history page bridge', async () => {
+  await expect(api.activity.page({ limit: 101 })).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  const page = { items: [], previousCursor: null, nextCursor: null }
+  bridge.invoke.mockResolvedValue({ ok: true, data: page })
+  expect(await api.operation.page({ limit: 3 })).toEqual({ ok: true, data: page })
+  expect(bridge.invoke).toHaveBeenCalledWith(
+    'operation:page',
+    expect.objectContaining({ limit: 3, sortBy: 'startedAt', cursor: null }),
+  )
+  bridge.invoke.mockResolvedValue({ ok: true, data: { items: [], nextCursor: null } })
+  await expect(api.activity.page()).rejects.toThrow()
+  bridge.invoke.mockResolvedValue({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
+  expect(await api.activity.page()).toMatchObject({ ok: false, code: 'HISTORY_CURSOR_STALE' })
+})

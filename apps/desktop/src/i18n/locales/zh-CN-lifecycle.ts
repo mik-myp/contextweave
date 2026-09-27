@@ -1,4 +1,12 @@
 export const lifecycleMessages = {
+  'history.loading': '正在读取历史…',
+  'history.pageCount': '本页 {count} 条（未统计全部历史）',
+  'history.latest': '返回首段',
+  'history.cancel': '取消等待',
+  'history.cancelled': '已取消等待。数据库查询可能仍在完成；未接纳其返回结果。',
+  'error.HISTORY_CURSOR_INVALID': '分页标记无效或与当前查询不匹配，请返回首段重新读取。',
+  'error.HISTORY_CURSOR_STALE': '分页边界记录已移除，请返回首段重新读取。',
+
   'error.WORKER_STOP_FAILED':
     '尚未确认任务进程已停止。控制权限已撤销，但退出前会继续保留环境占用，请勿重复启动该环境的任务。',
   'error.WORKER_OUTPUT_FAILED': '截图写入或校验失败。请检查磁盘空间和目录权限后重试。',

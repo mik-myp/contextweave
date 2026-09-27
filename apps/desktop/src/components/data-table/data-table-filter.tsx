@@ -32,11 +32,13 @@ export function DataTableFilter<TData extends RowData>({
   label,
   options,
   onFilterChange,
+  showCounts = true,
 }: {
   column: Column<DataTableFeatures, TData> | undefined
   label: string
   options: DataTableFilterOption[]
   onFilterChange: () => void
+  showCounts?: boolean
 }) {
   const { t } = useI18n()
   if (!column) return null
@@ -109,7 +111,7 @@ export function DataTableFilter<TData extends RowData>({
                     key={option.value}
                     value={option.value}
                     keywords={[option.label]}
-                    aria-label={`${option.label}, ${t('table.optionCount').replace('{count}', String(count))}, ${t(checked ? 'table.selected' : 'table.notSelected')}`}
+                    aria-label={`${option.label}, ${showCounts ? `${t('table.optionCount').replace('{count}', String(count))}, ` : ''}${t(checked ? 'table.selected' : 'table.notSelected')}`}
                     onSelect={() => {
                       const next = new Set(selected)
                       if (checked) next.delete(option.value)
@@ -132,7 +134,7 @@ export function DataTableFilter<TData extends RowData>({
                     <span className="min-w-0 flex-1 truncate" title={option.label}>
                       {option.label}
                     </span>
-                    {count > 0 && (
+                    {showCounts && count > 0 && (
                       <span
                         aria-hidden="true"
                         className="ms-auto flex h-4 min-w-4 items-center justify-center font-mono text-xs"

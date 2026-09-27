@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
 import {
-  activitySummarySchema,
+  activityHistoryQuerySchema,
+  operationHistoryQuerySchema,
   environmentIdSchema,
   readThemeConfig,
   themeConfigSchema,
@@ -167,30 +168,12 @@ export function createApplication(options: {
     },
     'environment:recover': (input) =>
       commands.run('recover', id(input), () => runtime.recover(id(input))),
-    'activity:list': () => {
-      const names = new Map(
-        repository.listAll().map((record) => [record.environmentId, record.name]),
-      )
-      return ok(
-        repository.listRuntimeSessions().map((session) =>
-          activitySummarySchema.parse({
-            ...session,
-            environmentName: names.get(session.environmentId),
-          }),
-        ),
-      )
-    },
-    'operation:list': () => {
-      const names = new Map(
-        repository.listAll().map((record) => [record.environmentId, record.name]),
-      )
-      return ok(
-        repository.listOperations().map((operation) => ({
-          ...operation,
-          environmentName: operation.environmentId ? names.get(operation.environmentId) : undefined,
-        })),
-      )
-    },
+    'activity:list': () => ok(repository.pageActivity({ limit: 100 }).items),
+    'operation:list': () => ok(repository.pageOperations({ limit: 100 }).items),
+    'activity:page': (input) =>
+      ok(repository.pageActivity(activityHistoryQuerySchema.parse(input))),
+    'operation:page': (input) =>
+      ok(repository.pageOperations(operationHistoryQuerySchema.parse(input))),
     'storage:orphans': () => ok(environments.orphans()),
     'proxy:test': async (input) => {
       const { config, password } = resolveProxyTestConfiguration(repository, input, credentials)

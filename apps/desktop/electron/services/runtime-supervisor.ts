@@ -115,14 +115,17 @@ export function createRuntimeSupervisor(options: {
   const stopping = new Map<string, Promise<IpcResult<EnvironmentSummary>>>()
   function recoverOnStartup() {
     repository.recoverOperations()
+    const activeByEnvironment = new Map<
+      string,
+      ReturnType<typeof repository.listActiveRuntimeSessions>
+    >()
+    for (const session of repository.listActiveRuntimeSessions()) {
+      const group = activeByEnvironment.get(session.environmentId) ?? []
+      group.push(session)
+      activeByEnvironment.set(session.environmentId, group)
+    }
     for (const record of repository.listAll()) {
-      const previous = repository
-        .listRuntimeSessions()
-        .filter(
-          (session) =>
-            session.environmentId === record.environmentId &&
-            ['starting', 'running', 'stopping'].includes(session.status),
-        )
+      const previous = activeByEnvironment.get(record.environmentId) ?? []
       const lock = inspectRuntimeLock(record.dataDir)
       if (
         !previous.length &&
@@ -466,13 +469,7 @@ export function createRuntimeSupervisor(options: {
     if (!record) return fail('NOT_FOUND')
     if (sessions.has(id) || starting.has(id)) return fail('RUNTIME_BUSY')
     const lock = inspectRuntimeLock(record.dataDir)
-    const previous = repository
-      .listRuntimeSessions()
-      .filter(
-        (session) =>
-          session.environmentId === id &&
-          ['starting', 'running', 'stopping'].includes(session.status),
-      )
+    const previous = repository.listActiveRuntimeSessions(id)
     if (
       lock.live ||
       previous.some((session) => isRuntimeProcessAlive(session.pid, session.processIdentity))

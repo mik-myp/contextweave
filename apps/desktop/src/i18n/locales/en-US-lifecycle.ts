@@ -1,4 +1,14 @@
 export const lifecycleMessages = {
+  'history.loading': 'Loading history…',
+  'history.pageCount': '{count} on this page (total not counted)',
+  'history.latest': 'Back to first page',
+  'history.cancel': 'Cancel waiting',
+  'history.cancelled':
+    'Waiting cancelled. The database query may still finish; its response is ignored.',
+  'error.HISTORY_CURSOR_INVALID':
+    'This page token is invalid or belongs to another query. Return to the first page.',
+  'error.HISTORY_CURSOR_STALE': 'The page boundary was removed. Return to the first page.',
+
   'error.WORKER_STOP_FAILED':
     'The task process has not confirmed that it stopped. Control access was revoked, but its environment remains reserved until the process exits. Do not start another task for this environment.',
   'error.WORKER_OUTPUT_FAILED':

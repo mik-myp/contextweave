@@ -438,6 +438,11 @@ try {
       'utf8',
     )
     assert.equal(after, before)
+    const pagedSessions = await page.evaluate(() => window.contextweave.activity.page({ limit: 2 }))
+    assert(
+      pagedSessions.ok && pagedSessions.data.items.length <= 2 && pagedSessions.data.previousCursor === null,
+    )
+    assert(pagedSessions.data.items.every((row) => !('pid' in row) && !('processIdentity' in row)))
     const operations = await page.evaluate(() => window.contextweave.operation.list())
     assert(operations.ok && operations.data.some((item) => item.errorCode === 'ALREADY_RUNNING'))
     // Finite, distinct fresh profiles, not retries of a failed startup. Any failure stops the gate.

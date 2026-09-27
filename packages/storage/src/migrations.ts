@@ -61,7 +61,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 5
+export const databaseVersion = 6
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -135,6 +135,15 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
         `ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`,
       )
     if (version < 5) migrateIntegritySchema(sqlite)
+    if (version < 6) sqlite.exec(`
+      CREATE INDEX idx_sessions_timeline ON runtime_sessions(started_at DESC, session_id DESC);
+      CREATE INDEX idx_operations_timeline ON operations(started_at DESC, operation_id DESC);
+      CREATE INDEX idx_sessions_active ON runtime_sessions(environment_id, started_at DESC, session_id DESC)
+        WHERE status IN ('starting', 'running', 'stopping');
+      CREATE INDEX idx_sessions_executable ON runtime_sessions(environment_id, started_at DESC, session_id DESC)
+        WHERE executable_version IS NOT NULL AND executable_version != '';
+      PRAGMA user_version = 6;
+    `)
     sqlite.exec('COMMIT')
     transactionOpen = false
   } catch (error) {

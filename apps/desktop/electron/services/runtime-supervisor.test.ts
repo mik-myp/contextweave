@@ -604,3 +604,36 @@ it('passes the same signal and deadline from readiness into initial settings rat
   await vi.advanceTimersByTimeAsync(1)
   expect(await result).toMatchObject({ ok: false, code: 'CONTROL_TIMEOUT' })
 })
+
+it('recovers every old active session through one complete query, never the paged history list', async () => {
+  const { runtime, repository } = fixture()
+  for (let i = 0; i < 230; i++)
+    repository.createRuntimeSession({
+      sessionId: `history-${String(i).padStart(4, '0')}`,
+      environmentId: 'env-a',
+      pid: 2147483647,
+      controlPort: 9000,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      status: i < 110 ? 'running' : 'stopped',
+      exitReason: null,
+    })
+  expect(repository.listRuntimeSessions().every((row) => row.status === 'stopped')).toBe(true)
+  const fullList = vi.spyOn(repository, 'listRuntimeSessions').mockImplementation(() => {
+    throw new Error('Unbounded recovery read')
+  })
+  const active = vi.spyOn(repository, 'listActiveRuntimeSessions')
+  runtime.recoverOnStartup()
+  expect(active).toHaveBeenCalledTimes(1)
+  expect(repository.get('env-a')?.status).toBe('needs-recovery')
+  expect(repository.getRuntimeSession('history-0000')).toMatchObject({
+    status: 'crashed',
+    exitReason: 'CLIENT_INTERRUPTED',
+  })
+  expect(repository.getRuntimeSession('history-0109')).toMatchObject({
+    status: 'crashed',
+    exitReason: 'CLIENT_INTERRUPTED',
+  })
+  expect(repository.listActiveRuntimeSessions()).toEqual([])
+  expect(await runtime.recover('env-a')).toMatchObject({ ok: true })
+  expect(fullList).not.toHaveBeenCalled()
+})

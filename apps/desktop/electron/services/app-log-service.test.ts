@@ -69,6 +69,8 @@ describe('application log buffer', () => {
       'logs:list',
       'logs:clear',
       'activity:list',
+      'activity:page',
+      'operation:page',
       'operation:list',
       'environment:list',
       'update:state',

@@ -22,13 +22,8 @@ export function assertEnvironmentEditable(
 ): void {
   const lock = inspectRuntimeLock(record.dataDir)
   const active = repository
-    .listRuntimeSessions()
-    .some(
-      (session) =>
-        session.environmentId === record.environmentId &&
-        ['starting', 'running', 'stopping'].includes(session.status) &&
-        isRuntimeProcessAlive(session.pid, session.processIdentity),
-    )
+    .listActiveRuntimeSessions(record.environmentId)
+    .some((session) => isRuntimeProcessAlive(session.pid, session.processIdentity))
   if (
     ['starting', 'running', 'stopping', 'needs-recovery'].includes(record.status) ||
     existsSync(lock.lockPath) ||

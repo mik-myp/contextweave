@@ -5,12 +5,12 @@ import { errorMessage } from '@/shared/lib/error-message'
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { ActivitySummary } from '@contextweave/contracts'
-import { useAppData } from '@/app/use-app-data'
+import { activityHistoryQuerySchema, type ActivitySummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import { DataTable } from '@/components/data-table/data-table'
 import { DataTableFilter } from '@/components/data-table/data-table-filter'
-import { useDataTable } from '@/components/data-table/use-data-table'
+import { useHistoryTable } from '../hooks/use-history-table'
+import { HistoryPagination } from '../components/history-pagination'
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
 import { Badge } from '@/components/ui/badge'
 const getRowId = (row: ActivitySummary) => row.sessionId
@@ -39,7 +39,6 @@ export function ActivityPage() {
 }
 function SessionsTable() {
   const { t, locale } = useI18n()
-  const { activity, loading, activityError, refresh } = useAppData(['activity'])
   const columns = useMemo<ColumnDef<DataTableFeatures, ActivitySummary, unknown>[]>(
     () => [
       {
@@ -162,14 +161,14 @@ function SessionsTable() {
     ],
     [t, locale],
   )
-  const table = useDataTable({
-    data: activity,
+  const history = useHistoryTable({
+    domain: 'activity',
+    schema: activityHistoryQuerySchema,
+    loadPage: (query) => window.contextweave.activity.page(query),
     columns,
     getRowId,
-    stateKey: 'activity',
-    loading,
-    initialState: { sorting: [{ id: 'startedAt', desc: true }] },
   })
+  const { table } = history
   return (
     <>
       <h2 className="sr-only">{t('activity.list')}</h2>
@@ -177,14 +176,17 @@ function SessionsTable() {
         table={table}
         label={t('activity.list')}
         searchPlaceholder={t('activity.search')}
-        loading={loading}
-        error={activityError}
-        onRetry={() => void refresh()}
+        loading={history.loading}
+        error={history.error}
+        onRetry={history.retry}
+        searchMaxLength={200}
+        pagination={<HistoryPagination history={history} />}
         emptyTitle={t('activity.empty')}
         emptyDescription={t('activity.emptyDescription')}
         filters={
           <DataTableFilter
             column={table.getColumn('status')}
+            showCounts={false}
             label={t('activity.status')}
             options={statuses.map((value) => ({
               value,

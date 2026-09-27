@@ -52,11 +52,7 @@ export async function checkEnvironment(
   if (!executable) add('KERNEL_UNAVAILABLE')
   else {
     executableVersion = await readExecutableVersion(executable)
-    const previousVersion = repository
-      .listRuntimeSessions()
-      .find(
-        (session) => session.environmentId === record.environmentId && session.executableVersion,
-      )?.executableVersion
+    const previousVersion = repository.latestExecutableVersion(record.environmentId)
     if (previousVersion && executableVersion && previousVersion !== executableVersion)
       add('VERSION_CHANGED', 'warning')
   }

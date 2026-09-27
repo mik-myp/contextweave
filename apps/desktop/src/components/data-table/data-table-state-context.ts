@@ -4,6 +4,8 @@ import type { DataTableFeatures } from './data-table-features'
 
 export type DataTableSnapshot = {
   state?: Partial<TableState<DataTableFeatures>>
+  /** Opaque page token for server-paginated tables; never interpreted by shared UI. */
+  pageCursor?: string | null
   scrollTop?: number
 }
 

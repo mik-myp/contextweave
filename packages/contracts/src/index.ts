@@ -1,3 +1,4 @@
+import { historyPageSchema } from './history'
 import { z } from 'zod'
 
 export const protocolVersion = 1 as const
@@ -417,6 +418,8 @@ export type ActivitySummary = z.infer<typeof activitySummarySchema>
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string }
 
 export * from './lifecycle'
+export * from './history'
+export const activityHistoryPageSchema = historyPageSchema(activitySummarySchema)
 
 export const kernelProviderSchema = z.object({ id: z.string(), label: z.string(), license: z.string() })
 export const kernelCatalogInputSchema = z.object({ providerId: z.string().min(1), refresh: z.boolean().default(false) })

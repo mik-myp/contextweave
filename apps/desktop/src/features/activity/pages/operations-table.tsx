@@ -1,21 +1,16 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { OperationSummary } from '@contextweave/contracts'
+import { operationHistoryQuerySchema, type OperationSummary } from '@contextweave/contracts'
 import { useI18n, type TranslationKey } from '@/i18n'
-import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
 import { DataTable } from '@/components/data-table/data-table'
-import { useDataTable } from '@/components/data-table/use-data-table'
+import { useHistoryTable } from '../hooks/use-history-table'
+import { HistoryPagination } from '../components/history-pagination'
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
 import { Badge } from '@/components/ui/badge'
 const getRowId = (row: OperationSummary) => row.operationId
 export function OperationsTable() {
   const { t, locale } = useI18n()
-  const query = useQuery({
-    queryKey: ['local', 'operations'],
-    queryFn: () => unwrapIpc(window.contextweave.operation.list()),
-  })
   const columns = useMemo<ColumnDef<DataTableFeatures, OperationSummary, unknown>[]>(
     () => [
       {
@@ -76,22 +71,23 @@ export function OperationsTable() {
     ],
     [t, locale],
   )
-  const table = useDataTable({
-    data: query.data ?? [],
+  const history = useHistoryTable({
+    domain: 'operations',
+    schema: operationHistoryQuerySchema,
+    loadPage: (query) => window.contextweave.operation.page(query),
     columns,
     getRowId,
-    stateKey: 'operations',
-    loading: query.isPending,
-    initialState: { sorting: [{ id: 'startedAt', desc: true }] },
   })
   return (
     <DataTable
-      table={table}
+      table={history.table}
       label={t('life.operations')}
       searchPlaceholder={t('common.search')}
-      loading={query.isPending}
-      error={query.error?.message}
-      onRetry={() => void query.refetch()}
+      loading={history.loading}
+      error={history.error}
+      onRetry={history.retry}
+      searchMaxLength={200}
+      pagination={<HistoryPagination history={history} />}
     />
   )
 }

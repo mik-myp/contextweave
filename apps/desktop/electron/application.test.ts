@@ -103,3 +103,24 @@ describe('application command boundary', () => {
     expect(repository.getSetting('fixture')).toBe('keep')
   })
 })
+
+it('bounds history IPC pages and rejects invalid query/cursor fields without changing history', async () => {
+  const { app, repository } = fixture()
+  for (let i = 0; i < 130; i++) repository.createOperation(`history-${i}`, 'install', 'kernel-key')
+  const first = await app.invoke('operation:page', { limit: 3 })
+  expect(first).toMatchObject({
+    ok: true,
+    data: { items: expect.any(Array), previousCursor: null, nextCursor: expect.any(String) },
+  })
+  if (!first.ok) throw new Error('Expected page')
+  expect((first.data as { items: unknown[] }).items).toHaveLength(3)
+  for (const channel of ['operation:page', 'activity:page']) {
+    for (const input of [undefined, null, { limit: 101 }, { sortBy: 'sql' }, { query: 'ignored?' }])
+      expect(await app.invoke(channel, input)).toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    expect(await app.invoke(channel, { cursor: 'not-json' })).toMatchObject({
+      ok: false,
+      code: 'HISTORY_CURSOR_INVALID',
+    })
+  }
+  expect(repository.listOperations()).toHaveLength(100)
+})

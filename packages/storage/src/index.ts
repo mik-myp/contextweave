@@ -4,6 +4,8 @@ import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { environmentConfigSchema } from '@contextweave/contracts'
 import type {
   EnvironmentConfig,
+  ActivityHistoryQuery,
+  OperationHistoryQuery,
   OperationKind,
   OperationSummary,
   EnvironmentStatus,
@@ -13,6 +15,7 @@ import type {
   TargetPlatform,
 } from '@contextweave/contracts'
 
+import { initializeHistoryQueries, readActivityPage, readOperationPage } from './history'
 import { migrateDatabase, databaseVersion } from './migrations'
 import { verifyDatabaseRelations } from './integrity'
 
@@ -188,6 +191,7 @@ export class EnvironmentRepository {
   private readonly insertKernelInstallationStatement: StatementSync
 
   constructor(private readonly sqlite: DatabaseSync) {
+    initializeHistoryQueries(sqlite)
     this.listStatement = sqlite.prepare(
       "SELECT * FROM environments WHERE lifecycle = 'active' ORDER BY updated_at DESC",
     )
@@ -206,7 +210,7 @@ export class EnvironmentRepository {
       'UPDATE environments SET status = ?, updated_at = ? WHERE environment_id = ?',
     )
     this.listRuntimeSessionsStatement = sqlite.prepare(
-      'SELECT * FROM runtime_sessions ORDER BY started_at DESC',
+      'SELECT * FROM runtime_sessions ORDER BY started_at DESC, session_id DESC LIMIT 100',
     )
     this.getRuntimeSessionStatement = sqlite.prepare(
       'SELECT * FROM runtime_sessions WHERE session_id = ?',
@@ -436,22 +440,36 @@ export class EnvironmentRepository {
       .run(new Date().toISOString())
   }
 
+  /** Compatibility view, not an exhaustive history. UI callers use pageOperations. */
   listOperations(): OperationSummary[] {
-    return this.sqlite
-      .prepare('SELECT * FROM operations ORDER BY started_at DESC LIMIT 500')
-      .all()
-      .map((row) => ({
-        operationId: stringValue(row, 'operation_id'),
-        environmentId: nullableStringValue(row, 'environment_id'),
-        kind: stringValue(row, 'kind') as OperationKind,
-        status: stringValue(row, 'status') as OperationSummary['status'],
-        phase: stringValue(row, 'phase'),
-        startedAt: stringValue(row, 'started_at'),
-        endedAt: nullableStringValue(row, 'ended_at'),
-        errorCode: nullableStringValue(row, 'error_code'),
-      }))
+    return this.pageOperations({ limit: 100 }).items
   }
 
+  pageActivity(input: Partial<ActivityHistoryQuery> = {}) {
+    return readActivityPage(this.sqlite, input)
+  }
+
+  pageOperations(input: Partial<OperationHistoryQuery> = {}) {
+    return readOperationPage(this.sqlite, input)
+  }
+
+  /** Recovery must see every active session, including older-than-page-cap rows. */
+  listActiveRuntimeSessions(environmentId?: string): RuntimeSessionRecord[] {
+    return this.sqlite.prepare(`SELECT * FROM runtime_sessions
+      WHERE status IN ('starting', 'running', 'stopping')
+      ${environmentId === undefined ? '' : 'AND environment_id = ?'}
+      ORDER BY started_at DESC, session_id DESC`)
+      .all(...(environmentId === undefined ? [] : [environmentId])).map(mapRuntimeSession)
+  }
+
+  latestExecutableVersion(environmentId: string): string | undefined {
+    const row = this.sqlite.prepare(`SELECT executable_version FROM runtime_sessions
+      WHERE environment_id = ? AND executable_version IS NOT NULL AND executable_version != ''
+      ORDER BY started_at DESC, session_id DESC LIMIT 1`).get(environmentId)
+    return row ? stringValue(row, 'executable_version') : undefined
+  }
+
+  /** Compatibility view; never use this bounded list for lifecycle/recovery decisions. */
   listRuntimeSessions(): RuntimeSessionRecord[] {
     return (this.listRuntimeSessionsStatement.all() as Row[]).map(mapRuntimeSession)
   }

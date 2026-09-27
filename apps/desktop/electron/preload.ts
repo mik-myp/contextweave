@@ -35,6 +35,12 @@ import {
   type ProxyTestInput,
   saveProxyInputSchema,
   activitySummarySchema,
+  activityHistoryQuerySchema,
+  activityHistoryPageSchema,
+  type ActivityHistoryQuery,
+  operationHistoryQuerySchema,
+  operationHistoryPageSchema,
+  type OperationHistoryQuery,
   environmentSummarySchema,
   environmentIdSchema,
   createEnvironmentInputSchema,
@@ -144,6 +150,10 @@ const api = {
       ),
   },
   operation: {
+    page: async (input: Partial<OperationHistoryQuery> = {}) =>
+      ipcResultSchema(operationHistoryPageSchema).parse(
+        await ipcRenderer.invoke('operation:page', operationHistoryQuerySchema.parse(input)),
+      ),
     list: async () =>
       ipcResultSchema(z.array(operationSummarySchema)).parse(
         await ipcRenderer.invoke('operation:list'),
@@ -156,6 +166,10 @@ const api = {
       ),
   },
   activity: {
+    page: async (input: Partial<ActivityHistoryQuery> = {}) =>
+      ipcResultSchema(activityHistoryPageSchema).parse(
+        await ipcRenderer.invoke('activity:page', activityHistoryQuerySchema.parse(input)),
+      ),
     list: async () =>
       ipcResultSchema(z.array(activitySummarySchema)).parse(
         await ipcRenderer.invoke('activity:list'),

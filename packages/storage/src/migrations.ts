@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { migrateIntegritySchema } from './integrity'
 import { migrateLocalWorkspace } from './workspaces'
+import { migrateWorkspaceScope } from './workspace-scope'
 
 const initialSchema = `
 CREATE TABLE IF NOT EXISTS environments (
@@ -62,7 +63,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 9
+export const databaseVersion = 10
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -185,6 +186,10 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
     if (version < 9) {
       migrateLocalWorkspace(sqlite)
       sqlite.exec('PRAGMA user_version = 9')
+    }
+    if (version < 10) {
+      migrateWorkspaceScope(sqlite)
+      sqlite.exec('PRAGMA user_version = 10')
     }
     sqlite.exec('COMMIT')
     transactionOpen = false

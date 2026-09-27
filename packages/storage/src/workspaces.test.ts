@@ -1,3 +1,5 @@
+import { updateArtifactBudget, reserveArtifact, bindArtifactAllocation } from './artifact-budget'
+import { registerArtifact } from './artifacts'
 import { randomUUID } from 'node:crypto'
 import {
   mkdtempSync,
@@ -14,13 +16,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it, vi } from 'vitest'
 import { environmentConfigSchema, localWorkspaceSchema } from '@contextweave/contracts'
 import {
-  ArtifactRepository,
-  EnvironmentRepository,
   WorkspaceRepository,
   openLocalDatabase,
 } from './index'
 import { databaseVersion, migrateDatabase } from './migrations'
-import { openVersion8Fixture } from './legacy-fixture'
+import { openVersion8Fixture, legacyFixtureWriter, legacyRows } from './legacy-fixture'
 const cleanups: (() => void)[] = []
 afterEach(() => {
   vi.restoreAllMocks()
@@ -41,7 +41,7 @@ function baseline() {
   const root = directory(),
     file = join(root, 'contextweave.sqlite')
   const sqlite = track(openVersion8Fixture(file).sqlite)
-  const repo = new EnvironmentRepository(sqlite)
+  const repo = legacyFixtureWriter(sqlite)
   const profile = join(root, 'environments', 'existing')
   mkdirSync(profile, { recursive: true })
   writeFileSync(join(profile, 'retained-session'), 'browser bytes stay in place')
@@ -83,7 +83,12 @@ function baseline() {
   repo.updateOperation('old-operation', 'completed', 'succeeded')
   repo.scheduleCredentialCleanup('pending-reference')
   repo.setSetting('fixture', { retained: true })
-  const artifacts = new ArtifactRepository(sqlite)
+  const artifacts = {
+    updateBudget: (input: Parameters<typeof updateArtifactBudget>[1]) => updateArtifactBudget(sqlite, input),
+    reserve: (input: Parameters<typeof reserveArtifact>[1]) => reserveArtifact(sqlite, input),
+    bindAllocation: (input: Parameters<typeof bindArtifactAllocation>[1]) => bindArtifactAllocation(sqlite, input),
+    registerArtifact: (input: Parameters<typeof registerArtifact>[1]) => registerArtifact(sqlite, input),
+  }
   artifacts.updateBudget({ limitMiB: 64, expectedRevision: 1 })
   artifacts.reserve({
     artifactId: randomUUID(),
@@ -126,7 +131,7 @@ function baseline() {
     Object.fromEntries(
       tables.map((table) => [
         table,
-        sqlite.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all(),
+        legacyRows(sqlite, table),
       ]),
     )
   return { root, file, sqlite, profile, snapshot, before: snapshot() }
@@ -144,7 +149,7 @@ it('adopts a real v8 database without changing any business row, secret referenc
   expect(readFileSync(join(f.root, 'credentials.json'), 'utf8')).toBe(
     'opaque encrypted credential fixture',
   )
-  const backups = readdirSync(f.root).filter((name) => name.includes('.before-v9-'))
+  const backups = readdirSync(f.root).filter((name) => name.includes(`.before-v${databaseVersion}-`))
   expect(backups).toHaveLength(1)
   const before = track(new DatabaseSync(join(f.root, backups[0]!)))
   expect(before.prepare('PRAGMA user_version').get()?.user_version).toBe(8)
@@ -259,7 +264,7 @@ it.each(['missing', 'invalid', 'table-missing'] as const)(
   (mode) => {
     const file = join(directory(), 'data.sqlite'),
       db = track(openLocalDatabase(file).sqlite)
-    db.exec('DROP TRIGGER local_workspace_no_delete; DROP TRIGGER local_workspace_no_update;')
+    db.exec('PRAGMA foreign_keys=OFF; DROP TRIGGER local_workspace_no_delete; DROP TRIGGER local_workspace_no_update;')
     if (mode === 'missing') db.exec('DELETE FROM local_workspace')
     else if (mode === 'table-missing') db.exec('DROP TABLE local_workspace')
     else
@@ -269,7 +274,7 @@ it.each(['missing', 'invalid', 'table-missing'] as const)(
     db.close()
     expect(() => openLocalDatabase(file)).toThrow()
     const raw = track(new DatabaseSync(file))
-    expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(9)
+    expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
     if (mode === 'invalid')
       expect(raw.prepare('SELECT workspace_id FROM local_workspace').get()?.workspace_id).toBe(
         'invalid-keep-original',

@@ -9,9 +9,9 @@ import {
   environmentConfigSchema,
 } from "@contextweave/contracts";
 import { EnvironmentRepository, openLocalDatabase } from "./index";
-import { openVersion4Fixture } from "./legacy-fixture";
+import { openVersion4Fixture, legacyFixtureWriter, legacyRows, withoutWorkspaceColumn } from "./legacy-fixture";
 import { migrateIntegritySchema } from "./integrity";
-import { migrateDatabase } from "./migrations";
+import { migrateDatabase, databaseVersion } from "./migrations";
 
 const cleanup: Array<() => void> = [];
 afterEach(() => {
@@ -36,7 +36,7 @@ function fixture(count = 255) {
   });
   db.sqlite.exec("BEGIN");
   for (let i = 0; i < count; i++) {
-    repo.createRuntimeSession({
+    repo.createRuntimeSession({ workspaceId: repo.workspaceId,
       sessionId: `s-${String(i).padStart(5, "0")}`,
       environmentId: "env-a",
       pid: 42,
@@ -327,7 +327,7 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   expect(legacy.sqlite.prepare("PRAGMA user_version").get()?.user_version).toBe(
     5,
   );
-  const repo = new EnvironmentRepository(legacy.sqlite);
+  const repo = legacyFixtureWriter(legacy.sqlite);
   repo.createOperation(
     "preserved",
     "install",
@@ -367,16 +367,16 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   cleanup.push(migrated.close);
   expect(
     migrated.sqlite.prepare("PRAGMA user_version").get()?.user_version,
-  ).toBe(9);
-  expect(migrated.sqlite.prepare("SELECT * FROM operations").all()).toEqual(
+  ).toBe(databaseVersion);
+  expect(legacyRows(migrated.sqlite, "operations")).toEqual(
     original,
   );
   expect(
-    migrated.sqlite
+    withoutWorkspaceColumn(migrated.sqlite
       .prepare(
         "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace') ORDER BY name",
       )
-      .all(),
+      .all()),
   ).toEqual(tables);
   expect(() =>
     migrated.sqlite.prepare("UPDATE operations SET status='invalid'").run(),

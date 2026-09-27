@@ -8,13 +8,14 @@ import {
   proxyTestInputSchema,
   saveProxyInputSchema,
   type ProxyConfig,
+  type WorkspaceCredentialReference,
 } from '@contextweave/contracts'
 import type { EnvironmentRepository, ProxyRecord } from '@contextweave/storage'
 import { assertProxyMutable } from './environment-management'
 
 type Credentials = {
-  save: (reference: string, password: string) => void
-  remove: (reference: string | undefined) => void
+  save: (reference: WorkspaceCredentialReference, password: string) => void
+  remove: (reference: WorkspaceCredentialReference | undefined) => void
 }
 export function toProxySummary(record: ProxyRecord) {
   return proxySummarySchema.parse({ ...record, hasPassword: Boolean(record.credentialRef) })
@@ -34,7 +35,7 @@ function assertCredentialTarget(previous: ProxyRecord, next: ProxyConfig): void 
 export function resolveProxyTestConfiguration(
   repository: Pick<EnvironmentRepository, 'getProxy'>,
   input: unknown,
-  credentials: { read(reference: string): string | undefined },
+  credentials: { read(reference: WorkspaceCredentialReference): string | undefined },
 ): { config: ProxyConfig; password: string } {
   const parsed = proxyTestInputSchema.parse(input)
   const saved = parsed.proxyId ? repository.getProxy(parsed.proxyId) : undefined
@@ -49,7 +50,10 @@ export function resolveProxyTestConfiguration(
   ) {
     // Check the complete connection identity before even decrypting the saved secret.
     assertCredentialTarget(saved, config)
-    const password = credentials.read(saved.credentialRef)
+    const password = credentials.read({
+      workspaceId: saved.workspaceId,
+      reference: saved.credentialRef,
+    })
     if (password === undefined) throw new Error('CREDENTIAL_UNAVAILABLE')
     return { config, password }
   }
@@ -76,7 +80,8 @@ export function saveProxyConfiguration(
   // Persist the intent before touching the credential file, so a crash can be recovered.
   if (newReference) repository.scheduleCredentialCleanup(newReference)
   try {
-    if (newReference && parsed.password) credentials.save(newReference, parsed.password)
+    if (newReference && parsed.password)
+      credentials.save(repository.credentialReference(newReference), parsed.password)
     return toProxySummary(
       repository.saveProxyWithEnvironments(proxyId, { ...parsed.config, credentialRef }),
     )
@@ -98,7 +103,7 @@ export function drainCredentialCleanup(
           complete = false
           continue
         }
-        credentials.remove(reference)
+        credentials.remove(repository.credentialReference(reference))
         repository.completeCredentialCleanup(reference)
       } catch {
         // The durable row remains visible through the maintenance status and can be retried.

@@ -28,6 +28,7 @@ import type { CredentialStore } from './credentials'
 import { ok, fail, toSummary } from './result'
 
 type Session = {
+  workspaceId: string
   child: ChildProcess
   control: BrowserControl
   sessionId: string
@@ -196,7 +197,7 @@ export function createRuntimeSupervisor(options: {
       phase('launch')
       if (config.proxy) {
         const password = config.proxy.credentialRef
-          ? credentials.read(config.proxy.credentialRef)
+          ? credentials.read(repository.credentialReference(config.proxy.credentialRef))
           : ''
         if (password === undefined) throw new Error('CREDENTIAL_UNAVAILABLE')
         transport = await openProxyTransport(config.proxy, password)
@@ -220,6 +221,7 @@ export function createRuntimeSupervisor(options: {
       if (!child.pid) throw new Error('SPAWN_FAILED')
       budget = createStartupBudget(controller.signal)
       managed = {
+        workspaceId: repository.workspaceId,
         child,
         control,
         sessionId,
@@ -238,6 +240,7 @@ export function createRuntimeSupervisor(options: {
         startedAt,
       })
       repository.createRuntimeSession({
+        workspaceId: repository.workspaceId,
         sessionId,
         environmentId: id,
         pid: child.pid,

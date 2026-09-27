@@ -1,4 +1,5 @@
 import { historyPageSchema } from './history'
+import { workspaceContextSchema } from './workspaces'
 import { z } from 'zod'
 
 export const protocolVersion = 1 as const
@@ -253,6 +254,7 @@ export const updateEnvironmentInputSchema = z
 export type UpdateEnvironmentInput = z.infer<typeof updateEnvironmentInputSchema>
 
 export const proxySummarySchema = proxyConfigSchema.omit({ credentialRef: true }).extend({
+  workspaceId: workspaceContextSchema.shape.workspaceId,
   proxyId: z.string().min(1),
   hasPassword: z.boolean(),
   createdAt: z.string().datetime(),
@@ -355,6 +357,7 @@ export type FingerprintIdentity = z.infer<typeof fingerprintIdentitySchema>
 export * from './theme'
 
 export const environmentSummarySchema = z.object({
+  workspaceId: workspaceContextSchema.shape.workspaceId,
   id: z.string().trim().min(1),
   name: z.string().trim().min(1),
   status: environmentStatusSchema,
@@ -387,6 +390,7 @@ export function ipcResultSchema<T>(data: z.ZodType<T>) {
 }
 
 export const runtimeSessionSchema = z.object({
+  workspaceId: workspaceContextSchema.shape.workspaceId,
   processIdentity: z.string().min(1).optional(),
   sessionId: z.string().trim().min(1),
   environmentId: z.string().trim().min(1),

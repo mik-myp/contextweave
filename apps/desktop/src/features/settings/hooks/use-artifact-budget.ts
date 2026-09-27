@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { artifactBudgetUpdateSchema } from '@contextweave/contracts'
@@ -21,7 +22,7 @@ export function useArtifactBudget() {
   const query = useQuery({
     queryKey: artifactBudgetKey,
     queryFn: async ({ signal }) => {
-      const value = await unwrapIpc(window.contextweave.storage.getArtifactBudget())
+      const value = await unwrapIpc(workspaceApi.storage.getArtifactBudget())
       signal.throwIfAborted()
       return value
     },
@@ -68,7 +69,7 @@ export function useArtifactBudget() {
       setError(null)
       setSaved(false)
       try {
-        const value = await unwrapIpc(window.contextweave.storage.updateArtifactBudget(parsed.data))
+        const value = await unwrapIpc(workspaceApi.storage.updateArtifactBudget(parsed.data))
         if (generation !== request.current.generation) return
         await client.cancelQueries({ queryKey: artifactBudgetKey, exact: true })
         if (generation !== request.current.generation) return

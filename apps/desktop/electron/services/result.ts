@@ -8,6 +8,7 @@ export const fail = (code: string, message = code): IpcResult<never> => ({
 })
 export function toSummary(record: EnvironmentRecord): EnvironmentSummary {
   return {
+    workspaceId: record.workspaceId,
     id: record.environmentId,
     name: record.name,
     status: record.status,

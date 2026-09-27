@@ -1,3 +1,4 @@
+import { databaseVersion } from './migrations'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -38,7 +39,7 @@ function fixture(file = ':memory:') {
     })
   if (!repo.get('env')) environment()
   const session = (id: string, env = 'env', version?: string) =>
-    repo.createRuntimeSession({
+    repo.createRuntimeSession({ workspaceId: repo.workspaceId,
       sessionId: id,
       environmentId: env,
       pid: 42,
@@ -93,7 +94,7 @@ describe('bounded history cleanup storage', () => {
     expect(f.repo.latestExecutableVersion('env')).toBe('148.0.0.2')
     expect(f.repo.get('env')?.revision).toBe(1)
     expect(f.repo.getRevision('env', 1)).toBeDefined()
-    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(9)
+    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
   })
 
   it.each(['starting', 'running', 'stopping', 'needs-recovery'] as const)(

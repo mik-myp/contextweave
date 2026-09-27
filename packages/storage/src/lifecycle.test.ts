@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, mkdirSync, writeFileSync, readFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { openVersion4Fixture } from './legacy-fixture'
+import { openVersion4Fixture, legacyFixtureWriter } from './legacy-fixture'
 import { databaseVersion } from './migrations'
 import { afterEach, describe, expect, it } from 'vitest'
 import { environmentConfigSchema } from '@contextweave/contracts'
@@ -60,7 +60,7 @@ describe('configuration history and lifecycle', () => {
     const { repository, root } = fixture()
     repository.create({ config, dataDir: root, platform: 'darwin', arch: 'arm64' })
     repository.updateConfig({ ...config, name: 'Second revision' }, 1)
-    repository.createRuntimeSession({
+    repository.createRuntimeSession({ workspaceId: repository.workspaceId,
       sessionId: 's',
       environmentId: 'env-a',
       pid: 100,
@@ -154,7 +154,7 @@ it('upgrades v1 proxy names without changing existing credentials, IDs or enviro
   directories.push(root)
   const file = join(root, 'data.sqlite')
   const previous = openVersion4Fixture(file)
-  const repository = new EnvironmentRepository(previous.sqlite)
+  const repository = legacyFixtureWriter(previous.sqlite)
   repository.create({ config, dataDir: root, platform: 'darwin', arch: 'arm64' })
   repository.saveProxy('p', { type: 'socks5', host: 'proxy.example.test', port: 1080, username: 'fixture', credentialRef: 'ref-preserved' })
   previous.sqlite.exec('BEGIN IMMEDIATE; ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; ALTER TABLE proxies DROP COLUMN name; PRAGMA user_version = 1; COMMIT;')
@@ -173,7 +173,7 @@ it('fills a missing runtime identity only for the same starting session and PID'
     sessionId: 'startup', environmentId: 'env-a', pid: 123, controlPort: 9000,
     startedAt: new Date().toISOString(), status: 'starting' as const, exitReason: null,
   }
-  repository.createRuntimeSession(runtime)
+  repository.createRuntimeSession({ ...runtime, workspaceId: repository.workspaceId })
   expect(repository.setRuntimeProcessIdentity('missing', 123, 'os:start')).toBe(false)
   expect(repository.setRuntimeProcessIdentity('startup', 456, 'os:start')).toBe(false)
   expect(repository.getRuntimeSession('startup')?.processIdentity).toBeUndefined()
@@ -181,7 +181,7 @@ it('fills a missing runtime identity only for the same starting session and PID'
   expect(repository.setRuntimeProcessIdentity('startup', 123, 'os:replacement')).toBe(false)
   expect(repository.getRuntimeSession('startup')?.processIdentity).toBe('os:start')
   for (const status of ['running', 'stopping', 'stopped', 'crashed'] as const) {
-    repository.createRuntimeSession({ ...runtime, sessionId: status, status })
+    repository.createRuntimeSession({ workspaceId: repository.workspaceId, ...runtime, sessionId: status, status })
     expect(repository.setRuntimeProcessIdentity(status, 123, 'os:start')).toBe(false)
     expect(repository.getRuntimeSession(status)?.processIdentity).toBeUndefined()
   }

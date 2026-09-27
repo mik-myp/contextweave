@@ -1,4 +1,11 @@
 export const lifecycleMessages = {
+  'error.WORKSPACE_CONTEXT_INVALID':
+    'Workspace context is missing or invalid. Reopen the application and try again.',
+  'error.WORKSPACE_MISMATCH':
+    'This request belongs to a different workspace. Data and credentials were not accessed.',
+  'error.WORKSPACE_PATH_UNSAFE':
+    'A data path does not belong to this workspace or contains an unsafe link. Preserve and inspect the original data; nothing will be moved or overwritten automatically.',
+
   'error.DATABASE_WORKSPACE_INVALID':
     'The local workspace identity cannot be read. Preserve the data directory and retry; no replacement identity will be created.',
   'history.loading': 'Loading history…',

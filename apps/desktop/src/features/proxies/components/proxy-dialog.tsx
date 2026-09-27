@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useEffect, useRef, useState, type BaseSyntheticEvent } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -77,7 +78,7 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
       setTestResult(undefined)
       try {
         const result = await unwrapIpc(
-          window.contextweave.proxy.test(toSaveProxyInput(values, proxy?.proxyId)),
+          workspaceApi.proxy.test(toSaveProxyInput(values, proxy?.proxyId)),
         )
         if (revision === testRevision.current) setTestResult(result)
       } catch (cause) {
@@ -97,7 +98,7 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
   const submit = form.handleSubmit(async (values) => {
     setError(undefined)
     try {
-      await unwrapIpc(window.contextweave.proxy.save(toSaveProxyInput(values, proxy?.proxyId)))
+      await unwrapIpc(workspaceApi.proxy.save(toSaveProxyInput(values, proxy?.proxyId)))
       await refresh()
       setNotice({ kind: 'success', message: t('admin.saved') })
       onClose()

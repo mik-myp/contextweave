@@ -1,3 +1,5 @@
+import { scopedCommands } from '../test-support/workspace'
+import { WorkspacePaths } from '@contextweave/storage'
 import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -7,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { environmentConfigSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
-import { createCredentialStore } from './services/credentials'
+import { createWorkspaceCredentialStore } from './services/credentials'
 import {
   deleteProxyConfiguration,
   drainCredentialCleanup,
@@ -35,7 +37,11 @@ function fixture() {
   const file = join(root, 'test.sqlite')
   let database = openLocalDatabase(file)
   let repository = new EnvironmentRepository(database.sqlite)
-  const credentials = createCredentialStore(join(root, 'credentials.json'), secure)
+  const credentials = createWorkspaceCredentialStore(
+    repository.context,
+    new WorkspacePaths(repository.context, root),
+    secure,
+  )
   cleanups.push(() => {
     database.close()
     rmSync(root, { recursive: true, force: true })
@@ -68,7 +74,7 @@ function fixture() {
         changed: () => {},
       })
       cleanups.push(() => app.shutdown())
-      return app
+      return scopedCommands(app, repository.context)
     },
   }
 }
@@ -102,7 +108,8 @@ describe('durable credential retirement', () => {
       )
       const previous = f.repository.listProxies()[0]!
       f.repository.scheduleCredentialCleanup('new-reference')
-      if (phase !== 'before-write') f.credentials.save('new-reference', 'new')
+      if (phase !== 'before-write')
+        f.credentials.save(f.repository.credentialReference('new-reference'), 'new')
       if (phase === 'after-commit')
         f.repository.saveProxyWithEnvironments(previous.proxyId, {
           ...config,
@@ -122,13 +129,13 @@ describe('durable credential retirement', () => {
   )
   it('retries idempotently when the secret was removed but the journal delete failed', () => {
     const f = fixture()
-    f.credentials.save('retired', 'old')
+    f.credentials.save(f.repository.credentialReference('retired'), 'old')
     f.repository.scheduleCredentialCleanup('retired')
     const failure = vi.spyOn(f.repository, 'completeCredentialCleanup').mockImplementation(() => {
       throw new Error('disk full')
     })
     expect(drainCredentialCleanup(f.repository, f.credentials)).toBe(false)
-    expect(f.credentials.read('retired')).toBeUndefined()
+    expect(f.credentials.read(f.repository.credentialReference('retired'))).toBeUndefined()
     expect(f.repository.pendingCredentialCleanup()).toEqual(['retired'])
     failure.mockRestore()
     expect(drainCredentialCleanup(f.repository, f.credentials)).toBe(true)
@@ -149,7 +156,9 @@ describe('durable credential retirement', () => {
       'injected',
     )
     expect(f.repository.getProxy(saved.proxyId)).toEqual(previous)
-    expect(f.credentials.read(previous.credentialRef!)).toBe('secret')
+    expect(f.credentials.read(f.repository.credentialReference(previous.credentialRef!))).toBe(
+      'secret',
+    )
     expect(f.repository.pendingCredentialCleanup()).toEqual([])
     f.database.sqlite.exec('DROP TRIGGER fail_delete')
     deleteProxyConfiguration(f.repository, saved.proxyId, {
@@ -162,7 +171,9 @@ describe('durable credential retirement', () => {
     expect(f.repository.pendingCredentialCleanup()).toEqual([previous.credentialRef])
     const app = f.restart()
     expect((await app.invoke('proxy:cleanup-status')).ok).toBe(true)
-    expect(f.credentials.read(previous.credentialRef!)).toBeUndefined()
+    expect(
+      f.credentials.read(f.repository.credentialReference(previous.credentialRef!)),
+    ).toBeUndefined()
     expect(f.repository.pendingCredentialCleanup()).toEqual([])
   })
   it.each([
@@ -174,7 +185,7 @@ describe('durable credential retirement', () => {
     'mismatched-link',
   ] as const)('retains a queued secret if ownership is unsafe to discard: %s', (owner) => {
     const f = fixture()
-    f.credentials.save('shared', 'secret')
+    f.credentials.save(f.repository.credentialReference('shared'), 'secret')
     f.repository.scheduleCredentialCleanup('shared')
     // Fault injection only: model corruption by an external writer after opening.
     // The production connection never disables these guards; integrity.test.ts
@@ -212,7 +223,7 @@ describe('durable credential retirement', () => {
         f.database.sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA ignore_check_constraints = OFF;')
     }
     expect(drainCredentialCleanup(f.repository, f.credentials)).toBe(false)
-    expect(f.credentials.read('shared')).toBe('secret')
+    expect(f.credentials.read(f.repository.credentialReference('shared'))).toBe('secret')
     expect(f.repository.pendingCredentialCleanup()).toEqual(['shared'])
   })
   it('does not touch the vault when the cleanup intent cannot be persisted', () => {

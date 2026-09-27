@@ -1,3 +1,4 @@
+import { removeWorkspaceScopeForLegacyFixture } from './legacy-fixture'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +11,7 @@ import {
   type ArtifactRecord,
 } from '@contextweave/contracts'
 import { ArtifactRepository, EnvironmentRepository, openLocalDatabase } from './index'
-import { migrateDatabase } from './migrations'
+import { migrateDatabase, databaseVersion } from './migrations'
 const at = '2026-09-27T00:00:00.000Z'
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -254,7 +255,7 @@ describe('persistent screenshot budgets', () => {
     for (const sql of [
       'UPDATE screenshot_budget SET limit_mib=31',
       'UPDATE screenshot_budget SET revision=0',
-      'INSERT INTO screenshot_budget VALUES(2,32,1)',
+      'INSERT INTO screenshot_budget (singleton,limit_mib,revision) VALUES(2,32,1)',
     ])
       expect(() => f.db.sqlite.exec(sql)).toThrow()
     const second = fixture(f.file)
@@ -271,8 +272,9 @@ describe('additive v7 to v8 migration', () => {
       record = input()
     reserve(f.repo, record)
     f.repo.registerArtifact(record)
+    removeWorkspaceScopeForLegacyFixture(f.db.sqlite)
     f.db.sqlite.exec(
-      'BEGIN IMMEDIATE; DROP TABLE local_workspace; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; PRAGMA user_version=7; COMMIT',
+      'BEGIN IMMEDIATE; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; PRAGMA user_version=7; COMMIT',
     )
     return { ...f, record }
   }
@@ -285,7 +287,7 @@ describe('additive v7 to v8 migration', () => {
       registered: { count: 1, bytes: 8 },
       reserved: { count: 0, bytes: 0 },
     })
-    const names = readdirSync(f.root!).filter((name) => name.includes('.before-v9-'))
+    const names = readdirSync(f.root!).filter((name) => name.includes(`.before-v${databaseVersion}-`))
     expect(names).toHaveLength(1)
     const before = new DatabaseSync(join(f.root!, names[0]!))
     try {

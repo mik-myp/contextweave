@@ -44,17 +44,17 @@ try {
   // The packaged manifest is audited separately; this smoke must not prompt for the user's keychain.
   const call = (...args) => withDeadline(page.evaluate(...args), 35000, 'NATIVE_TYPED_API_TIMEOUT')
   await assertWorkspaceIdentity(call)
-  const environments = await call(() => window.contextweave.environment.list())
+  const environments = await call(async () => window.contextweave.environment.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(environments.ok && environments.data.length === 0, 'NATIVE_PROFILE_NOT_FRESH')
-  const cleanupReceipt = await call(() => window.contextweave.storage.getHistoryCleanupReceipt())
+  const cleanupReceipt = await call(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert.deepEqual(cleanupReceipt, { ok: true, data: null }, 'NATIVE_HISTORY_RECEIPT_NOT_FRESH')
-  const cleanupPreview = await call(() => window.contextweave.storage.previewHistoryCleanup({ retentionDays: 90 }))
+  const cleanupPreview = await call(async () => window.contextweave.storage.previewHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { retentionDays: 90 }))
   assert(cleanupPreview.ok, 'NATIVE_HISTORY_PREVIEW_FAILED')
   for (const kind of ['sessions', 'operations'])
     assert.deepEqual(cleanupPreview.data[kind], { count: 0, hasMore: false }, 'NATIVE_HISTORY_NOT_EMPTY')
-  const emptyCleanup = await call((previewId) => window.contextweave.storage.confirmHistoryCleanup({ previewId }), cleanupPreview.data.previewId)
+  const emptyCleanup = await call(async (previewId) => window.contextweave.storage.confirmHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }), cleanupPreview.data.previewId)
   assert(!emptyCleanup.ok && emptyCleanup.code === 'HISTORY_CLEANUP_EMPTY', 'NATIVE_EMPTY_HISTORY_NOT_REJECTED')
-  const kernels = await call(() => window.contextweave.kernel.list())
+  const kernels = await call(async () => window.contextweave.kernel.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(
     kernels.ok &&
       kernels.data.some(
@@ -77,8 +77,8 @@ try {
   fixtureServer.listen(0, '127.0.0.1')
   await once(fixtureServer, 'listening')
   const url = `http://127.0.0.1:${fixtureServer.address().port}`
-  const created = await call(() =>
-    window.contextweave.environment.create({
+  const created = await call(async () =>
+    window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
       name: 'Native packaged fixture',
       kernelId: 'standard-chromium',
       commonConfig: { language: 'system', timezone: 'system' },
@@ -87,13 +87,13 @@ try {
   assert(created.ok, 'NATIVE_ENVIRONMENT_CREATE_FAILED')
   id = created.data.id
   for (let run = 0; run < 2; run++) {
-    const started = await call((id) => window.contextweave.environment.start(id), id)
+    const started = await call(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(started.ok, 'NATIVE_ENVIRONMENT_START_FAILED')
     if (run === 1) await verifyScreenshotBudget(call, directory, id, url)
     const screenshotStarted = performance.now()
     const screenshot = await call(
-      ({ environmentId, url, run }) =>
-        window.contextweave.worker.runSmoke({
+      async ({ environmentId, url, run }) =>
+        window.contextweave.worker.runSmoke({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           protocolVersion: 1,
           taskId: `native-screenshot-${run}`,
           environmentId,
@@ -104,8 +104,8 @@ try {
     )
     await recordWorkerFailure(screenshot, run, performance.now() - screenshotStarted, () =>
       withDeadline(page.evaluate(async (id) => ({
-        budget: await window.contextweave.storage.getArtifactBudget(),
-        environment: await window.contextweave.environment.get(id),
+        budget: await window.contextweave.storage.getArtifactBudget({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }),
+        environment: await window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
       }), id), 2000, 'NATIVE_WORKER_EVIDENCE_TIMEOUT'),
     )
     assert(screenshot.ok && screenshot.data.ok, 'NATIVE_UTILITY_SCREENSHOT_FAILED')
@@ -122,8 +122,8 @@ try {
         navigationSeen = resolve
       })
       const cancelled = call(
-        ({ environmentId, url }) =>
-          window.contextweave.worker.runSmoke({
+        async ({ environmentId, url }) =>
+          window.contextweave.worker.runSmoke({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
             protocolVersion: 1,
             taskId: 'native-cancel',
             environmentId,
@@ -144,7 +144,7 @@ try {
             )
           }),
         ])
-        assert.deepEqual(await call(() => window.contextweave.worker.cancel('native-cancel')), {
+        assert.deepEqual(await call(async () => window.contextweave.worker.cancel({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, 'native-cancel')), {
           ok: true,
           data: true,
         })
@@ -156,12 +156,12 @@ try {
         navigationSeen = undefined
       }
     }
-    const stopped = await call((id) => window.contextweave.environment.stop(id), id)
+    const stopped = await call(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(stopped.ok, 'NATIVE_ENVIRONMENT_STOP_FAILED')
-    const detail = await call((id) => window.contextweave.environment.get(id), id)
+    const detail = await call(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(detail.ok && detail.data.status === 'stopped', 'NATIVE_ENVIRONMENT_NOT_STOPPED')
   }
-  const deleted = await call((id) => window.contextweave.environment.delete(id), id)
+  const deleted = await call(async (id) => window.contextweave.environment.delete({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
   assert(deleted.ok, 'NATIVE_ENVIRONMENT_DELETE_FAILED')
   id = undefined
   await host.quit()
@@ -173,7 +173,7 @@ try {
   let cleanupFailure
   if (host && !host.state.exit && id) {
     const result = await withDeadline(
-      host.page.evaluate((id) => window.contextweave.environment.stop(id), id),
+      host.page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id),
       10000,
       'NATIVE_CLEANUP_STOP_TIMEOUT',
     ).catch(() => undefined)

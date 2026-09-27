@@ -7,6 +7,7 @@ import {
   requireArtifactReservation,
   releaseArtifactReservation,
 } from './artifact-budget'
+import { WorkspaceRepository, databaseFilePath } from './workspaces'
 import type { DatabaseSync } from 'node:sqlite'
 import {
   artifactRecordSchema,
@@ -141,7 +142,12 @@ export function readArtifactPage(sqlite: DatabaseSync, input: unknown): Artifact
 
 /** A separate connection to the same file keeps uncertain artifact transactions out of runtime state. */
 export class ArtifactRepository {
-  constructor(private readonly sqlite: DatabaseSync) {}
+  readonly workspaceId: string
+  readonly databasePath: string
+  constructor(private readonly sqlite: DatabaseSync) {
+    this.workspaceId = new WorkspaceRepository(sqlite).current().workspaceId
+    this.databasePath = databaseFilePath(sqlite)
+  }
   budget() {
     return readArtifactBudget(this.sqlite)
   }

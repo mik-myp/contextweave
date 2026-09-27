@@ -1,3 +1,4 @@
+import type { WorkspaceCredentialReference } from '@contextweave/contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,11 +16,11 @@ function setup() {
   const repository = new EnvironmentRepository(database.sqlite)
   const secrets = new Map<string, string>()
   const credentials = {
-    save: (key: string, value: string) => {
-      secrets.set(key, value)
+    save: (key: WorkspaceCredentialReference, value: string) => {
+      secrets.set(key.reference, value)
     },
-    remove: (key: string | undefined) => {
-      if (key) secrets.delete(key)
+    remove: (key: WorkspaceCredentialReference | undefined) => {
+      if (key) secrets.delete(key.reference)
     },
   }
   return { database, repository, secrets, credentials }

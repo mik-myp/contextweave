@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -40,7 +41,7 @@ const second: ArtifactPage = {
 let root: Root, container: HTMLDivElement, client: QueryClient
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.stubGlobal('contextweave', { storage: { pageArtifacts: call } })
+  vi.stubGlobal('contextweave', withWorkspaceFixture({ storage: { pageArtifacts: call } }))
   localStorage.clear()
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
   container = document.createElement('div')

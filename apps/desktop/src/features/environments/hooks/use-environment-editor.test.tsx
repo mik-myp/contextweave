@@ -64,6 +64,7 @@ function Fixture() {
 }
 const defaults = { ...environmentFormDefaults(), name: 'Initial', kernelId: 'standard-chromium' }
 const saved = environmentDetailsSchema.parse({
+  workspaceId: '00000000-0000-4000-8000-000000000001',
   id: 'env-saved',
   name: 'Saved',
   kernelId: 'standard-chromium',

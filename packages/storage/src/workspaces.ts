@@ -55,3 +55,10 @@ export function migrateLocalWorkspace(sqlite: DatabaseSync): void {
   `)
   new WorkspaceRepository(sqlite).current()
 }
+
+/** SQLite's actual main database, not a Renderer-provided filename. Empty only for :memory:. */
+export function databaseFilePath(sqlite: DatabaseSync): string {
+  const row = sqlite.prepare('PRAGMA database_list').all().find(row => row.name === 'main')
+  if (typeof row?.file !== 'string') throw new Error('DATABASE_WORKSPACE_INVALID')
+  return row.file
+}

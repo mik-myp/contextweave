@@ -36,8 +36,8 @@ async function settings(page) {
 try {
   let page = await launch()
   const environments = await page.evaluate(async () => {
-    const create = (name) =>
-      window.contextweave.environment.create({
+    const create = async (name) =>
+      window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
         name,
         kernelId: 'standard-chromium',
         commonConfig: { language: 'system', timezone: 'system' },
@@ -90,7 +90,7 @@ try {
     ),
   )
   const before = await page.evaluate(async () => {
-    const first = await window.contextweave.operation.page({ search: 'Cleanup fixture', limit: 20 })
+    const first = await window.contextweave.operation.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { search: 'Cleanup fixture', limit: 20 })
     window.__cleanupEvents = []
     window.contextweave.events.onDataChanged((domains) => window.__cleanupEvents.push(domains))
     return first
@@ -109,7 +109,7 @@ try {
   await section.getByRole('button', { name: '确认本批清理…', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '取消', exact: true }).click()
   assert.deepEqual(
-    await page.evaluate(() => window.contextweave.storage.getHistoryCleanupReceipt()),
+    await page.evaluate(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId })),
     { ok: true, data: null },
   )
   await section.getByRole('button', { name: '确认本批清理…', exact: true }).click()
@@ -120,12 +120,12 @@ try {
   await section
     .getByText('本批清理已提交，详情见最近回执。状态变化或已不存在的候选已跳过。', { exact: true })
     .waitFor()
-  const receipt = await page.evaluate(() => window.contextweave.storage.getHistoryCleanupReceipt())
+  const receipt = await page.evaluate(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(receipt.ok && receipt.data)
   for (const kind of ['sessions', 'operations'])
     assert.deepEqual(receipt.data[kind], { selected: 500, deleted: 500, skipped: 0 })
   const replay = await page.evaluate(
-    (previewId) => window.contextweave.storage.confirmHistoryCleanup({ previewId }),
+    async (previewId) => window.contextweave.storage.confirmHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }),
     receipt.data.previewId,
   )
   assert(replay.ok && replay.data.replayed)
@@ -137,8 +137,8 @@ try {
     ),
   )
   const stale = await page.evaluate(
-    (cursor) =>
-      window.contextweave.operation.page({ search: 'Cleanup fixture', limit: 20, cursor }),
+    async (cursor) =>
+      window.contextweave.operation.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { search: 'Cleanup fixture', limit: 20, cursor }),
     before.data.nextCursor,
   )
   assert(!stale.ok && stale.code === 'HISTORY_CURSOR_STALE')
@@ -156,7 +156,7 @@ try {
   section = await settings(page)
   await section.getByText(receipt.data.previewId, { exact: true }).waitFor()
   const afterRestart = await page.evaluate(
-    (previewId) => window.contextweave.storage.confirmHistoryCleanup({ previewId }),
+    async (previewId) => window.contextweave.storage.confirmHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }),
     receipt.data.previewId,
   )
   assert(afterRestart.ok && afterRestart.data.replayed)
@@ -167,7 +167,7 @@ try {
   desktop = undefined
   const check = new DatabaseSync(file)
   try {
-    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 9)
+    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 10)
     assert.equal(check.prepare('SELECT count(*) AS n FROM runtime_sessions').get().n, 6)
     assert.equal(
       check

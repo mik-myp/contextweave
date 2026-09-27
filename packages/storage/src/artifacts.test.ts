@@ -1,3 +1,4 @@
+import { removeWorkspaceScopeForLegacyFixture, withoutWorkspaceColumn } from './legacy-fixture'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -251,8 +252,9 @@ describe('registered screenshot repository', () => {
 describe('schema v7 migration', () => {
   function v6() {
     const f = fileFixture()
+    removeWorkspaceScopeForLegacyFixture(f.db.sqlite)
     f.db.sqlite.exec(
-      "DROP TABLE local_workspace; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
+      " DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
     )
     return f
   }
@@ -264,11 +266,11 @@ describe('schema v7 migration', () => {
     migrateDatabase(f.db.sqlite, f.file)
     expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
     expect(
-      f.db.sqlite
+      withoutWorkspaceColumn(f.db.sqlite
         .prepare(
           "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace') ORDER BY name",
         )
-        .all(),
+        .all()),
     ).toEqual(before)
     const backupName = readdirSync(f.root).find((name) => name.endsWith('.bak'))!
     const backup = new DatabaseSync(join(f.root, backupName))

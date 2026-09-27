@@ -1,3 +1,4 @@
+import { scopedCommands } from '../test-support/workspace'
 import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -34,20 +35,23 @@ async function setup() {
     encryptString: (value: string) => Buffer.from(value),
     decryptString: vi.fn((value: Buffer) => value.toString()),
   }
-  const application = createApplication({
-    workspaceRepository: new WorkspaceRepository(database.sqlite),
-    artifactRepository: new ArtifactRepository(database.sqlite),
-    repository,
-    dataRoot: directory,
-    platform: 'linux',
-    arch: 'x64',
-    secure,
-    workerPath: join(directory, 'unused-worker.cjs'),
-    forkWorker: () => {
-      throw new Error('Worker must not run in boundary tests')
-    },
-    changed: () => {},
-  })
+  const application = scopedCommands(
+    createApplication({
+      workspaceRepository: new WorkspaceRepository(database.sqlite),
+      artifactRepository: new ArtifactRepository(database.sqlite),
+      repository,
+      dataRoot: directory,
+      platform: 'linux',
+      arch: 'x64',
+      secure,
+      workerPath: join(directory, 'unused-worker.cjs'),
+      forkWorker: () => {
+        throw new Error('Worker must not run in boundary tests')
+      },
+      changed: () => {},
+    }),
+    repository.context,
+  )
   cleanups.push(async () => {
     await application.shutdown()
     database.close()

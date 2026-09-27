@@ -1,11 +1,14 @@
+import { realpathSync } from 'node:fs'
+import { WorkspacePaths } from '@contextweave/storage'
 import { createArtifactService } from './services/artifacts'
 import { createHistoryCleanupService } from './services/history-cleanup'
 import { createIpLocaleService } from './services/ip-locale'
 import { createIpLocalePreview } from './services/ip-locale-preview'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import { z } from 'zod'
 import {
+  assertWorkspaceContext,
+  workspaceCommandSchema,
   activityHistoryQuerySchema,
   operationHistoryQuerySchema,
   environmentIdSchema,
@@ -42,7 +45,7 @@ import {
   toProxySummary,
 } from './proxy-management'
 import { testProxyTransport } from './services/proxy-transport'
-import { createCredentialStore, type SecureStorage } from './services/credentials'
+import { createWorkspaceCredentialStore, type SecureStorage } from './services/credentials'
 import { kernelProviders, requireKernelProvider } from './services/kernel-providers'
 import { createKernelService } from './services/kernel-service'
 import { createEnvironmentService } from './services/environment-service'
@@ -65,8 +68,18 @@ export function createApplication(options: {
   forkWorker: ForkWorker
   changed(domains: DataDomain[]): void
 }) {
-  const { repository, dataRoot, platform, arch, changed } = options
-  const credentials = createCredentialStore(join(dataRoot, 'credentials.json'), options.secure)
+  const { dataRoot, platform, arch, changed } = options
+  const workspace = options.workspaceRepository.current()
+  assertWorkspaceContext(workspace, options.repository.context)
+  assertWorkspaceContext(workspace, { workspaceId: options.artifactRepository.workspaceId })
+  const paths = new WorkspacePaths({ workspaceId: workspace.workspaceId }, dataRoot)
+  const repository = options.repository.withPaths(paths)
+  paths.assertDatabase(options.artifactRepository.databasePath)
+  if (
+    realpathSync(repository.databasePath) !== realpathSync(options.artifactRepository.databasePath)
+  )
+    throw new Error('WORKSPACE_MISMATCH')
+  const credentials = createWorkspaceCredentialStore(repository.context, paths, options.secure)
   let temporaryFilesPending = false
   const cleanupStatus = () =>
     credentialCleanupStatusSchema.parse({
@@ -83,13 +96,13 @@ export function createApplication(options: {
     drainCredentialCleanup(repository, credentials)
   }
   retryCredentialCleanup()
-  const kernels = createKernelService(repository, platform, arch, join(dataRoot, 'kernels'), () =>
+  const kernels = createKernelService(repository, platform, arch, paths.kernels(), () =>
     changed(['kernels']),
   )
   const environments = createEnvironmentService(
     repository,
     kernels,
-    join(dataRoot, 'environments'),
+    paths.environments(),
     platform,
     arch,
   )
@@ -111,7 +124,7 @@ export function createApplication(options: {
   const artifacts = createArtifactService(
     options.artifactRepository,
     changed,
-    join(dataRoot, 'worker-results'),
+    paths.workerResults(),
   )
   const workers = createWorkerService(runtime, options.workerPath, options.forkWorker, artifacts)
   const commands = createCommandCoordinator(repository, () =>
@@ -280,6 +293,13 @@ export function createApplication(options: {
       if (updating) return fail('APP_UPDATING')
       if (!Object.hasOwn(handlers, channel)) return fail('UNKNOWN_COMMAND')
       try {
+        if (!['workspace:current', 'settings:get-theme', 'settings:set-theme'].includes(channel)) {
+          const envelope = workspaceCommandSchema.safeParse(input)
+          if (!envelope.success) return fail('WORKSPACE_CONTEXT_INVALID')
+          assertWorkspaceContext(workspace, { workspaceId: envelope.data.workspaceId })
+          paths.assertRoots()
+          input = envelope.data.payload
+        }
         if (noInput.has(channel)) z.undefined().parse(input)
         return await handlers[channel]!(input)
       } catch (error) {

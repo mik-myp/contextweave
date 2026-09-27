@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, RefreshCwIcon } from 'lucide-react'
@@ -46,7 +47,7 @@ export function KernelInstallDialog({
   const [error, setError] = useState<string>()
   const catalog = useQuery({
     queryKey: ['local', 'kernels', 'catalog', providerId],
-    queryFn: () => unwrapIpc(window.contextweave.kernel.catalog(providerId)),
+    queryFn: () => unwrapIpc(workspaceApi.kernel.catalog(providerId)),
     enabled: open,
   })
   const releases = (catalog.data?.releases ?? []).filter((item) => item.sourceType !== 'custom')
@@ -60,7 +61,7 @@ export function KernelInstallDialog({
     (state && ['downloading', 'verifying', 'extracting'].includes(state.phase)),
   )
   const cancelInstall = (id: string) => {
-    void unwrapIpc(window.contextweave.kernel.cancelInstall(id)).catch((cause: unknown) => {
+    void unwrapIpc(workspaceApi.kernel.cancelInstall(id)).catch((cause: unknown) => {
       setError(cause instanceof Error ? cause.message : t('admin.operationError'))
     })
   }
@@ -69,7 +70,7 @@ export function KernelInstallDialog({
     try {
       client.setQueryData(
         ['local', 'kernels', 'catalog', providerId],
-        await unwrapIpc(window.contextweave.kernel.catalog(providerId, true)),
+        await unwrapIpc(workspaceApi.kernel.catalog(providerId, true)),
       )
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('admin.operationError'))
@@ -85,7 +86,7 @@ export function KernelInstallDialog({
       const target = release
       if (!target?.installable) return
       setPending(target.id)
-      await unwrapIpc(window.contextweave.kernel.install(target.id))
+      await unwrapIpc(workspaceApi.kernel.install(target.id))
       await refresh()
       setNotice({ kind: 'success', message: `${t('kernel.installed')}: ${target.version}` })
     } catch (cause) {

@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -28,7 +29,7 @@ export function useHistoryCleanup() {
   const receipt = useQuery({
     queryKey: receiptKey,
     queryFn: async ({ signal }) => {
-      const value = await unwrapIpc(window.contextweave.storage.getHistoryCleanupReceipt())
+      const value = await unwrapIpc(workspaceApi.storage.getHistoryCleanupReceipt())
       signal.throwIfAborted()
       return value
     },
@@ -96,9 +97,7 @@ export function useHistoryCleanup() {
       setPreview(null)
       setResult(null)
       try {
-        const value = await unwrapIpc(
-          window.contextweave.storage.previewHistoryCleanup({ retentionDays }),
-        )
+        const value = await unwrapIpc(workspaceApi.storage.previewHistoryCleanup({ retentionDays }))
         if (generation === request.current.generation) setPreview(value)
       } catch (error) {
         if (generation === request.current.generation)
@@ -112,7 +111,7 @@ export function useHistoryCleanup() {
       const generation = begin('confirming')
       if (generation === null) return
       try {
-        const response = await window.contextweave.storage.confirmHistoryCleanup({
+        const response = await workspaceApi.storage.confirmHistoryCleanup({
           previewId: preview.previewId,
         })
         if (generation !== request.current.generation) return
@@ -144,7 +143,7 @@ export function useHistoryCleanup() {
       const generation = begin('reconciling')
       if (generation === null) return
       try {
-        const value = await unwrapIpc(window.contextweave.storage.getHistoryCleanupReceipt())
+        const value = await unwrapIpc(workspaceApi.storage.getHistoryCleanupReceipt())
         if (generation !== request.current.generation) return
         client.setQueryData(receiptKey, value)
         if (value && value.previewId === uncertainId) accept({ receipt: value, replayed: true })

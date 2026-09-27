@@ -1,3 +1,6 @@
+import { symlinkSync, readdirSync } from 'node:fs'
+import { environmentConfigSchema } from '@contextweave/contracts'
+import { scopedCommands } from '../test-support/workspace'
 import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -39,7 +42,7 @@ function fixture() {
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
-  return { app, root, db, repository }
+  return { app: scopedCommands(app, repository.context), rawApp: app, root, db, repository }
 }
 
 describe('application command boundary', () => {
@@ -239,10 +242,116 @@ it('serves the actual database owner without accepting a selected workspace or r
   })
   expect(await app.invoke('workspace:create')).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
   expect(JSON.stringify(await app.invoke('workspace:current'))).not.toContain(root)
-  db.sqlite.exec('DROP TRIGGER local_workspace_no_delete; DELETE FROM local_workspace')
+  db.sqlite.exec(
+    'PRAGMA foreign_keys=OFF; DROP TRIGGER local_workspace_no_delete; DELETE FROM local_workspace; PRAGMA foreign_keys=ON',
+  )
   expect(await app.invoke('workspace:current')).toMatchObject({
     ok: false,
     code: 'DATABASE_WORKSPACE_INVALID',
   })
   expect(db.sqlite.prepare('SELECT * FROM local_workspace').all()).toEqual([])
+})
+
+it('requires explicit context for every business command before any resource side effects', async () => {
+  const { rawApp, repository, root } = fixture()
+  const global = new Set(['workspace:current', 'settings:get-theme', 'settings:set-theme'])
+  const other = '00000000-0000-4000-8000-000000000001'
+  for (const channel of rawApp.channels.filter((channel) => !global.has(channel))) {
+    for (const input of [
+      undefined,
+      null,
+      {},
+      { payload: 'env' },
+      { workspaceId: repository.workspaceId, payload: undefined, path: root },
+    ]) {
+      expect(await rawApp.invoke(channel, input), channel).toMatchObject({
+        ok: false,
+        code: 'WORKSPACE_CONTEXT_INVALID',
+      })
+    }
+    expect(
+      await rawApp.invoke(channel, { workspaceId: other, payload: 'same-id' }),
+      channel,
+    ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+  }
+  expect(repository.listAll()).toEqual([])
+  expect(repository.listProxies()).toEqual([])
+  expect(repository.listOperations()).toEqual([])
+  expect(existsSync(join(root, 'credentials.json'))).toBe(false)
+  expect(existsSync(join(root, 'worker-results'))).toBe(false)
+})
+
+it('does not cross independent roots when resource IDs and display names are identical', async () => {
+  const a = fixture(),
+    b = fixture()
+  for (const f of [a, b])
+    f.repository.create({
+      config: environmentConfigSchema.parse({
+        environmentId: 'same-id',
+        name: 'Same display name',
+        kernelId: 'standard-chromium',
+        kernelVersion: 'local',
+        commonConfig: {},
+      }),
+      dataDir: join(f.root, 'environments', 'same-id'),
+      platform: 'darwin',
+      arch: 'arm64',
+    })
+  expect(a.repository.workspaceId).not.toBe(b.repository.workspaceId)
+  expect(
+    await a.rawApp.invoke('environment:get', { ...b.repository.context, payload: 'same-id' }),
+  ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+  expect(await a.app.invoke('environment:get', 'same-id')).toMatchObject({
+    ok: true,
+    data: { id: 'same-id', workspaceId: a.repository.workspaceId },
+  })
+  expect(await b.app.invoke('environment:get', 'same-id')).toMatchObject({
+    ok: true,
+    data: { id: 'same-id', workspaceId: b.repository.workspaceId },
+  })
+  expect(
+    await a.app.invoke('environment:update', {
+      version: 1,
+      environmentId: 'same-id',
+      expectedRevision: 1,
+      name: 'Only A',
+      browserSettings: {
+        language: 'system',
+        timezone: 'system',
+        window: { width: 1280, height: 800 },
+      },
+      proxyId: null,
+    }),
+  ).toMatchObject({ ok: true })
+  expect(a.repository.get('same-id')?.name).toBe('Only A')
+  expect(b.repository.get('same-id')?.name).toBe('Same display name')
+})
+
+it('rechecks controlled roots after startup and refuses a replaced symlink before creating resources', async () => {
+  const a = fixture(),
+    b = fixture()
+  rmSync(join(a.root, 'environments'), { recursive: true })
+  symlinkSync(
+    join(b.root, 'environments'),
+    join(a.root, 'environments'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  )
+  const before = readdirSync(join(b.root, 'environments'))
+  expect(
+    await a.app.invoke('environment:create', {
+      name: 'Must not create',
+      kernelId: 'standard-chromium',
+      commonConfig: {},
+    }),
+  ).toMatchObject({ ok: false, code: 'WORKSPACE_PATH_UNSAFE' })
+  expect(await a.app.invoke('storage:orphans')).toMatchObject({
+    ok: false,
+    code: 'WORKSPACE_PATH_UNSAFE',
+  })
+  expect(a.repository.listAll()).toEqual([])
+  expect(a.repository.listOperations()).toEqual([])
+  expect(readdirSync(join(b.root, 'environments'))).toEqual(before)
+  // Restore the fixture root so teardown exercises normal shutdown, not another test error.
+  rmSync(join(a.root, 'environments'))
+  mkdirSync(join(a.root, 'environments'))
 })

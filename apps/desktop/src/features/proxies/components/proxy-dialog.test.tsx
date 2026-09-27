@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -14,6 +15,7 @@ vi.mock('@/app/use-app-data', () => ({
   useAppData: () => ({ refresh, setNotice, appInfo: { secureStorageAvailable: true } }),
 }))
 const savedProxy = proxySummarySchema.parse({
+  workspaceId: '00000000-0000-4000-8000-000000000001',
   proxyId: 'proxy-fixture',
   name: 'Fixture',
   type: 'http',
@@ -40,7 +42,10 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   testProxy.mockReset().mockResolvedValue({ ok: true, data: result })
   saveProxy.mockReset().mockResolvedValue({ ok: true, data: savedProxy })
-  vi.stubGlobal('contextweave', { proxy: { test: testProxy, save: saveProxy } })
+  vi.stubGlobal(
+    'contextweave',
+    withWorkspaceFixture({ proxy: { test: testProxy, save: saveProxy } }),
+  )
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)

@@ -13,7 +13,7 @@ import {
   environmentConfigSchema,
 } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from './index'
-import { openVersion4Fixture } from './legacy-fixture'
+import { openVersion4Fixture, legacyFixtureWriter, legacyRows } from './legacy-fixture'
 import { databaseVersion, migrateDatabase } from './migrations'
 
 const cleanups: Array<() => void> = []
@@ -33,7 +33,7 @@ const tableNames = [
 ] as const
 function snapshot(sqlite: DatabaseSync) {
   return Object.fromEntries(
-    tableNames.map((table) => [table, sqlite.prepare(`SELECT * FROM ${table} ORDER BY 1,2`).all()]),
+    tableNames.map((table) => [table, legacyRows(sqlite, table, '1,2')]),
   )
 }
 function fixture() {
@@ -49,7 +49,7 @@ function fixture() {
     }
   }
   cleanups.push(close)
-  const repository = new EnvironmentRepository(db.sqlite)
+  const repository = legacyFixtureWriter(db.sqlite)
   const proxy = repository.saveProxy('p', {
     type: 'socks5',
     host: 'proxy.example.test',
@@ -96,7 +96,7 @@ function fixture() {
     .exec(`INSERT INTO kernel_installations(id,kernel_id,version,platform,arch,install_path,state,created_at,updated_at)
     VALUES (1000,'standard-chromium','local','darwin','arm64','fixture','installed','2026-01-01','2026-01-01');
     DELETE FROM kernel_installations; PRAGMA wal_autocheckpoint = 0;`)
-  return { root, file, sqlite: db.sqlite, repository, close, config }
+  return { root, file, sqlite: db.sqlite, get repository() { return new EnvironmentRepository(db.sqlite) }, close, config }
 }
 function assertRolledBack(f: ReturnType<typeof fixture>, before: ReturnType<typeof snapshot>) {
   expect(f.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(4)

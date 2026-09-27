@@ -18,6 +18,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 function details(id: string) {
   return environmentDetailsSchema.parse({
+    workspaceId: '00000000-0000-4000-8000-000000000001',
     id,
     name: `Loaded ${id}`,
     kernelId: 'standard-chromium',

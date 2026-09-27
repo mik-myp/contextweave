@@ -422,6 +422,7 @@ describe('runtime supervisor', () => {
       startedAt,
     })
     f.repository.createRuntimeSession({
+      workspaceId: f.repository.workspaceId,
       pid: process.pid,
       processIdentity: 'previous-instance',
       sessionId: 'old',
@@ -624,6 +625,7 @@ it('recovers every old active session through one complete query, never the page
   try {
     for (let i = 0; i < 230; i++)
       repository.createRuntimeSession({
+        workspaceId: repository.workspaceId,
         sessionId: `history-${String(i).padStart(4, '0')}`,
         environmentId: 'env-a',
         pid: 2147483647,

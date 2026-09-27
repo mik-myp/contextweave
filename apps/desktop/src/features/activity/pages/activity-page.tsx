@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { AppLogViewer } from '../components/app-log-viewer'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { OperationsTable } from './operations-table'
@@ -164,7 +165,7 @@ function SessionsTable() {
   const history = useHistoryTable({
     domain: 'activity',
     schema: activityHistoryQuerySchema,
-    loadPage: (query) => window.contextweave.activity.page(query),
+    loadPage: (query) => workspaceApi.activity.page(query),
     columns,
     getRowId,
   })

@@ -23,6 +23,7 @@ function fixture() {
         port: 1080,
         credentialRef: 'secret-id',
       }),
+      workspaceId: '00000000-0000-4000-8000-000000000001',
       proxyId: 'saved',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -50,13 +51,17 @@ describe('locale preview routing and ownership', () => {
   it('binds saved proxy credentials, closes its bridge and never trusts renderer endpoints', async () => {
     const f = fixture()
     await f.preview.detect({ requestId: randomUUID(), connection: 'proxy', proxyId: 'saved' })
-    expect(f.credentials.read).toHaveBeenCalledWith('secret-id')
+    expect(f.credentials.read).toHaveBeenCalledWith({
+      workspaceId: '00000000-0000-4000-8000-000000000001',
+      reference: 'secret-id',
+    })
     expect(f.detect).toHaveBeenCalledWith(f.auth, expect.any(AbortSignal))
     expect(f.close).toHaveBeenCalledOnce()
     expect(() =>
       f.preview.detect({
         requestId: randomUUID(),
         connection: 'proxy',
+        workspaceId: '00000000-0000-4000-8000-000000000001',
         proxyId: 'saved',
         host: 'attacker',
         credentialRef: 'secret-id',

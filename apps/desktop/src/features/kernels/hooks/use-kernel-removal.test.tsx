@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -44,7 +45,7 @@ beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   Object.defineProperty(window, 'contextweave', {
     configurable: true,
-    value: { kernel: { remove } },
+    value: withWorkspaceFixture({ kernel: { remove } }),
   })
   remove.mockImplementation(
     () =>

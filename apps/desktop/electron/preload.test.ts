@@ -1,3 +1,4 @@
+const workspace = { workspaceId: '00000000-0000-4000-8000-000000000001' }
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ContextWeaveApi } from './preload'
 import type { WorkerTask } from '@contextweave/worker-protocol'
@@ -67,11 +68,13 @@ describe('sandboxed preload contract', () => {
   })
 
   it('validates requests before invoking Main and rejects private worker envelope fields', async () => {
-    await expect(api.environment.start('')).rejects.toThrow()
-    await expect(api.worker.cancel('../outside')).rejects.toThrow()
-    await expect(api.worker.runSmoke({ ...task, taskId: '../outside' })).rejects.toThrow()
+    await expect(api.environment.start(workspace, '')).rejects.toThrow()
+    await expect(api.worker.cancel(workspace, '../outside')).rejects.toThrow()
+    await expect(
+      api.worker.runSmoke(workspace, { ...task, taskId: '../outside' }),
+    ).rejects.toThrow()
     const privateFields = { ...task, controlPort: 9222, proxyCredentials: { password: 'secret' } }
-    await expect(api.worker.runSmoke(privateFields)).rejects.toThrow()
+    await expect(api.worker.runSmoke(workspace, privateFields)).rejects.toThrow()
     for (const url of ['file:///private', 'javascript:alert(1)', 'https://u:p@example.test'])
       await expect(api.app.openExternal(url)).rejects.toThrow()
     expect(bridge.invoke).not.toHaveBeenCalled()
@@ -79,12 +82,18 @@ describe('sandboxed preload contract', () => {
 
   it('normalizes a valid request and returns a validated success or structured failure', async () => {
     bridge.invoke.mockResolvedValue({ ok: true, data: [] })
-    expect(await api.environment.list()).toEqual({ ok: true, data: [] })
-    expect(bridge.invoke).toHaveBeenCalledWith('environment:list')
+    expect(await api.environment.list(workspace)).toEqual({ ok: true, data: [] })
+    expect(bridge.invoke).toHaveBeenCalledWith('environment:list', {
+      ...workspace,
+      payload: undefined,
+    })
     const denied = { ok: false, code: 'FORBIDDEN', message: 'FORBIDDEN' }
     bridge.invoke.mockResolvedValue(denied)
-    expect(await api.environment.start(' env-test ')).toEqual(denied)
-    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:start', 'env-test')
+    expect(await api.environment.start(workspace, ' env-test ')).toEqual(denied)
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:start', {
+      ...workspace,
+      payload: 'env-test',
+    })
   })
 
   it.each([
@@ -99,7 +108,7 @@ describe('sandboxed preload contract', () => {
     'rejects malformed response envelope %j instead of passing it to Renderer',
     async (response) => {
       bridge.invoke.mockResolvedValue(response)
-      await expect(api.environment.list()).rejects.toThrow()
+      await expect(api.environment.list(workspace)).rejects.toThrow()
     },
   )
 
@@ -144,39 +153,55 @@ describe('sandboxed preload contract', () => {
 })
 
 it('validates both directions of the history page bridge', async () => {
-  await expect(api.activity.page({ limit: 101 })).rejects.toThrow()
+  await expect(api.activity.page(workspace, { limit: 101 })).rejects.toThrow()
   expect(bridge.invoke).not.toHaveBeenCalled()
   const page = { items: [], previousCursor: null, nextCursor: null }
   bridge.invoke.mockResolvedValue({ ok: true, data: page })
-  expect(await api.operation.page({ limit: 3 })).toEqual({ ok: true, data: page })
-  expect(bridge.invoke).toHaveBeenCalledWith(
-    'operation:page',
-    expect.objectContaining({ limit: 3, sortBy: 'startedAt', cursor: null }),
-  )
+  expect(await api.operation.page(workspace, { limit: 3 })).toEqual({ ok: true, data: page })
+  expect(bridge.invoke).toHaveBeenCalledWith('operation:page', {
+    ...workspace,
+    payload: expect.objectContaining({ limit: 3, sortBy: 'startedAt', cursor: null }),
+  })
   bridge.invoke.mockResolvedValue({ ok: true, data: { items: [], nextCursor: null } })
-  await expect(api.activity.page()).rejects.toThrow()
+  await expect(api.activity.page(workspace)).rejects.toThrow()
   bridge.invoke.mockResolvedValue({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
-  expect(await api.activity.page()).toMatchObject({ ok: false, code: 'HISTORY_CURSOR_STALE' })
+  expect(await api.activity.page(workspace)).toMatchObject({
+    ok: false,
+    code: 'HISTORY_CURSOR_STALE',
+  })
 })
 
 it('whitelists history maintenance and validates the bounded request/response protocol', async () => {
   await expect(
-    api.storage.previewHistoryCleanup({ retentionDays: 90, cutoffAt: 'unsafe' } as never),
+    api.storage.previewHistoryCleanup(workspace, {
+      retentionDays: 90,
+      cutoffAt: 'unsafe',
+    } as never),
   ).rejects.toThrow()
-  await expect(api.storage.confirmHistoryCleanup({ previewId: 'operation-id' })).rejects.toThrow()
+  await expect(
+    api.storage.confirmHistoryCleanup(workspace, { previewId: 'operation-id' }),
+  ).rejects.toThrow()
   expect(bridge.invoke).not.toHaveBeenCalled()
   bridge.invoke.mockResolvedValue({ ok: true, data: null })
-  expect(await api.storage.getHistoryCleanupReceipt()).toEqual({ ok: true, data: null })
-  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-receipt')
+  expect(await api.storage.getHistoryCleanupReceipt(workspace)).toEqual({ ok: true, data: null })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-receipt', {
+    ...workspace,
+    payload: undefined,
+  })
   const denied = { ok: false, code: 'HISTORY_CLEANUP_PREVIEW_EXPIRED', message: 'expired' }
   bridge.invoke.mockResolvedValue(denied)
   const input = { previewId: 'e4c3b366-6342-4630-b533-93ec809bafce' }
-  expect(await api.storage.confirmHistoryCleanup(input)).toEqual(denied)
-  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-confirm', input)
+  expect(await api.storage.confirmHistoryCleanup(workspace, input)).toEqual(denied)
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-confirm', {
+    ...workspace,
+    payload: input,
+  })
   bridge.invoke.mockResolvedValue({ ok: true, data: { receipt: null, replayed: false } })
-  await expect(api.storage.confirmHistoryCleanup(input)).rejects.toThrow()
+  await expect(api.storage.confirmHistoryCleanup(workspace, input)).rejects.toThrow()
   bridge.invoke.mockResolvedValue({ ok: true, data: { sessions: { count: 999 } } })
-  await expect(api.storage.previewHistoryCleanup({ retentionDays: 90 })).rejects.toThrow()
+  await expect(
+    api.storage.previewHistoryCleanup(workspace, { retentionDays: 90 }),
+  ).rejects.toThrow()
 })
 
 it('validates artifact pagination both ways and rejects ownership/path leakage', async () => {
@@ -187,13 +212,16 @@ it('validates artifact pagination both ways and rejects ownership/path leakage',
     nextCursor: null,
   }
   bridge.invoke.mockResolvedValue({ ok: true, data: empty })
-  expect(await api.storage.pageArtifacts()).toEqual({ ok: true, data: empty })
-  expect(bridge.invoke).toHaveBeenCalledWith('storage:artifacts-page', { limit: 20, cursor: null })
-  await expect(api.storage.pageArtifacts({ limit: 51 })).rejects.toThrow()
+  expect(await api.storage.pageArtifacts(workspace)).toEqual({ ok: true, data: empty })
+  expect(bridge.invoke).toHaveBeenCalledWith('storage:artifacts-page', {
+    ...workspace,
+    payload: { limit: 20, cursor: null },
+  })
+  await expect(api.storage.pageArtifacts(workspace, { limit: 51 })).rejects.toThrow()
   const unsafe = { limit: 20, path: '/private' }
-  await expect(api.storage.pageArtifacts(unsafe)).rejects.toThrow()
+  await expect(api.storage.pageArtifacts(workspace, unsafe)).rejects.toThrow()
   bridge.invoke.mockResolvedValue({ ok: true, data: { ...empty, path: '/private' } })
-  await expect(api.storage.pageArtifacts()).rejects.toThrow()
+  await expect(api.storage.pageArtifacts(workspace)).rejects.toThrow()
   const item = {
     artifactId: '776c5484-731d-4d25-82d4-3a388986a125',
     environmentId: 'env',
@@ -205,7 +233,7 @@ it('validates artifact pagination both ways and rejects ownership/path leakage',
     ownership: {},
   }
   bridge.invoke.mockResolvedValue({ ok: true, data: { ...empty, items: [item] } })
-  await expect(api.storage.pageArtifacts()).rejects.toThrow()
+  await expect(api.storage.pageArtifacts(workspace)).rejects.toThrow()
 })
 
 it('validates screenshot policies and accounting both ways without accepting arbitrary release commands', async () => {
@@ -217,17 +245,23 @@ it('validates screenshot policies and accounting both ways without accepting arb
     availableBytes: 33554432,
   }
   bridge.invoke.mockResolvedValue({ ok: true, data: budget })
-  expect(await api.storage.getArtifactBudget()).toEqual({ ok: true, data: budget })
-  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:artifact-budget')
-  await api.storage.updateArtifactBudget({ limitMiB: 32, expectedRevision: 1 })
+  expect(await api.storage.getArtifactBudget(workspace)).toEqual({ ok: true, data: budget })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:artifact-budget', {
+    ...workspace,
+    payload: undefined,
+  })
+  await api.storage.updateArtifactBudget(workspace, { limitMiB: 32, expectedRevision: 1 })
   expect(bridge.invoke).toHaveBeenLastCalledWith('storage:artifact-budget-update', {
-    limitMiB: 32,
-    expectedRevision: 1,
+    ...workspace,
+    payload: {
+      limitMiB: 32,
+      expectedRevision: 1,
+    },
   })
   const invalid = { limitMiB: 32, expectedRevision: 1, releaseId: 'foreign' }
-  await expect(api.storage.updateArtifactBudget(invalid)).rejects.toThrow()
+  await expect(api.storage.updateArtifactBudget(workspace, invalid)).rejects.toThrow()
   await expect(
-    api.storage.updateArtifactBudget({ limitMiB: 1, expectedRevision: 1 }),
+    api.storage.updateArtifactBudget(workspace, { limitMiB: 1, expectedRevision: 1 }),
   ).rejects.toThrow()
   for (const value of [
     { ...budget, path: '/private' },
@@ -235,7 +269,7 @@ it('validates screenshot policies and accounting both ways without accepting arb
     { ...budget, reserved: { count: 1, bytes: 0 } },
   ]) {
     bridge.invoke.mockResolvedValue({ ok: true, data: value })
-    await expect(api.storage.getArtifactBudget()).rejects.toThrow()
+    await expect(api.storage.getArtifactBudget(workspace)).rejects.toThrow()
   }
 })
 
@@ -263,4 +297,57 @@ it('reads only the local workspace identity and rejects payloads or private resp
     await expect(api.workspace.current()).rejects.toThrow()
   }
   expect(Object.keys(api.workspace)).toEqual(['current'])
+})
+
+it('never supplies a default workspace for a missing, malformed or extra-field context', async () => {
+  for (const context of [
+    undefined,
+    null,
+    {},
+    { workspaceId: 'not-a-uuid' },
+    { ...workspace, path: '/private' },
+  ])
+    await expect(Reflect.apply(api.environment.list, undefined, [context])).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+})
+
+it('rejects otherwise valid owned records from another workspace, including paged results', async () => {
+  const foreign = '00000000-0000-4000-8000-000000000002'
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: [
+      {
+        workspaceId: foreign,
+        proxyId: 'same-id',
+        type: 'http',
+        host: 'proxy.invalid',
+        port: 8080,
+        hasPassword: false,
+        createdAt: '2026-09-27T00:00:00.000Z',
+        updatedAt: '2026-09-27T00:00:00.000Z',
+      },
+    ],
+  })
+  await expect(api.proxy.list(workspace)).rejects.toThrow('WORKSPACE_MISMATCH')
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: {
+      items: [
+        {
+          workspaceId: foreign,
+          operationId: 'same-id',
+          environmentId: null,
+          kind: 'install',
+          status: 'succeeded',
+          phase: 'completed',
+          startedAt: '2026-09-27T00:00:00.000Z',
+          endedAt: null,
+          errorCode: null,
+        },
+      ],
+      nextCursor: null,
+      previousCursor: null,
+    },
+  })
+  await expect(api.operation.page(workspace)).rejects.toThrow('WORKSPACE_MISMATCH')
 })

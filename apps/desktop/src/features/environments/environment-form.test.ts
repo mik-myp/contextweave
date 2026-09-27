@@ -25,6 +25,7 @@ describe('environment configuration form', () => {
   })
   it('round trips all editable values without exposing a different kernel binding', () => {
     const detail = environmentDetailsSchema.parse({
+      workspaceId: '00000000-0000-4000-8000-000000000001',
       id: 'env-test',
       name: 'Test',
       kernelId: 'standard-chromium',

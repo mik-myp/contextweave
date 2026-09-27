@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useQuery } from '@tanstack/react-query'
 import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
@@ -8,7 +9,7 @@ export function OrphanDirectories() {
   const { t, locale } = useI18n()
   const query = useQuery({
     queryKey: ['local', 'storage', 'orphans'],
-    queryFn: () => unwrapIpc(window.contextweave.storage.orphans()),
+    queryFn: () => unwrapIpc(workspaceApi.storage.orphans()),
   })
   return (
     <section className="flex flex-col gap-3" aria-label={t('life.orphans')}>

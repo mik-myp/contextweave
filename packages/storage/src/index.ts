@@ -1,7 +1,10 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
-import { environmentConfigSchema, historyCleanupReceiptSchema } from '@contextweave/contracts'
+import {
+  environmentConfigSchema, historyCleanupReceiptSchema,
+  workspaceCredentialReferenceSchema, assertWorkspaceContext,
+} from '@contextweave/contracts'
 import type {
   EnvironmentConfig,
   HistoryCleanupPreview,
@@ -27,7 +30,9 @@ import {
 } from './history-cleanup'
 import { migrateDatabase, databaseVersion } from './migrations'
 import { verifyDatabaseRelations } from './integrity'
-import { WorkspaceRepository } from './workspaces'
+import { WorkspaceRepository, databaseFilePath } from './workspaces'
+import { WorkspacePaths } from './workspace-paths'
+import { verifyWorkspaceScope } from './workspace-scope'
 
 type Row = Record<string, unknown>
 
@@ -50,7 +55,7 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
       throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
     sqlite.exec('BEGIN')
     verifyDatabaseRelations(sqlite)
-    new WorkspaceRepository(sqlite).current()
+    verifyWorkspaceScope(sqlite)
     sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
@@ -60,6 +65,7 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
 }
 
 export type EnvironmentRecord = {
+  workspaceId: string
   environmentId: string
   name: string
   status: EnvironmentStatus
@@ -82,12 +88,14 @@ export type RuntimeSessionRecord = RuntimeSession & {
 }
 
 export type ProxyRecord = ProxyConfig & {
+  workspaceId: string
   proxyId: string
   createdAt: string
   updatedAt: string
 }
 
 export type KernelInstallationRecord = {
+  workspaceId: string
   id: number
   kernelId: string
   version: string
@@ -114,6 +122,7 @@ function nullableStringValue(row: Row, key: string): string | null {
 
 function mapEnvironment(row: Row): EnvironmentRecord {
   return {
+    workspaceId: stringValue(row, 'workspace_id'),
     environmentId: stringValue(row, 'environment_id'),
     name: stringValue(row, 'name'),
     status: stringValue(row, 'status') as EnvironmentStatus,
@@ -134,6 +143,7 @@ function mapEnvironment(row: Row): EnvironmentRecord {
 
 function mapRuntimeSession(row: Row): RuntimeSessionRecord {
   return {
+    workspaceId: stringValue(row, 'workspace_id'),
     sessionId: stringValue(row, 'session_id'),
     environmentId: stringValue(row, 'environment_id'),
     pid: Number(row.pid),
@@ -152,6 +162,7 @@ function mapRuntimeSession(row: Row): RuntimeSessionRecord {
 
 function mapProxy(row: Row): ProxyRecord {
   return {
+    workspaceId: stringValue(row, 'workspace_id'),
     proxyId: stringValue(row, 'proxy_id'),
     name: stringValue(row, 'name'),
     type: stringValue(row, 'type') as ProxyConfig['type'],
@@ -166,6 +177,7 @@ function mapProxy(row: Row): ProxyRecord {
 
 function mapKernelInstallation(row: Row): KernelInstallationRecord {
   return {
+    workspaceId: stringValue(row, 'workspace_id'),
     id: Number(row.id),
     kernelId: stringValue(row, 'kernel_id'),
     version: stringValue(row, 'version'),
@@ -181,6 +193,15 @@ function mapKernelInstallation(row: Row): KernelInstallationRecord {
 }
 
 export class EnvironmentRepository {
+  readonly workspaceId: string
+  readonly databasePath: string
+  get context() {
+    return { workspaceId: this.workspaceId }
+  }
+  credentialReference(reference: string) {
+    return workspaceCredentialReferenceSchema.parse({ ...this.context, reference })
+  }
+
   private readonly listStatement: StatementSync
   private readonly getStatement: StatementSync
   private readonly insertStatement: StatementSync
@@ -201,7 +222,13 @@ export class EnvironmentRepository {
   private readonly getKernelInstallationStatement: StatementSync
   private readonly insertKernelInstallationStatement: StatementSync
 
-  constructor(private readonly sqlite: DatabaseSync) {
+  constructor(private readonly sqlite: DatabaseSync, private readonly paths?: WorkspacePaths) {
+    this.workspaceId = new WorkspaceRepository(sqlite).current().workspaceId
+    this.databasePath = databaseFilePath(sqlite)
+    if (paths) {
+      assertWorkspaceContext(this.context, paths.context)
+      paths.assertDatabase(this.databasePath)
+    }
     initializeHistoryQueries(sqlite)
     initializeHistoryCleanup(sqlite)
     this.listStatement = sqlite.prepare(
@@ -210,9 +237,9 @@ export class EnvironmentRepository {
     this.getStatement = sqlite.prepare('SELECT * FROM environments WHERE environment_id = ?')
     this.insertStatement = sqlite.prepare(`
       INSERT INTO environments (
-        environment_id, name, status, kernel_id, kernel_version, proxy_id,
+        workspace_id, environment_id, name, status, kernel_id, kernel_version, proxy_id,
         config_json, data_dir, platform, arch, created_at, updated_at
-      ) VALUES (@environmentId, @name, @status, @kernelId, @kernelVersion, @proxyId,
+      ) VALUES (@workspaceId, @environmentId, @name, @status, @kernelId, @kernelVersion, @proxyId,
         @configJson, @dataDir, @platform, @arch, @createdAt, @updatedAt)
     `)
     this.updateConfigStatement = sqlite.prepare(
@@ -229,8 +256,8 @@ export class EnvironmentRepository {
     )
     this.insertRuntimeSessionStatement = sqlite.prepare(`
       INSERT INTO runtime_sessions (
-        session_id, environment_id, pid, control_port, started_at, status, exit_reason, ended_at, revision, kernel_version, executable_version, phase, process_identity
-      ) VALUES (@sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason, @endedAt, @revision, @kernelVersion, @executableVersion, @phase, @processIdentity)
+        workspace_id, session_id, environment_id, pid, control_port, started_at, status, exit_reason, ended_at, revision, kernel_version, executable_version, phase, process_identity
+      ) VALUES (@workspaceId, @sessionId, @environmentId, @pid, @controlPort, @startedAt, @status, @exitReason, @endedAt, @revision, @kernelVersion, @executableVersion, @phase, @processIdentity)
     `)
     this.updateRuntimeSessionStatement = sqlite.prepare(`
       UPDATE runtime_sessions SET status = ?, exit_reason = ?, ended_at = COALESCE(ended_at, ?), phase = ? WHERE session_id = ?
@@ -242,8 +269,8 @@ export class EnvironmentRepository {
     this.getProxyStatement = sqlite.prepare('SELECT * FROM proxies WHERE proxy_id = ?')
     this.insertProxyStatement = sqlite.prepare(`
       INSERT INTO proxies (
-        proxy_id, name, type, host, port, username, credential_ref, created_at, updated_at
-      ) VALUES (@proxyId, @name, @type, @host, @port, @username, @credentialRef, @createdAt, @updatedAt)
+        workspace_id, proxy_id, name, type, host, port, username, credential_ref, created_at, updated_at
+      ) VALUES (@workspaceId, @proxyId, @name, @type, @host, @port, @username, @credentialRef, @createdAt, @updatedAt)
       ON CONFLICT(proxy_id) DO UPDATE SET
         name = excluded.name,
         type = excluded.type,
@@ -272,8 +299,8 @@ export class EnvironmentRepository {
     `)
     this.insertKernelInstallationStatement = sqlite.prepare(`
       INSERT INTO kernel_installations (
-        kernel_id, version, platform, arch, source_url, sha256, install_path, state, created_at, updated_at
-      ) VALUES (@kernelId, @version, @platform, @arch, @sourceUrl, @sha256, @installPath, @state, @createdAt, @updatedAt)
+        workspace_id, kernel_id, version, platform, arch, source_url, sha256, install_path, state, created_at, updated_at
+      ) VALUES (@workspaceId, @kernelId, @version, @platform, @arch, @sourceUrl, @sha256, @installPath, @state, @createdAt, @updatedAt)
       ON CONFLICT(kernel_id, version, platform, arch) DO UPDATE SET
         source_url = excluded.source_url,
         sha256 = excluded.sha256,
@@ -283,13 +310,32 @@ export class EnvironmentRepository {
     `)
   }
 
+  /** Bind a new repository capability, never mutate another application's instance. */
+  withPaths(paths: WorkspacePaths): EnvironmentRepository {
+    return new EnvironmentRepository(this.sqlite, paths)
+  }
+
+  private environment = (row: Row): EnvironmentRecord => {
+    const record = mapEnvironment(row)
+    assertWorkspaceContext(this.context, { workspaceId: record.workspaceId })
+    this.paths?.environment(record)
+    return record
+  }
+
+  private kernelInstallation = (row: Row): KernelInstallationRecord => {
+    const record = mapKernelInstallation(row)
+    assertWorkspaceContext(this.context, { workspaceId: record.workspaceId })
+    this.paths?.kernel(record)
+    return record
+  }
+
   list(): EnvironmentRecord[] {
-    return (this.listStatement.all() as Row[]).map(mapEnvironment)
+    return (this.listStatement.all() as Row[]).map(this.environment)
   }
 
   get(environmentId: string): EnvironmentRecord | undefined {
     const row = this.getStatement.get(environmentId) as Row | undefined
-    return row ? mapEnvironment(row) : undefined
+    return row ? this.environment(row) : undefined
   }
 
   create(input: {
@@ -300,6 +346,7 @@ export class EnvironmentRepository {
   }): EnvironmentRecord {
     const now = new Date().toISOString()
     const record: EnvironmentRecord = {
+      workspaceId: this.workspaceId,
       environmentId: input.config.environmentId,
       name: input.config.name,
       status: 'created',
@@ -316,11 +363,12 @@ export class EnvironmentRepository {
       createdAt: now,
       updatedAt: now,
     }
+    this.paths?.environment(record)
     this.transaction(() => {
       const { revision, lifecycle: _lifecycle, trashedAt: _trashedAt, ...insert } = record
       this.insertStatement.run(insert)
       this.sqlite
-        .prepare('INSERT INTO environment_revisions VALUES (?, ?, ?, ?)')
+        .prepare('INSERT INTO environment_revisions (environment_id, revision, config_json, created_at) VALUES (?, ?, ?, ?)')
         .run(record.environmentId, revision, record.configJson, now)
     })
     return record
@@ -375,7 +423,7 @@ export class EnvironmentRepository {
       )
       if (Number(result.changes) !== 1) throw new Error('CONFIG_CONFLICT')
       this.sqlite
-        .prepare('INSERT INTO environment_revisions VALUES (?, ?, ?, ?)')
+        .prepare('INSERT INTO environment_revisions (environment_id, revision, config_json, created_at) VALUES (?, ?, ?, ?)')
         .run(config.environmentId, current.revision + 1, json, now)
       return this.get(config.environmentId)
     })
@@ -393,7 +441,7 @@ export class EnvironmentRepository {
   listAll(): EnvironmentRecord[] {
     return (
       this.sqlite.prepare('SELECT * FROM environments ORDER BY updated_at DESC').all() as Row[]
-    ).map(mapEnvironment)
+    ).map(this.environment)
   }
 
   listTrash(): EnvironmentRecord[] {
@@ -421,7 +469,7 @@ export class EnvironmentRepository {
 
   createOperation(operationId: string, kind: OperationKind, environmentId: string | null): void {
     this.sqlite
-      .prepare("INSERT INTO operations VALUES (?, ?, ?, 'running', 'queued', ?, NULL, NULL)")
+      .prepare("INSERT INTO operations (operation_id, environment_id, kind, status, phase, started_at, ended_at, error_code) VALUES (?, ?, ?, 'running', 'queued', ?, NULL, NULL)")
       .run(operationId, environmentId, kind, new Date().toISOString())
   }
 
@@ -531,6 +579,7 @@ export class EnvironmentRepository {
   }
 
   createRuntimeSession(input: RuntimeSessionRecord): RuntimeSessionRecord {
+    assertWorkspaceContext(this.context, { workspaceId: input.workspaceId })
     this.insertRuntimeSessionStatement.run({
       ...input,
       endedAt: input.endedAt ?? null,
@@ -592,6 +641,7 @@ export class EnvironmentRepository {
     const record: ProxyRecord = {
       proxyId,
       ...config,
+      workspaceId: this.workspaceId,
       name: config.name?.trim() || `${config.host}:${config.port}`,
       createdAt: this.getProxy(proxyId)?.createdAt ?? now,
       updatedAt: now,
@@ -690,7 +740,7 @@ export class EnvironmentRepository {
   }
 
   listKernelInstallations(): KernelInstallationRecord[] {
-    return (this.listKernelInstallationsStatement.all() as Row[]).map(mapKernelInstallation)
+    return (this.listKernelInstallationsStatement.all() as Row[]).map(this.kernelInstallation)
   }
 
   getKernelInstallation(
@@ -701,11 +751,11 @@ export class EnvironmentRepository {
   ): KernelInstallationRecord | undefined {
     const row = this.getKernelInstallationStatement.get(kernelId, version, platform, arch) as
       Row | undefined
-    return row ? mapKernelInstallation(row) : undefined
+    return row ? this.kernelInstallation(row) : undefined
   }
 
   recordKernelInstallation(
-    input: Omit<KernelInstallationRecord, 'id' | 'createdAt' | 'updatedAt'>,
+    input: Omit<KernelInstallationRecord, 'id' | 'createdAt' | 'updatedAt' | 'workspaceId'>,
   ): KernelInstallationRecord {
     const now = new Date().toISOString()
     const existing = this.getKernelInstallation(
@@ -716,9 +766,11 @@ export class EnvironmentRepository {
     )
     const record = {
       ...input,
+      workspaceId: this.workspaceId,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
+    this.paths?.kernel(record)
     this.insertKernelInstallationStatement.run(record)
     return this.getKernelInstallation(input.kernelId, input.version, input.platform, input.arch)!
   }
@@ -742,3 +794,5 @@ export { readProcessIdentityAsync } from './process-identity-async'
 export { ArtifactRepository } from './artifacts'
 
 export { WorkspaceRepository } from './workspaces'
+
+export { WorkspacePaths } from './workspace-paths'

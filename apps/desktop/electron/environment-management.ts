@@ -91,6 +91,7 @@ export function getEnvironmentDetails(
   if (record.lifecycle === 'trashed') throw new Error('ENVIRONMENT_TRASHED')
   const config = environmentConfigSchema.parse(JSON.parse(record.configJson))
   return environmentDetailsSchema.parse({
+    workspaceId: record.workspaceId,
     id: record.environmentId,
     name: record.name,
     status: record.status,

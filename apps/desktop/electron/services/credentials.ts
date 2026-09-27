@@ -1,3 +1,11 @@
+import {
+  assertWorkspaceContext,
+  workspaceContextSchema,
+  workspaceCredentialReferenceSchema,
+  type WorkspaceContext,
+  type WorkspaceCredentialReference,
+} from '@contextweave/contracts'
+import type { WorkspacePaths } from '@contextweave/storage'
 import { randomUUID } from 'node:crypto'
 import {
   closeSync,
@@ -83,4 +91,36 @@ export function createCredentialStore(filePath: string, secure: SecureStorage) {
     },
   }
 }
-export type CredentialStore = ReturnType<typeof createCredentialStore>
+export type CredentialStore = ReturnType<typeof createWorkspaceCredentialStore>
+
+/** Workspace boundary around the unchanged atomic, encrypted file format. */
+export function createWorkspaceCredentialStore(
+  context: WorkspaceContext,
+  paths: WorkspacePaths,
+  secure: SecureStorage,
+) {
+  const owner = workspaceContextSchema.parse(context)
+  assertWorkspaceContext(owner, paths.context)
+  const referenceKey = (input: WorkspaceCredentialReference) => {
+    const reference = workspaceCredentialReferenceSchema.parse(input)
+    assertWorkspaceContext(owner, { workspaceId: reference.workspaceId })
+    return reference.reference
+  }
+  const file = () => createCredentialStore(paths.credentials(), secure)
+  return {
+    cleanupTemporaryFiles: () => file().cleanupTemporaryFiles(),
+    read(input: WorkspaceCredentialReference) {
+      const key = referenceKey(input)
+      return file().read(key)
+    },
+    save(input: WorkspaceCredentialReference, value: string) {
+      const key = referenceKey(input)
+      file().save(key, value)
+    },
+    remove(input?: WorkspaceCredentialReference) {
+      if (input === undefined) return
+      const key = referenceKey(input)
+      file().remove(key)
+    },
+  }
+}

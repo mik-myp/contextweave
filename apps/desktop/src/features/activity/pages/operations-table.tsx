@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { operationHistoryQuerySchema, type OperationSummary } from '@contextweave/contracts'
@@ -74,7 +75,7 @@ export function OperationsTable() {
   const history = useHistoryTable({
     domain: 'operations',
     schema: operationHistoryQuerySchema,
-    loadPage: (query) => window.contextweave.operation.page(query),
+    loadPage: (query) => workspaceApi.operation.page(query),
     columns,
     getRowId,
   })

@@ -1,3 +1,4 @@
+import { scopedCommands } from '../test-support/workspace'
 import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -24,20 +25,23 @@ async function fixture() {
     encryptString: (value: string) => Buffer.from(value),
     decryptString: (value: Buffer) => value.toString(),
   }
-  const app = createApplication({
-    workspaceRepository: new WorkspaceRepository(db.sqlite),
-    artifactRepository: new ArtifactRepository(db.sqlite),
-    repository,
-    dataRoot: root,
-    platform: 'darwin',
-    arch: 'arm64',
-    workerPath: join(root, 'unused.js'),
-    forkWorker: () => {
-      throw new Error('Worker must not run in boundary tests')
-    },
-    changed: () => {},
-    secure,
-  })
+  const app = scopedCommands(
+    createApplication({
+      workspaceRepository: new WorkspaceRepository(db.sqlite),
+      artifactRepository: new ArtifactRepository(db.sqlite),
+      repository,
+      dataRoot: root,
+      platform: 'darwin',
+      arch: 'arm64',
+      workerPath: join(root, 'unused.js'),
+      forkWorker: () => {
+        throw new Error('Worker must not run in boundary tests')
+      },
+      changed: () => {},
+      secure,
+    }),
+    repository.context,
+  )
   cleanups.push(async () => {
     await app.shutdown()
     db.close()
@@ -56,7 +60,7 @@ async function fixture() {
         proxyId: proxy.proxyId,
         proxy,
       }),
-      dataDir: join(root, environmentId),
+      dataDir: join(root, 'environments', environmentId),
       platform: 'darwin',
       arch: 'arm64',
     })
@@ -135,10 +139,12 @@ describe('proxy command atomicity', () => {
     expect(snapshot()).toEqual(before)
   })
   it('does not report a committed save as failed when the cleanup status cannot be read', async () => {
-    const { app, proxy, repository } = await fixture()
-    const fault = vi.spyOn(repository, 'pendingCredentialCleanup').mockImplementation(() => {
-      throw new Error('injected read failure')
-    })
+    const { app, proxy } = await fixture()
+    const fault = vi
+      .spyOn(EnvironmentRepository.prototype, 'pendingCredentialCleanup')
+      .mockImplementation(() => {
+        throw new Error('injected read failure')
+      })
     expect(
       (
         await app.invoke('proxy:save', {
@@ -149,6 +155,7 @@ describe('proxy command atomicity', () => {
       ).ok,
     ).toBe(true)
     expect((await app.invoke('proxy:cleanup-status')).ok).toBe(false)
+    expect(fault).toHaveBeenCalled()
     fault.mockRestore()
     expect(await app.invoke('proxy:retry-cleanup')).toEqual({
       ok: true,
@@ -159,7 +166,7 @@ describe('proxy command atomicity', () => {
     const { app, proxy, repository } = await fixture()
     const complete = repository.completeCredentialCleanup.bind(repository)
     const fault = vi
-      .spyOn(repository, 'completeCredentialCleanup')
+      .spyOn(EnvironmentRepository.prototype, 'completeCredentialCleanup')
       .mockImplementation((reference) => {
         if (reference === proxy.credentialRef) throw new Error('injected journal delete failure')
         complete(reference)
@@ -176,6 +183,7 @@ describe('proxy command atomicity', () => {
     const status = await app.invoke('proxy:cleanup-status')
     expect(status).toEqual({ ok: true, data: { pendingCount: 1, temporaryFilesPending: false } })
     expect(JSON.stringify(status)).not.toContain(proxy.credentialRef)
+    expect(fault).toHaveBeenCalled()
     for (const channel of ['proxy:cleanup-status', 'proxy:retry-cleanup'])
       expect(await app.invoke(channel, {})).toMatchObject({ ok: false, code: 'INVALID_INPUT' })
     fault.mockRestore()

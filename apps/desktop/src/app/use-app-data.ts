@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { EnvironmentSummary } from '@contextweave/contracts'
@@ -14,17 +15,17 @@ export function useAppData(domains: readonly AppDomain[] = noDomains) {
   const client = useQueryClient()
   const environments = useQuery({
     queryKey: ['local', 'environments', 'list'],
-    queryFn: () => unwrapIpc(window.contextweave.environment.list()),
+    queryFn: () => unwrapIpc(workspaceApi.environment.list()),
     enabled: domains.includes('environments'),
   })
   const proxies = useQuery({
     queryKey: ['local', 'proxies'],
-    queryFn: () => unwrapIpc(window.contextweave.proxy.list()),
+    queryFn: () => unwrapIpc(workspaceApi.proxy.list()),
     enabled: domains.includes('proxies'),
   })
   const kernels = useQuery({
     queryKey: ['local', 'kernels'],
-    queryFn: () => unwrapIpc(window.contextweave.kernel.list()),
+    queryFn: () => unwrapIpc(workspaceApi.kernel.list()),
     enabled: domains.includes('kernels'),
   })
   const appInfo = useQuery({

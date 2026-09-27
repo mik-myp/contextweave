@@ -50,6 +50,7 @@ describe('proxy editor', () => {
   })
   it('never includes process identifiers or control ports in the activity response', () => {
     const result = activitySummarySchema.parse({
+      workspaceId: '00000000-0000-4000-8000-000000000001',
       sessionId: 's1',
       environmentId: 'e1',
       pid: 999,

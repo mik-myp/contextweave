@@ -25,7 +25,12 @@ export function createIpLocalePreview(
             if (!proxy) throw new Error('PROXY_MISSING')
             let password: string | undefined
             try {
-              password = proxy.credentialRef ? credentials.read(proxy.credentialRef) : ''
+              password = proxy.credentialRef
+                ? credentials.read({
+                    workspaceId: proxy.workspaceId,
+                    reference: proxy.credentialRef,
+                  })
+                : ''
             } catch {
               throw new Error('CREDENTIAL_UNAVAILABLE')
             }

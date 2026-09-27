@@ -157,7 +157,7 @@ export async function verifyManagerReopen(desktop, page, options) {
     assert(
       (
         await withDeadline(
-          active.evaluate(() => window.contextweave.environment.list()),
+          active.evaluate(async () => window.contextweave.environment.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId })),
           5000,
           'ACTIVATE_LIST_TIMEOUT',
         )

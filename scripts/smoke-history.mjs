@@ -27,8 +27,8 @@ async function launch() {
 }
 try {
   let page = await launch()
-  const created = await page.evaluate(() =>
-    window.contextweave.environment.create({
+  const created = await page.evaluate(async () =>
+    window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
       name: 'History restart fixture',
       kernelId: 'standard-chromium',
       commonConfig: { language: 'system', timezone: 'system' },
@@ -66,9 +66,9 @@ try {
   page = await launch()
   const recovered = await page.evaluate(
     async (id) => ({
-      environment: await window.contextweave.environment.get(id),
-      crashed: await window.contextweave.activity.page({ limit: 100, statuses: ['crashed'] }),
-      bounded: await window.contextweave.activity.list(),
+      environment: await window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
+      crashed: await window.contextweave.activity.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { limit: 100, statuses: ['crashed'] }),
+      bounded: await window.contextweave.activity.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }),
     }),
     environmentId,
   )
@@ -80,7 +80,7 @@ try {
   )
   assert(recovered.bounded.ok && recovered.bounded.data.length === 100)
   const tail = await page.evaluate(
-    (cursor) => window.contextweave.activity.page({ limit: 100, statuses: ['crashed'], cursor }),
+    async (cursor) => window.contextweave.activity.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { limit: 100, statuses: ['crashed'], cursor }),
     recovered.crashed.data.nextCursor,
   )
   assert(tail.ok && tail.data.items.length === 21 && tail.data.nextCursor === null)
@@ -90,7 +90,7 @@ try {
     ),
   )
   assert(
-    (await page.evaluate((id) => window.contextweave.environment.recover(id), environmentId)).ok,
+    (await page.evaluate(async (id) => window.contextweave.environment.recover({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), environmentId)).ok,
   )
 
   await page.getByRole('link', { name: '日志查看', exact: true }).click()
@@ -118,8 +118,8 @@ try {
   await page.getByRole('menuitemradio', { name: '升序', exact: true }).click()
   await operations.getByRole('status').filter({ hasText: '本页 20 条' }).waitFor()
   // Default application operations have an earlier lexical phase; verify the server contract separately.
-  const sorted = await page.evaluate(() =>
-    window.contextweave.operation.page({
+  const sorted = await page.evaluate(async () =>
+    window.contextweave.operation.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
       sortBy: 'phase',
       direction: 'asc',
       search: 'fixture-',
@@ -141,7 +141,7 @@ try {
   desktop = undefined
   const check = new DatabaseSync(file)
   try {
-    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 9)
+    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 10)
     assert.equal(check.prepare('SELECT count(*) AS n FROM runtime_sessions').get().n, 241)
     assert.equal(
       check.prepare("SELECT count(*) AS n FROM runtime_sessions WHERE status='crashed'").get().n,

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -23,7 +24,10 @@ const budget = (limitMiB = 1024, revision = 1): Budget => ({
 let root: Root, container: HTMLDivElement, client: QueryClient
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.stubGlobal('contextweave', { storage: { getArtifactBudget: get, updateArtifactBudget: save } })
+  vi.stubGlobal(
+    'contextweave',
+    withWorkspaceFixture({ storage: { getArtifactBudget: get, updateArtifactBudget: save } }),
+  )
   localStorage.clear()
   get.mockReset()
   save.mockReset()

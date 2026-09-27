@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useCallback, useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { proxyTypeSchema } from '@contextweave/contracts'
@@ -48,7 +49,7 @@ export function ProxiesPage() {
     async (proxy: ProxySummary) => {
       setTesting((value) => new Set(value).add(proxy.proxyId))
       try {
-        const result = await unwrapIpc(window.contextweave.proxy.test({ proxyId: proxy.proxyId }))
+        const result = await unwrapIpc(workspaceApi.proxy.test({ proxyId: proxy.proxyId }))
         setResults((value) => ({ ...value, [`${proxy.proxyId}:${proxy.updatedAt}`]: result }))
       } catch (cause) {
         setNotice({
@@ -105,7 +106,7 @@ export function ProxiesPage() {
       items: targets,
       getId: getRowId,
       getLabel: (row) => `${row.host}:${row.port}`,
-      action: (row) => unwrapIpc(window.contextweave.proxy.delete(row.proxyId)),
+      action: (row) => unwrapIpc(workspaceApi.proxy.delete(row.proxyId)),
     })
     if (result)
       table.setRowSelection((current) =>

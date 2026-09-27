@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useQuery } from '@tanstack/react-query'
 import type { EnvironmentDetails } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
@@ -12,7 +13,7 @@ export function EnvironmentPreflight({ detail }: { detail?: EnvironmentDetails }
   const { t } = useI18n()
   const query = useQuery({
     queryKey: ['local', 'environments', 'preflight', detail?.id, detail?.revision],
-    queryFn: () => unwrapIpc(window.contextweave.environment.preflight(detail!.id)),
+    queryFn: () => unwrapIpc(workspaceApi.environment.preflight(detail!.id)),
     enabled: !!detail,
     staleTime: 10_000,
     retry: false,

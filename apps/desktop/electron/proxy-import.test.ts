@@ -1,3 +1,4 @@
+import type { WorkspaceCredentialReference } from '@contextweave/contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,11 +15,11 @@ function fixture() {
   const repository = new EnvironmentRepository(database.sqlite),
     secrets = new Map<string, string>()
   const credentials = {
-    save: (key: string, value: string) => {
-      secrets.set(key, value)
+    save: (key: WorkspaceCredentialReference, value: string) => {
+      secrets.set(key.reference, value)
     },
-    remove: (key?: string) => {
-      if (key) secrets.delete(key)
+    remove: (key?: WorkspaceCredentialReference) => {
+      if (key) secrets.delete(key.reference)
     },
   }
   cleanups.push(() => {

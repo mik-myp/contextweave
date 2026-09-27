@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { environmentConfigSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from './index'
 import { databaseVersion, migrateDatabase } from './migrations'
-import { openVersion4Fixture } from './legacy-fixture'
+import { openVersion4Fixture, legacyFixtureWriter, legacyRows } from './legacy-fixture'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -19,7 +19,7 @@ function fixture() {
   const file = join(root, 'old.sqlite')
   const db = openVersion4Fixture(file)
   cleanups.push(() => db.close())
-  const repository = new EnvironmentRepository(db.sqlite)
+  const repository = legacyFixtureWriter(db.sqlite)
   const proxy = repository.saveProxy('proxy', {
     name: 'Saved proxy',
     type: 'socks5',
@@ -43,18 +43,18 @@ function fixture() {
   repository.setSetting('fixture', { keep: true })
   db.sqlite.exec('BEGIN IMMEDIATE; ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; PRAGMA user_version = 2; COMMIT;')
   const snapshot = () => ({
-    proxies: repository.listProxies(),
-    environments: repository.listAll(),
-    revisions: db.sqlite.prepare('SELECT * FROM environment_revisions ORDER BY revision').all(),
-    settings: db.sqlite.prepare('SELECT * FROM app_settings').all(),
+    proxies: legacyRows(db.sqlite, 'proxies'),
+    environments: legacyRows(db.sqlite, 'environments'),
+    revisions: legacyRows(db.sqlite, 'environment_revisions', 'revision'),
+    settings: legacyRows(db.sqlite, 'app_settings'),
   })
-  return { root, file, db, repository, snapshot }
+  return { root, file, db, seed: repository, get repository() { return new EnvironmentRepository(db.sqlite) }, snapshot }
 }
 describe('schema v3 migration', () => {
   it('preserves v2 business data and takes a consistent backup including committed WAL pages', () => {
     const f = fixture()
     f.db.sqlite.exec('PRAGMA wal_autocheckpoint = 0')
-    f.repository.setSetting('wal-committed', { value: 'only-in-wal' })
+    f.seed.setSetting('wal-committed', { value: 'only-in-wal' })
     const before = f.snapshot()
     migrateDatabase(f.db.sqlite, f.file)
     expect(f.snapshot()).toEqual(before)
@@ -144,7 +144,7 @@ it('migrates a genuine v3 session without inventing process identity; current sc
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const file = join(root, 'data.sqlite')
   let db = openVersion4Fixture(file)
-  new EnvironmentRepository(db.sqlite).create({
+  legacyFixtureWriter(db.sqlite).create({
     config: environmentConfigSchema.parse({ environmentId: 'env', name: 'Legacy', kernelId: 'standard-chromium', kernelVersion: 'local', commonConfig: {} }),
     dataDir: join(root, 'profile'), platform: 'darwin', arch: 'arm64',
   })
@@ -155,7 +155,7 @@ it('migrates a genuine v3 session without inventing process identity; current sc
   db = openLocalDatabase(file)
   const repository = new EnvironmentRepository(db.sqlite)
   expect(repository.getRuntimeSession('old')).toMatchObject({ pid: 123, processIdentity: undefined })
-  repository.createRuntimeSession({ sessionId: 'new', environmentId: 'env', pid: 234, processIdentity: 'fixture-start', controlPort: 9333, startedAt: new Date().toISOString(), status: 'running', exitReason: null })
+  repository.createRuntimeSession({ workspaceId: repository.workspaceId, sessionId: 'new', environmentId: 'env', pid: 234, processIdentity: 'fixture-start', controlPort: 9333, startedAt: new Date().toISOString(), status: 'running', exitReason: null })
   expect(repository.getRuntimeSession('new')?.processIdentity).toBe('fixture-start')
   db.close()
   db = openLocalDatabase(file)

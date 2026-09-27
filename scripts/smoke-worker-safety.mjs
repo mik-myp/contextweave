@@ -26,7 +26,7 @@ export async function runWorkerWithHostileEnvironment(desktop, page, task, direc
     return previous
   }, injected)
   try {
-    const result = await page.evaluate((task) => window.contextweave.worker.runSmoke(task), task)
+    const result = await page.evaluate(async (task) => window.contextweave.worker.runSmoke({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, task), task)
     const markerExists = await access(marker).then(
       () => true,
       () => false,

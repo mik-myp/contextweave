@@ -68,9 +68,9 @@ try {
   await installKernelDiagnostics(desktop)
   const page = await desktop.firstWindow()
   await page.waitForFunction(() => !!window.contextweave?.kernel?.install)
-  const kernels = await page.evaluate(() => window.contextweave.kernel.list())
+  const kernels = await page.evaluate(async () => window.contextweave.kernel.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(kernels.ok)
-  const catalog = await page.evaluate(() => window.contextweave.kernel.catalog())
+  const catalog = await page.evaluate(async () => window.contextweave.kernel.catalog({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(catalog.ok)
   let provider = catalog.data.releases.find((item) => item.version === '148.0.7778.215')
   if (!provider?.installable) {
@@ -92,7 +92,7 @@ try {
           ? `ungoogled-chromium_${provider.version}-1.1_windows_x64.zip`
           : `ungoogled-chromium_${provider.version}-1.1_macos.dmg`
       const prepared = await page.evaluate(
-        (input) => window.contextweave.kernel.prepareCustom(input),
+        async (input) => window.contextweave.kernel.prepareCustom({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, input),
         {
           providerId: provider.provider,
           url: `https://github.com/adryfish/fingerprint-chromium/releases/download/${provider.version}/${name}?download=1`,
@@ -113,14 +113,14 @@ try {
       }),
     )
     const installed = await page.evaluate(
-      (id) => window.contextweave.kernel.install(id),
+      async (id) => window.contextweave.kernel.install({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
       provider.id,
     )
     assert(installed.ok, JSON.stringify(installed))
     assert.equal(installed.data.status, 'available')
     const proxy = await page.evaluate(
-      (port) =>
-        window.contextweave.proxy.save({
+      async (port) =>
+        window.contextweave.proxy.save({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           config: {
             name: 'Isolated acceptance proxy',
             type: 'http',
@@ -134,8 +134,8 @@ try {
     )
     assert(proxy.ok, JSON.stringify(proxy))
     const created = await page.evaluate(
-      ({ proxyId, kernelId }) =>
-        window.contextweave.environment.create({
+      async ({ proxyId, kernelId }) =>
+        window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           name: 'Fingerprint acceptance',
           kernelId,
           proxyId,
@@ -145,11 +145,11 @@ try {
     )
     assert(created.ok, JSON.stringify(created))
     id = created.data.id
-    const detail = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+    const detail = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(detail.ok && detail.data.fingerprint?.seed)
     const observations = []
     for (let run = 0; run < 2; run++) {
-      const started = await page.evaluate((id) => window.contextweave.environment.start(id), id)
+      const started = await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
       assert(started.ok, JSON.stringify(started))
       const lock = JSON.parse(
         await readFile(
@@ -192,7 +192,7 @@ try {
       if (run === 0) await verifyDetachedControlSession(desktop, id, browser)
       if (run === 0) {
         const blockedRemoval = await page.evaluate(
-          (id) => window.contextweave.kernel.remove(id),
+          async (id) => window.contextweave.kernel.remove({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
           provider.id,
         )
         assert(!blockedRemoval.ok, 'Never delete a running kernel')
@@ -203,7 +203,7 @@ try {
         )
         assert(Date.now() - began >= 6000, 'Fixture must exceed the control command timeout')
         assert.equal(
-          (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data.status,
+          (await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).data.status,
           'running',
         )
         const closing = await context.newPage()
@@ -216,7 +216,7 @@ try {
           await Promise.all(Array.from({ length: 20 }, () => fetch('/').then((r) => r.text())))
         })
         assert.equal(
-          (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data.status,
+          (await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).data.status,
           'running',
         )
       }
@@ -265,7 +265,7 @@ try {
       let stopped
       const closeDeadline = Date.now() + 15000
       do {
-        stopped = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+        stopped = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
         if (stopped.ok && stopped.data.status === 'stopped') break
         await new Promise((resolve) => setTimeout(resolve, 100))
       } while (Date.now() < closeDeadline)
@@ -281,9 +281,9 @@ try {
       'Identity must remain stable after stopping and reopening',
     )
     assert(forwarded > 0, 'Browser requests must traverse the authenticated upstream')
-    assert((await page.evaluate((id) => window.contextweave.environment.delete(id), id)).ok)
-    assert((await page.evaluate((id) => window.contextweave.environment.restore(id), id)).ok)
-    const restored = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+    assert((await page.evaluate(async (id) => window.contextweave.environment.delete({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).ok)
+    assert((await page.evaluate(async (id) => window.contextweave.environment.restore({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).ok)
+    const restored = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert.deepEqual(restored.data.fingerprint, detail.data.fingerprint)
     if (suppliedProxy) {
       const endpoint = new URL(suppliedProxy)
@@ -295,13 +295,13 @@ try {
         username: decodeURIComponent(endpoint.username),
       }
       const input = { config, password: decodeURIComponent(endpoint.password) }
-      const checked = await page.evaluate((input) => window.contextweave.proxy.test(input), input)
+      const checked = await page.evaluate(async (input) => window.contextweave.proxy.test({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, input), input)
       assert(checked.ok && checked.data.success, 'Supplied proxy HTTPS connection test failed')
-      const saved = await page.evaluate((input) => window.contextweave.proxy.save(input), input)
+      const saved = await page.evaluate(async (input) => window.contextweave.proxy.save({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, input), input)
       assert(saved.ok, 'Temporary proxy could not be saved securely')
       const live = await page.evaluate(
-        ({ proxyId, kernelId }) =>
-          window.contextweave.environment.create({
+        async ({ proxyId, kernelId }) =>
+          window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
             name: 'Temporary proxy browser acceptance',
             kernelId,
             proxyId,
@@ -311,7 +311,7 @@ try {
       )
       assert(live.ok)
       liveId = live.data.id
-      const started = await page.evaluate((id) => window.contextweave.environment.start(id), liveId)
+      const started = await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), liveId)
       assert(started.ok, JSON.stringify(started))
       const lock = JSON.parse(
         await readFile(
@@ -329,18 +329,18 @@ try {
         checked.data.exitIp,
         'Proxy tester and browser must use the same exit',
       )
-      assert((await page.evaluate((id) => window.contextweave.environment.stop(id), liveId)).ok)
+      assert((await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), liveId)).ok)
       console.log(JSON.stringify({ suppliedProxy: 'passed', https: 'passed', sameExit: true }))
     }
-    const prior = await page.evaluate((id) => window.contextweave.environment.get(id), id)
-    assert((await page.evaluate((id) => window.contextweave.kernel.remove(id), provider.id)).ok)
+    const prior = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
+    assert((await page.evaluate(async (id) => window.contextweave.kernel.remove({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), provider.id)).ok)
     assert.deepEqual(
-      (await page.evaluate((id) => window.contextweave.environment.get(id), id)).data,
+      (await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).data,
       prior.data,
     )
     await access(join(directory, 'contextweave', 'environments', id, 'Default'))
     const unavailable = await page.evaluate(
-      (id) => window.contextweave.environment.preflight(id),
+      async (id) => window.contextweave.environment.preflight({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
       id,
     )
     assert(
@@ -349,11 +349,11 @@ try {
         unavailable.data.issues.some((item) => item.code === 'KERNEL_UNAVAILABLE'),
     )
     const reinstalled = await page.evaluate(
-      (id) => window.contextweave.kernel.install(id),
+      async (id) => window.contextweave.kernel.install({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
       provider.id,
     )
     assert(reinstalled.ok && reinstalled.data.status === 'available', JSON.stringify(reinstalled))
-    assert((await page.evaluate((id) => window.contextweave.environment.start(id), id)).ok)
+    assert((await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).ok)
     const restoredLock = JSON.parse(
       await readFile(join(directory, 'contextweave', 'environments', id, '.runtime.lock'), 'utf8'),
     )
@@ -361,7 +361,7 @@ try {
     const retained = await reopened.contexts()[0].newPage()
     await retained.goto(fixtureUrl)
     assert.equal(await retained.evaluate(() => localStorage.getItem('cw-acceptance')), 'retained')
-    assert((await page.evaluate((id) => window.contextweave.environment.stop(id), id)).ok)
+    assert((await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).ok)
     console.log(
       JSON.stringify({
         ...(customSource ? { customInstall: 'passed' } : { officialInstall: 'passed' }),
@@ -388,7 +388,7 @@ try {
   await restoreKernelDiagnostics(desktop)
   const page = await desktop.firstWindow().catch(() => undefined)
   for (const envId of [id, liveId].filter(Boolean))
-    await page?.evaluate((id) => window.contextweave.environment.stop(id), envId).catch(() => {})
+    await page?.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), envId).catch(() => {})
   await desktop.close()
   await upstream.close(true)
   await new Promise((resolve) => server.close(resolve))

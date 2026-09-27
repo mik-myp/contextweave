@@ -71,7 +71,7 @@ try {
     'Main-only logging must not register renderer IPC or session preload scripts',
   )
   for (const method of ['cleanupStatus', 'retryCleanup']) {
-    const status = await page.evaluate((method) => window.contextweave.proxy[method](), method)
+    const status = await page.evaluate(async (method) => window.contextweave.proxy[method]({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }), method)
     if (!status.ok)
       console.error(JSON.stringify({ bridgeFailure: status.code, rendererUrl: page.url() }))
     assert.deepEqual(
@@ -80,8 +80,8 @@ try {
       'Credential maintenance must cross the validated bridge',
     )
   }
-  const imported = await page.evaluate(() =>
-    window.contextweave.proxy.import({
+  const imported = await page.evaluate(async () =>
+    window.contextweave.proxy.import({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
       text: [
         'http://127.0.0.1:18101',
         'https://127.0.0.1:18102',
@@ -97,7 +97,7 @@ try {
     imported.data.map((row) => row.status),
     ['created', 'created', 'created', 'skipped', 'error'],
   )
-  const proxies = await page.evaluate(() => window.contextweave.proxy.list())
+  const proxies = await page.evaluate(async () => window.contextweave.proxy.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(proxies.ok)
   assert.deepEqual(proxies.data.map((proxy) => proxy.type).sort(), ['http', 'https', 'socks5'])
   // No public network dependency: a local rejecting proxy must see the IP request,
@@ -115,16 +115,16 @@ try {
   localeProxy.listen(0, '127.0.0.1')
   await once(localeProxy, 'listening')
   const proxy = await page.evaluate(
-    (port) =>
-      window.contextweave.proxy.save({
+    async (port) =>
+      window.contextweave.proxy.save({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
         config: { type: 'http', host: '127.0.0.1', port },
       }),
     localeProxy.address().port,
   )
   assert(proxy.ok)
   const detected = await page.evaluate(
-    (proxyId) =>
-      window.contextweave.environment.detectLocale({
+    async (proxyId) =>
+      window.contextweave.environment.detectLocale({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
         requestId: crypto.randomUUID(),
         connection: 'proxy',
         proxyId,
@@ -136,13 +136,13 @@ try {
   assert(
     (
       await page.evaluate(
-        (proxyId) => window.contextweave.proxy.delete(proxyId),
+        async (proxyId) => window.contextweave.proxy.delete({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, proxyId),
         proxy.data.proxyId,
       )
     ).ok,
   )
   console.log(JSON.stringify({ ipLocaleProxyBoundary: 'passed-no-direct-fallback' }))
-  const kernels = await page.evaluate(() => window.contextweave.kernel.list())
+  const kernels = await page.evaluate(async () => window.contextweave.kernel.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(kernels.ok, 'Kernel list must cross the sandboxed IPC bridge')
   assert(
     kernels.data.every((item) => item.id === 'standard-chromium'),
@@ -185,8 +185,8 @@ try {
     const fixtureUrl = `http://127.0.0.1:${fixtureServer.address().port}`
     const screenshots = []
     await installRuntimeDiagnostics(desktop)
-    const created = await page.evaluate(() =>
-      window.contextweave.environment.create({
+    const created = await page.evaluate(async () =>
+      window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
         name: 'Desktop smoke fixture',
         kernelId: 'standard-chromium',
         commonConfig: { language: 'system', timezone: 'system' },
@@ -195,8 +195,8 @@ try {
     assert(created.ok, JSON.stringify(created))
     id = created.data.id
     const automatic = await page.evaluate(
-      ({ environmentId, expectedRevision }) =>
-        window.contextweave.environment.update({
+      async ({ environmentId, expectedRevision }) =>
+        window.contextweave.environment.update({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           version: 1,
           environmentId,
           expectedRevision,
@@ -211,15 +211,15 @@ try {
       { environmentId: id, expectedRevision: created.data.revision },
     )
     assert(automatic.ok, JSON.stringify(automatic))
-    const automaticDetail = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+    const automaticDetail = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(
       automaticDetail.ok &&
         automaticDetail.data.browserSettings.language === 'auto' &&
         automaticDetail.data.browserSettings.timezone === 'auto',
     )
     const manual = await page.evaluate(
-      ({ environmentId, expectedRevision }) =>
-        window.contextweave.environment.update({
+      async ({ environmentId, expectedRevision }) =>
+        window.contextweave.environment.update({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           version: 1,
           environmentId,
           expectedRevision,
@@ -235,14 +235,14 @@ try {
     )
     assert(manual.ok, JSON.stringify(manual))
     for (let run = 0; run < 2; run++) {
-      const started = await page.evaluate((id) => window.contextweave.environment.start(id), id)
+      const started = await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
       assert(
         started.ok,
         JSON.stringify({
           run,
           started,
           control: started.ok ? undefined : await readRuntimeDiagnostics(desktop),
-          environment: await page.evaluate((id) => window.contextweave.environment.get(id), id),
+          environment: await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id),
         }),
       )
       assert.equal(started.data.status, 'running')
@@ -354,7 +354,7 @@ try {
       screenshots.push(screenshotPath)
       if (run === 0) {
         const navigationSeen = new Promise((resolve) => { onWorkerWait = resolve })
-        const cancellation = page.evaluate(({ environmentId, url }) => window.contextweave.worker.runSmoke({
+        const cancellation = page.evaluate(async ({ environmentId, url }) => window.contextweave.worker.runSmoke({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
           protocolVersion: 1,
           taskId: 'task-cancel-smoke',
           environmentId,
@@ -367,7 +367,7 @@ try {
           await Promise.race([navigationSeen, new Promise((_resolve, reject) => {
             waitTimer = setTimeout(() => reject(new Error('Worker did not navigate before cancellation')), 15000)
           })])
-          assert.deepEqual(await page.evaluate(() => window.contextweave.worker.cancel('task-cancel-smoke')), { ok: true, data: true })
+          assert.deepEqual(await page.evaluate(async () => window.contextweave.worker.cancel({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, 'task-cancel-smoke')), { ok: true, data: true })
           assert.deepEqual(await cancellation, { ok: false, code: 'CANCELLED', message: 'CANCELLED' })
           await assertUtilityWorkersExited(desktop)
           const { readdir } = await import('node:fs/promises')
@@ -389,9 +389,9 @@ try {
         )
         for (const [index, tab] of savedPages.entries()) await tab.goto(expectedTabs[index])
       }
-      const duplicate = await page.evaluate((id) => window.contextweave.environment.start(id), id)
+      const duplicate = await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
       assert(!duplicate.ok, 'Duplicate launch must not create a second session')
-      const blocked = await page.evaluate((id) => window.contextweave.environment.delete(id), id)
+      const blocked = await page.evaluate(async (id) => window.contextweave.environment.delete({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
       assert(!blocked.ok, 'A running profile cannot move to trash')
       if (run === 0) {
         const control = await browser.newBrowserCDPSession()
@@ -400,7 +400,7 @@ try {
         const tabs = context.pages()
         await tabs[0].close()
         const stillRunning = await page.evaluate(
-          (id) => window.contextweave.environment.get(id),
+          async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
           id,
         )
         assert(
@@ -412,17 +412,17 @@ try {
       let stopped
       const closeDeadline = Date.now() + 15000
       do {
-        stopped = await page.evaluate((id) => window.contextweave.environment.get(id), id)
+        stopped = await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
         if (stopped.ok && stopped.data.status === 'stopped') break
         await new Promise((resolve) => setTimeout(resolve, 100))
       } while (Date.now() < closeDeadline)
       assert(
         stopped.ok && stopped.data.status === 'stopped',
-        JSON.stringify({ message: 'Closing the browser must stop the environment without a manual stop command', run, stopped, control: await readRuntimeDiagnostics(desktop), sessions: (await page.evaluate(() => window.contextweave.activity.list())).data }),
+        JSON.stringify({ message: 'Closing the browser must stop the environment without a manual stop command', run, stopped, control: await readRuntimeDiagnostics(desktop), sessions: (await page.evaluate(async () => window.contextweave.activity.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))).data }),
       )
     }
     assert.equal(new Set(screenshots).size, 2, 'Every task must have a separately allocated output')
-    const sessions = await page.evaluate(() => window.contextweave.activity.list())
+    const sessions = await page.evaluate(async () => window.contextweave.activity.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
     assert(sessions.ok)
     assert.equal(sessions.data.length, 2)
     assert(
@@ -435,35 +435,35 @@ try {
       join(directory, 'contextweave', 'environments', id, 'Default', 'Preferences'),
       'utf8',
     )
-    const removed = await page.evaluate((id) => window.contextweave.environment.delete(id), id)
+    const removed = await page.evaluate(async (id) => window.contextweave.environment.delete({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(removed.ok)
-    const trash = await page.evaluate(() => window.contextweave.environment.trash())
+    const trash = await page.evaluate(async () => window.contextweave.environment.trash({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
     assert(trash.ok && trash.data[0].id === id)
-    const restored = await page.evaluate((id) => window.contextweave.environment.restore(id), id)
+    const restored = await page.evaluate(async (id) => window.contextweave.environment.restore({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     assert(restored.ok && restored.data.id === id)
     const after = await readFile(
       join(directory, 'contextweave', 'environments', id, 'Default', 'Preferences'),
       'utf8',
     )
     assert.equal(after, before)
-    const pagedSessions = await page.evaluate(() => window.contextweave.activity.page({ limit: 2 }))
+    const pagedSessions = await page.evaluate(async () => window.contextweave.activity.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { limit: 2 }))
     assert(
       pagedSessions.ok && pagedSessions.data.items.length <= 2 && pagedSessions.data.previousCursor === null,
     )
     assert(pagedSessions.data.items.every((row) => !('pid' in row) && !('processIdentity' in row)))
-    const operations = await page.evaluate(() => window.contextweave.operation.list())
+    const operations = await page.evaluate(async () => window.contextweave.operation.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
     assert(operations.ok && operations.data.some((item) => item.errorCode === 'ALREADY_RUNNING'))
     // Finite, distinct fresh profiles, not retries of a failed startup. Any failure stops the gate.
     for (let sample = 0; sample < 3; sample++) {
-      const fresh = await page.evaluate((sample) => window.contextweave.environment.create({
+      const fresh = await page.evaluate(async (sample) => window.contextweave.environment.create({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, {
         name: `Fresh-profile launch ${sample}`,
         kernelId: 'standard-chromium',
         commonConfig: { language: 'system', timezone: 'system' },
       }), sample)
       assert(fresh.ok)
-      const started = await page.evaluate((id) => window.contextweave.environment.start(id), fresh.data.id)
+      const started = await page.evaluate(async (id) => window.contextweave.environment.start({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(started.ok, JSON.stringify({ sample, started, control: await readRuntimeDiagnostics(desktop) }))
-      const stopped = await page.evaluate((id) => window.contextweave.environment.stop(id), fresh.data.id)
+      const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
     console.log(
@@ -506,7 +506,7 @@ try {
   if (manager) {
     try {
       runtimeStates = await manager.evaluate(async () => {
-        const result = await window.contextweave.activity.list()
+        const result = await window.contextweave.activity.list({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId })
         return result.ok ? result.data.slice(0, 8).map((session) => ({
           status: session.status,
           exitReason: session.exitReason === null ? null : /^[A-Z_]{1,80}$/.test(session.exitReason) ? session.exitReason : 'REDACTED_EXIT_REASON',
@@ -521,7 +521,7 @@ try {
   try {
     if (id) {
       const page = desktop.windows()[0]
-      if (page) await page.evaluate((id) => window.contextweave.environment.stop(id), id)
+      if (page) await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)
     }
   } catch {
     /* Preserve the original test error; application shutdown also stops owned children. */

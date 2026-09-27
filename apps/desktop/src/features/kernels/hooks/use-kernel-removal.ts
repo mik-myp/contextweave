@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { useRef, useState } from 'react'
 import type { KernelSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
@@ -22,7 +23,7 @@ export function useKernelRemoval() {
     setPending(true)
     setError(undefined)
     try {
-      await unwrapIpc(window.contextweave.kernel.remove(selected.id))
+      await unwrapIpc(workspaceApi.kernel.remove(selected.id))
       setSelected(undefined)
       setNotice({ kind: 'success', message: t('kernel.removed') })
       await refresh()

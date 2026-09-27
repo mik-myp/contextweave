@@ -1,4 +1,5 @@
 export type StartupErrorCode =
+  | 'WORKSPACE_PATH_UNSAFE'
   | 'DATABASE_WORKSPACE_INVALID'
   | 'DATABASE_CORRUPT'
   | 'DATABASE_INTEGRITY_FAILED'
@@ -19,6 +20,7 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
   const sqlite = 'errcode' in error && typeof error.errcode === 'number' ? error.errcode & 255 : 0
   const message = error instanceof Error ? error.message : ''
   if (
+    message === 'WORKSPACE_PATH_UNSAFE' ||
     message === 'DATABASE_WORKSPACE_INVALID' ||
     message === 'DATABASE_INTEGRITY_FAILED' ||
     message === 'DATABASE_SCHEMA_UNSUPPORTED' ||
@@ -38,6 +40,10 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
 }
 
 const descriptions: Record<StartupErrorCode, [string, string]> = {
+  WORKSPACE_PATH_UNSAFE: [
+    '数据路径不属于当前工作空间或包含不安全链接，已停止打开。请保留完整原数据并检查目录；不会自动移动、覆盖或删除文件。',
+    'A data path does not belong to this workspace or contains an unsafe link. Opening has stopped. Preserve the original data and inspect the directories; no files will be moved, overwritten or deleted automatically.',
+  ],
   DATABASE_WORKSPACE_INVALID: [
     '本地工作空间身份缺失或不合法，已停止打开数据。请保留完整数据目录并反馈此错误代码；不会自动生成新身份或清空数据。',
     'The local workspace identity is missing or invalid. Opening has stopped. Preserve the full data directory and report this code; no replacement identity or empty database will be created.',

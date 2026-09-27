@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -73,13 +74,16 @@ beforeEach(() => {
       disconnect() {}
     },
   )
-  vi.stubGlobal('contextweave', {
-    storage: {
-      previewHistoryCleanup: previewCall,
-      confirmHistoryCleanup: confirmCall,
-      getHistoryCleanupReceipt: receiptCall,
-    },
-  })
+  vi.stubGlobal(
+    'contextweave',
+    withWorkspaceFixture({
+      storage: {
+        previewHistoryCleanup: previewCall,
+        confirmHistoryCleanup: confirmCall,
+        getHistoryCleanupReceipt: receiptCall,
+      },
+    }),
+  )
   localStorage.clear()
   container = document.createElement('div')
   document.body.append(container)

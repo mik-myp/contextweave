@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'error.WORKSPACE_CONTEXT_INVALID': '工作空间上下文缺失或无效，请重新打开应用后重试。',
+  'error.WORKSPACE_MISMATCH': '请求不属于当前工作空间，已拒绝访问数据和凭据。',
+  'error.WORKSPACE_PATH_UNSAFE':
+    '数据目录与工作空间归属不符或包含不安全链接。请保留原数据并检查目录，不会自动移动或覆盖。',
+
   'error.DATABASE_WORKSPACE_INVALID':
     '本地工作空间身份无法读取。请保留数据目录并重试；不会自动创建新身份。',
   'history.loading': '正在读取历史…',

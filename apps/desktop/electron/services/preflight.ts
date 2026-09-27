@@ -67,7 +67,10 @@ export async function checkEnvironment(
       if (config.commonConfig.webRtcPolicy === 'disable') add('LEGACY_SETTINGS_UNSUPPORTED')
       if (config.proxy?.credentialRef) {
         try {
-          if (credentials.read(config.proxy.credentialRef) === undefined)
+          if (
+            credentials.read(repository.credentialReference(config.proxy.credentialRef)) ===
+            undefined
+          )
             add('CREDENTIAL_UNAVAILABLE')
         } catch {
           add('CREDENTIAL_UNAVAILABLE')

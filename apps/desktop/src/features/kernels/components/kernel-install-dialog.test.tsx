@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -25,7 +26,7 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   Object.defineProperty(window, 'contextweave', {
     configurable: true,
-    value: { kernel: { install, cancelInstall } },
+    value: withWorkspaceFixture({ kernel: { install, cancelInstall } }),
   })
 })
 afterEach(async () => {

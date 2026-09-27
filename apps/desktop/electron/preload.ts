@@ -1,3 +1,8 @@
+import {
+  assertWorkspaceContext,
+  workspaceContextSchema,
+  type WorkspaceContext,
+} from '@contextweave/contracts'
 import { localWorkspaceSchema } from '@contextweave/contracts'
 import {
   artifactBudgetSchema,
@@ -73,6 +78,26 @@ import {
   type WorkerTask,
 } from '@contextweave/worker-protocol'
 
+async function invokeWorkspace(context: WorkspaceContext, channel: string, payload?: unknown) {
+  const owner = workspaceContextSchema.parse(context)
+  const result = ipcResultSchema(z.unknown()).parse(
+    await ipcRenderer.invoke(channel, { ...owner, payload }),
+  )
+  if (result.ok) {
+    const data = result.data
+    const records = Array.isArray(data)
+      ? data
+      : data !== null && typeof data === 'object' && 'items' in data && Array.isArray(data.items)
+        ? data.items
+        : [data]
+    for (const record of records) {
+      if (record !== null && typeof record === 'object' && 'workspaceId' in record)
+        assertWorkspaceContext(owner, { workspaceId: record.workspaceId })
+    }
+  }
+  return result
+}
+
 const api = {
   workspace: {
     current: async (...args: []) => {
@@ -142,188 +167,224 @@ const api = {
     },
   },
   kernel: {
-    providers: async () =>
+    providers: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(kernelProviderSchema)).parse(
-        await ipcRenderer.invoke('kernel:providers'),
+        await invokeWorkspace(context, 'kernel:providers'),
       ),
-    prepareCustom: async (input: CustomKernelSource) =>
+    prepareCustom: async (context: WorkspaceContext, input: CustomKernelSource) =>
       ipcResultSchema(kernelReleaseSchema).parse(
-        await ipcRenderer.invoke('kernel:prepare-custom', customKernelSourceSchema.parse(input)),
+        await invokeWorkspace(
+          context,
+          'kernel:prepare-custom',
+          customKernelSourceSchema.parse(input),
+        ),
       ),
-    catalog: async (providerId = 'fingerprint-chromium', refresh = false) =>
+    catalog: async (
+      context: WorkspaceContext,
+      providerId = 'fingerprint-chromium',
+      refresh = false,
+    ) =>
       ipcResultSchema(kernelCatalogSchema).parse(
-        await ipcRenderer.invoke(
+        await invokeWorkspace(
+          context,
           'kernel:catalog',
           kernelCatalogInputSchema.parse({ providerId, refresh }),
         ),
       ),
-    remove: async (kernelId: string) =>
+    remove: async (context: WorkspaceContext, kernelId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('kernel:remove', environmentIdSchema.parse(kernelId)),
+        await invokeWorkspace(context, 'kernel:remove', environmentIdSchema.parse(kernelId)),
       ),
-    cancelInstall: async (kernelId: string) =>
+    cancelInstall: async (context: WorkspaceContext, kernelId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('kernel:cancel-install', environmentIdSchema.parse(kernelId)),
+        await invokeWorkspace(
+          context,
+          'kernel:cancel-install',
+          environmentIdSchema.parse(kernelId),
+        ),
       ),
-    list: async () =>
-      ipcResultSchema(z.array(kernelSummarySchema)).parse(await ipcRenderer.invoke('kernel:list')),
-    install: async (kernelId: string) =>
+    list: async (context: WorkspaceContext) =>
+      ipcResultSchema(z.array(kernelSummarySchema)).parse(
+        await invokeWorkspace(context, 'kernel:list'),
+      ),
+    install: async (context: WorkspaceContext, kernelId: string) =>
       ipcResultSchema(kernelSummarySchema).parse(
-        await ipcRenderer.invoke('kernel:install', environmentIdSchema.parse(kernelId)),
+        await invokeWorkspace(context, 'kernel:install', environmentIdSchema.parse(kernelId)),
       ),
   },
   operation: {
-    page: async (input: Partial<OperationHistoryQuery> = {}) =>
+    page: async (context: WorkspaceContext, input: Partial<OperationHistoryQuery> = {}) =>
       ipcResultSchema(operationHistoryPageSchema).parse(
-        await ipcRenderer.invoke('operation:page', operationHistoryQuerySchema.parse(input)),
+        await invokeWorkspace(context, 'operation:page', operationHistoryQuerySchema.parse(input)),
       ),
-    list: async () =>
+    list: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(operationSummarySchema)).parse(
-        await ipcRenderer.invoke('operation:list'),
+        await invokeWorkspace(context, 'operation:list'),
       ),
   },
   storage: {
-    getArtifactBudget: async () =>
+    getArtifactBudget: async (context: WorkspaceContext) =>
       ipcResultSchema(artifactBudgetSchema).parse(
-        await ipcRenderer.invoke('storage:artifact-budget'),
+        await invokeWorkspace(context, 'storage:artifact-budget'),
       ),
-    updateArtifactBudget: async (input: ArtifactBudgetUpdate) =>
+    updateArtifactBudget: async (context: WorkspaceContext, input: ArtifactBudgetUpdate) =>
       ipcResultSchema(artifactBudgetSchema).parse(
-        await ipcRenderer.invoke(
+        await invokeWorkspace(
+          context,
           'storage:artifact-budget-update',
           artifactBudgetUpdateSchema.parse(input),
         ),
       ),
-    pageArtifacts: async (input: Partial<ArtifactQuery> = {}) =>
+    pageArtifacts: async (context: WorkspaceContext, input: Partial<ArtifactQuery> = {}) =>
       ipcResultSchema(artifactPageSchema).parse(
-        await ipcRenderer.invoke('storage:artifacts-page', artifactQuerySchema.parse(input)),
+        await invokeWorkspace(context, 'storage:artifacts-page', artifactQuerySchema.parse(input)),
       ),
-    previewHistoryCleanup: async (input: { retentionDays: HistoryCleanupRetentionDays }) =>
+    previewHistoryCleanup: async (
+      context: WorkspaceContext,
+      input: { retentionDays: HistoryCleanupRetentionDays },
+    ) =>
       ipcResultSchema(historyCleanupPreviewSchema).parse(
-        await ipcRenderer.invoke(
+        await invokeWorkspace(
+          context,
           'storage:history-preview',
           historyCleanupRequestSchema.parse(input),
         ),
       ),
-    confirmHistoryCleanup: async (input: { previewId: string }) =>
+    confirmHistoryCleanup: async (context: WorkspaceContext, input: { previewId: string }) =>
       ipcResultSchema(historyCleanupResultSchema).parse(
-        await ipcRenderer.invoke(
+        await invokeWorkspace(
+          context,
           'storage:history-confirm',
           historyCleanupConfirmSchema.parse(input),
         ),
       ),
-    getHistoryCleanupReceipt: async () =>
+    getHistoryCleanupReceipt: async (context: WorkspaceContext) =>
       ipcResultSchema(historyCleanupReceiptSchema.nullable()).parse(
-        await ipcRenderer.invoke('storage:history-receipt'),
+        await invokeWorkspace(context, 'storage:history-receipt'),
       ),
-    orphans: async () =>
+    orphans: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(orphanDirectorySchema)).parse(
-        await ipcRenderer.invoke('storage:orphans'),
+        await invokeWorkspace(context, 'storage:orphans'),
       ),
   },
   activity: {
-    page: async (input: Partial<ActivityHistoryQuery> = {}) =>
+    page: async (context: WorkspaceContext, input: Partial<ActivityHistoryQuery> = {}) =>
       ipcResultSchema(activityHistoryPageSchema).parse(
-        await ipcRenderer.invoke('activity:page', activityHistoryQuerySchema.parse(input)),
+        await invokeWorkspace(context, 'activity:page', activityHistoryQuerySchema.parse(input)),
       ),
-    list: async () =>
+    list: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(activitySummarySchema)).parse(
-        await ipcRenderer.invoke('activity:list'),
+        await invokeWorkspace(context, 'activity:list'),
       ),
   },
   proxy: {
-    import: async (input: ImportProxiesInput) =>
+    import: async (context: WorkspaceContext, input: ImportProxiesInput) =>
       ipcResultSchema(importProxiesResultSchema).parse(
-        await ipcRenderer.invoke('proxy:import', importProxiesInputSchema.parse(input)),
+        await invokeWorkspace(context, 'proxy:import', importProxiesInputSchema.parse(input)),
       ),
-    cleanupStatus: async () =>
+    cleanupStatus: async (context: WorkspaceContext) =>
       ipcResultSchema(credentialCleanupStatusSchema).parse(
-        await ipcRenderer.invoke('proxy:cleanup-status'),
+        await invokeWorkspace(context, 'proxy:cleanup-status'),
       ),
-    retryCleanup: async () =>
+    retryCleanup: async (context: WorkspaceContext) =>
       ipcResultSchema(credentialCleanupStatusSchema).parse(
-        await ipcRenderer.invoke('proxy:retry-cleanup'),
+        await invokeWorkspace(context, 'proxy:retry-cleanup'),
       ),
-    test: async (input: ProxyTestInput) =>
+    test: async (context: WorkspaceContext, input: ProxyTestInput) =>
       ipcResultSchema(proxyTestResultSchema).parse(
-        await ipcRenderer.invoke('proxy:test', proxyTestInputSchema.parse(input)),
+        await invokeWorkspace(context, 'proxy:test', proxyTestInputSchema.parse(input)),
       ),
-    list: async () =>
-      ipcResultSchema(z.array(proxySummarySchema)).parse(await ipcRenderer.invoke('proxy:list')),
-    save: async (input: SaveProxyInput) =>
+    list: async (context: WorkspaceContext) =>
+      ipcResultSchema(z.array(proxySummarySchema)).parse(
+        await invokeWorkspace(context, 'proxy:list'),
+      ),
+    save: async (context: WorkspaceContext, input: SaveProxyInput) =>
       ipcResultSchema(proxySummarySchema).parse(
-        await ipcRenderer.invoke('proxy:save', saveProxyInputSchema.parse(input)),
+        await invokeWorkspace(context, 'proxy:save', saveProxyInputSchema.parse(input)),
       ),
-    delete: async (proxyId: string) =>
+    delete: async (context: WorkspaceContext, proxyId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('proxy:delete', z.string().min(1).parse(proxyId)),
+        await invokeWorkspace(context, 'proxy:delete', z.string().min(1).parse(proxyId)),
       ),
   },
   environment: {
-    detectLocale: async (input: IpLocaleRequest) =>
+    detectLocale: async (context: WorkspaceContext, input: IpLocaleRequest) =>
       ipcResultSchema(ipLocaleResultSchema).parse(
-        await ipcRenderer.invoke('environment:detect-locale', ipLocaleRequestSchema.parse(input)),
+        await invokeWorkspace(
+          context,
+          'environment:detect-locale',
+          ipLocaleRequestSchema.parse(input),
+        ),
       ),
-    cancelLocale: async (requestId: string) =>
+    cancelLocale: async (context: WorkspaceContext, requestId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke(
+        await invokeWorkspace(
+          context,
           'environment:cancel-locale',
           ipLocaleCancelSchema.parse(requestId),
         ),
       ),
-    preflight: async (id: string) =>
+    preflight: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(preflightReportSchema).parse(
-        await ipcRenderer.invoke('environment:preflight', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:preflight', environmentIdSchema.parse(id)),
       ),
-    trash: async () =>
+    trash: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(environmentSummarySchema)).parse(
-        await ipcRenderer.invoke('environment:trash-list'),
+        await invokeWorkspace(context, 'environment:trash-list'),
       ),
-    restore: async (id: string) =>
+    restore: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:restore', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:restore', environmentIdSchema.parse(id)),
       ),
-    get: async (id: string) =>
+    get: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(environmentDetailsSchema).parse(
-        await ipcRenderer.invoke('environment:get', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:get', environmentIdSchema.parse(id)),
       ),
-    update: async (input: UpdateEnvironmentInput) =>
+    update: async (context: WorkspaceContext, input: UpdateEnvironmentInput) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:update', updateEnvironmentInputSchema.parse(input)),
+        await invokeWorkspace(
+          context,
+          'environment:update',
+          updateEnvironmentInputSchema.parse(input),
+        ),
       ),
-    delete: async (id: string) =>
+    delete: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('environment:delete', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:delete', environmentIdSchema.parse(id)),
       ),
-    list: async () =>
+    list: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(environmentSummarySchema)).parse(
-        await ipcRenderer.invoke('environment:list'),
+        await invokeWorkspace(context, 'environment:list'),
       ),
-    create: async (input: CreateEnvironmentInput) =>
+    create: async (context: WorkspaceContext, input: CreateEnvironmentInput) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:create', createEnvironmentInputSchema.parse(input)),
+        await invokeWorkspace(
+          context,
+          'environment:create',
+          createEnvironmentInputSchema.parse(input),
+        ),
       ),
-    start: async (id: string) =>
+    start: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:start', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:start', environmentIdSchema.parse(id)),
       ),
-    stop: async (id: string) =>
+    stop: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:stop', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:stop', environmentIdSchema.parse(id)),
       ),
-    recover: async (id: string) =>
+    recover: async (context: WorkspaceContext, id: string) =>
       ipcResultSchema(environmentSummarySchema).parse(
-        await ipcRenderer.invoke('environment:recover', environmentIdSchema.parse(id)),
+        await invokeWorkspace(context, 'environment:recover', environmentIdSchema.parse(id)),
       ),
   },
   worker: {
-    runSmoke: async (task: WorkerTask) =>
+    runSmoke: async (context: WorkspaceContext, task: WorkerTask) =>
       ipcResultSchema(workerResultSchema).parse(
-        await ipcRenderer.invoke('worker:run-smoke', workerTaskSchema.parse(task)),
+        await invokeWorkspace(context, 'worker:run-smoke', workerTaskSchema.parse(task)),
       ),
-    cancel: async (taskId: string) =>
+    cancel: async (context: WorkspaceContext, taskId: string) =>
       ipcResultSchema(z.boolean()).parse(
-        await ipcRenderer.invoke('worker:cancel', workerTaskIdSchema.parse(taskId)),
+        await invokeWorkspace(context, 'worker:cancel', workerTaskIdSchema.parse(taskId)),
       ),
   },
 } as const

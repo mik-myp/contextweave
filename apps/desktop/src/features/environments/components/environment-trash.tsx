@@ -1,3 +1,4 @@
+import { workspaceApi } from '@/features/workspaces/workspace-api'
 import { ArchiveRestoreIcon } from 'lucide-react'
 import { DataTableRowActions } from '@/components/data-table/data-table-row-actions'
 import { selectionColumn } from '@/components/data-table/data-table-selection'
@@ -19,14 +20,14 @@ export function EnvironmentTrash() {
   const batch = useBatchMutation(['environments'])
   const query = useQuery({
     queryKey: ['local', 'environments', 'trash'],
-    queryFn: () => unwrapIpc(window.contextweave.environment.trash()),
+    queryFn: () => unwrapIpc(workspaceApi.environment.trash()),
   })
   const restore = async (items: EnvironmentSummary[]) => {
     const result = await batch.run({
       items,
       getId: (row) => row.id,
       getLabel: (row) => row.name,
-      action: (row) => unwrapIpc(window.contextweave.environment.restore(row.id)),
+      action: (row) => unwrapIpc(workspaceApi.environment.restore(row.id)),
     })
     if (result)
       table.setRowSelection((current) =>

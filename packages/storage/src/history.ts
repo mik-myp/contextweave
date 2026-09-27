@@ -159,6 +159,7 @@ export function readActivityPage(sqlite: DatabaseSync, input: unknown) {
     previousCursor: page.previousCursor,
     nextCursor: page.nextCursor,
     items: page.rows.map((row) => ({
+      workspaceId: row.workspace_id,
       sessionId: row.session_id,
       environmentId: row.environment_id,
       environmentName: row.environment_name ?? undefined,
@@ -180,6 +181,7 @@ export function readOperationPage(sqlite: DatabaseSync, input: unknown) {
     previousCursor: page.previousCursor,
     nextCursor: page.nextCursor,
     items: page.rows.map((row) => ({
+      workspaceId: row.workspace_id,
       operationId: row.operation_id,
       environmentId: row.environment_id,
       environmentName: row.environment_name ?? undefined,

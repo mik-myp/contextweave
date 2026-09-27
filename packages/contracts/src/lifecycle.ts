@@ -1,4 +1,5 @@
 import { historyPageSchema } from './history'
+import { workspaceContextSchema } from './workspaces'
 import { z } from 'zod'
 
 export const capabilityStateSchema = z.enum(['unverified', 'verified', 'unsupported', 'failed'])
@@ -92,6 +93,7 @@ export const operationKindSchema = z.enum([
 ])
 export type OperationKind = z.infer<typeof operationKindSchema>
 export const operationSummarySchema = z.object({
+  workspaceId: workspaceContextSchema.shape.workspaceId,
   operationId: z.string(),
   environmentId: z.string().nullable(),
   environmentName: z.string().optional(),

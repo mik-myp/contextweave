@@ -1,80 +1,94 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { EventEmitter } from 'node:events'
 import {
   finishSecondInstance,
   reopenAfterNativeClose,
   windowFailureEvidence,
 } from './smoke-window-lifecycle.mjs'
 
-test('second-instance waits for native destruction, not merely the renderer close event', async () => {
+function nativeWindowFixture() {
   const order = []
-  let inspections = 0,
-    announce
-  const native = { BrowserWindow: { getAllWindows: () => (++inspections === 1 ? [{}] : []) } }
+  const window = new EventEmitter()
+  let destroyed = false
+  let windows = [window]
+  let announce
+  window.isDestroyed = () => destroyed
+  window.close = () => {
+    order.push('native-close')
+    window.emit('close')
+    setImmediate(() => {
+      destroyed = true
+      windows = []
+      order.push('native-closed')
+      window.emit('closed')
+    })
+  }
+  window.dispose = async () => { order.push('disposed') }
+  const page = { close: () => { throw new Error('RENDERER_CLOSE_IS_NOT_NATIVE_CLOSE') } }
   const desktop = {
-    evaluate: (read) => read(native),
+    browserWindow: async (target) => {
+      assert.equal(target, page)
+      order.push('native-handle')
+      return window
+    },
+    evaluate: (read, handle) => read({ BrowserWindow: { getAllWindows: () => windows } }, handle),
     waitForEvent(name, options) {
       assert.equal(name, 'window')
       assert(options.timeout <= 1000)
       order.push('subscribed')
-      return new Promise((resolve) => {
-        announce = resolve
-      })
+      return new Promise((resolve) => { announce = resolve })
     },
   }
-  const page = {
-    close: async () => {
-      order.push('page-close')
-    },
-  }
+  return { desktop, page, window, order, announce: (next) => announce(next) }
+}
+
+test('second-instance closes the corresponding native window and waits for closed, not a renderer target', async () => {
+  const f = nativeWindowFixture()
   const opened = { fixture: true }
-  const result = await reopenAfterNativeClose(
-    desktop,
-    page,
-    () => {
-      assert.equal(inspections, 2)
-      order.push('triggered')
-      announce(opened)
-    },
-    1000,
-  )
+  const result = await reopenAfterNativeClose(f.desktop, f.page, () => {
+    assert(f.window.isDestroyed())
+    f.order.push('triggered')
+    f.announce(opened)
+  }, 1000)
   assert.equal(result, opened)
-  assert.deepEqual(order, ['page-close', 'subscribed', 'triggered'])
+  assert.deepEqual(f.order, ['native-handle', 'native-close', 'native-closed', 'disposed', 'subscribed', 'triggered'])
+  assert.equal(f.window.listenerCount('closed'), 0)
 })
 
-test('no second instance launches when the native window or Main inspection never closes', async () => {
-  for (const evaluate of [async () => false, () => new Promise(() => {})]) {
+for (const blocked of ['native-close', 'main-inspection', 'native-lookup'])
+  test(`no second instance launches when ${blocked} is unconfirmed`, async () => {
+    const f = nativeWindowFixture()
+    if (blocked === 'native-close') f.window.close = () => {}
+    if (blocked === 'main-inspection') f.desktop.evaluate = () => new Promise(() => {})
+    if (blocked === 'native-lookup') f.desktop.browserWindow = () => new Promise(() => {})
     let triggered = false
     await assert.rejects(
-      reopenAfterNativeClose(
-        { evaluate },
-        { close: async () => {} },
-        () => {
-          triggered = true
-        },
-        20,
-      ),
-      /NATIVE_MANAGER_NOT_CLOSED/,
+      reopenAfterNativeClose(f.desktop, f.page, () => { triggered = true }, 20),
+      blocked === 'native-lookup' ? /MANAGER_NATIVE_WINDOW_UNAVAILABLE/ : /NATIVE_MANAGER_NOT_CLOSED/,
     )
     assert.equal(triggered, false)
+    if (blocked !== 'native-lookup') assert(f.order.includes('disposed'))
+  })
+
+test('native receipt rejects an undestroyed target or another remaining native window', async () => {
+  for (const receipt of [{ destroyed: false, windowCount: 0 }, { destroyed: true, windowCount: 1 }]) {
+    const f = nativeWindowFixture()
+    f.desktop.evaluate = async () => receipt
+    await assert.rejects(
+      reopenAfterNativeClose(f.desktop, f.page, () => assert.fail('Must not trigger a replacement'), 1000),
+      /NATIVE_MANAGER_NOT_CLOSED/,
+    )
+    assert(f.order.includes('disposed'))
   }
 })
 
 test('trigger failure is preserved and late window rejection is consumed', async () => {
   const failure = new Error('TRIGGER_FAILURE')
-  const desktop = {
-    evaluate: async () => true,
-    waitForEvent: () => new Promise((_, reject) => setTimeout(() => reject(new Error('LATE')), 10)),
-  }
+  const f = nativeWindowFixture()
+  f.desktop.waitForEvent = () => new Promise((_, reject) => setTimeout(() => reject(new Error('LATE')), 10))
   await assert.rejects(
-    reopenAfterNativeClose(
-      desktop,
-      { close: async () => {} },
-      () => {
-        throw failure
-      },
-      1000,
-    ),
+    reopenAfterNativeClose(f.desktop, f.page, () => { throw failure }, 1000),
     (actual) => actual === failure,
   )
   await new Promise((resolve) => setTimeout(resolve, 20))

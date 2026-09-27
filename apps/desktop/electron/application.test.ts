@@ -107,8 +107,18 @@ describe('application command boundary', () => {
 })
 
 it('bounds history IPC pages and rejects invalid query/cursor fields without changing history', async () => {
-  const { app, repository } = fixture()
-  for (let i = 0; i < 130; i++) repository.createOperation(`history-${i}`, 'install', 'kernel-key')
+  const { app, repository, db } = fixture()
+  // These rows are page-query inputs, not 130 separate durability operations under test.
+  // Keep the real database and commit all fixture rows before calling any IPC.
+  db.sqlite.exec('BEGIN IMMEDIATE')
+  try {
+    for (let i = 0; i < 130; i++)
+      repository.createOperation(`history-${i}`, 'install', 'kernel-key')
+    db.sqlite.exec('COMMIT')
+  } catch (error) {
+    db.sqlite.exec('ROLLBACK')
+    throw error
+  }
   const first = await app.invoke('operation:page', { limit: 3 })
   expect(first).toMatchObject({
     ok: true,

@@ -9,14 +9,37 @@ export async function reopenAfterNativeClose(desktop, page, trigger, timeoutMs =
     assert(value > 0, 'MANAGER_REOPEN_DEADLINE')
     return value
   }
-  // A Playwright page close can precede Electron's BrowserWindow 'closed'. This
-  // test promises to reopen a destroyed native window, not one still closing.
-  await withDeadline(page.close(), remaining(), 'MANAGER_CLOSE_TIMEOUT')
-  await until(
-    () => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length === 0),
+  // CDP page.close() destroys a WebContents target without exercising the native
+  // BrowserWindow close entry point. Use the actual window and arm 'closed' before
+  // calling close(), so a veto/hang cannot be mistaken for native destruction.
+  const window = await withDeadline(
+    desktop.browserWindow(page),
     remaining(),
-    'NATIVE_MANAGER_NOT_CLOSED',
+    'MANAGER_NATIVE_WINDOW_UNAVAILABLE',
   )
+  try {
+    const closed = await withDeadline(
+      desktop.evaluate(
+        ({ BrowserWindow }, target) =>
+          new Promise((resolve) => {
+            target.once('closed', () =>
+              resolve({
+                destroyed: target.isDestroyed(),
+                windowCount: BrowserWindow.getAllWindows().length,
+              }),
+            )
+            target.close()
+          }),
+        window,
+      ),
+      remaining(),
+      'NATIVE_MANAGER_NOT_CLOSED',
+    )
+    assert.deepEqual(closed, { destroyed: true, windowCount: 0 }, 'NATIVE_MANAGER_NOT_CLOSED')
+  } finally {
+    // Bounded test-handle cleanup must not replace the native-close failure.
+    await withDeadline(window.dispose(), 1000, 'NATIVE_HANDLE_DISPOSE_TIMEOUT').catch(() => {})
+  }
   const opened = desktop.waitForEvent('window', { timeout: remaining() })
   // Subscribe before triggering the second process/activation; consume both
   // rejections even if triggering fails, so no late unhandled rejection escapes.

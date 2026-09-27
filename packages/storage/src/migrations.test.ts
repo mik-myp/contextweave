@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { environmentConfigSchema } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from './index'
 import { databaseVersion, migrateDatabase } from './migrations'
+import { openVersion4Fixture } from './legacy-fixture'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -16,7 +17,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'cw-migration-v3-'))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const file = join(root, 'old.sqlite')
-  const db = openLocalDatabase(file)
+  const db = openVersion4Fixture(file)
   cleanups.push(() => db.close())
   const repository = new EnvironmentRepository(db.sqlite)
   const proxy = repository.saveProxy('proxy', {
@@ -40,7 +41,7 @@ function fixture() {
   repository.updateConfig({ ...config, name: 'Changed' }, 1)
   repository.deleteEnvironment('env')
   repository.setSetting('fixture', { keep: true })
-  db.sqlite.exec('ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; PRAGMA user_version = 2;')
+  db.sqlite.exec('BEGIN IMMEDIATE; ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; PRAGMA user_version = 2; COMMIT;')
   const snapshot = () => ({
     proxies: repository.listProxies(),
     environments: repository.listAll(),
@@ -138,11 +139,15 @@ describe('schema v3 migration', () => {
   })
 })
 
-it('migrates a genuine v3 session without inventing process identity; v4 reopens idempotently', () => {
+it('migrates a genuine v3 session without inventing process identity; current schema reopens idempotently', () => {
   const root = mkdtempSync(join(tmpdir(), 'cw-migration-v4-'))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const file = join(root, 'data.sqlite')
-  let db = openLocalDatabase(file)
+  let db = openVersion4Fixture(file)
+  new EnvironmentRepository(db.sqlite).create({
+    config: environmentConfigSchema.parse({ environmentId: 'env', name: 'Legacy', kernelId: 'standard-chromium', kernelVersion: 'local', commonConfig: {} }),
+    dataDir: join(root, 'profile'), platform: 'darwin', arch: 'arm64',
+  })
   db.sqlite.exec(`INSERT INTO runtime_sessions (session_id, environment_id, pid, control_port, started_at, status, phase)
     VALUES ('old', 'env', 123, 9222, '2026-09-24T00:00:00.000Z', 'running', 'launch');
     ALTER TABLE runtime_sessions DROP COLUMN process_identity; PRAGMA user_version = 3;`)
@@ -155,6 +160,6 @@ it('migrates a genuine v3 session without inventing process identity; v4 reopens
   db.close()
   db = openLocalDatabase(file)
   expect(readdirSync(root).filter((name) => name.endsWith('.bak'))).toHaveLength(1)
-  expect(db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(4)
+  expect(db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
   db.close()
 })

@@ -172,29 +172,40 @@ describe('durable credential retirement', () => {
     const f = fixture()
     f.credentials.save('shared', 'secret')
     f.repository.scheduleCredentialCleanup('shared')
-    if (owner === 'shared-proxy')
-      f.repository.saveProxy('shared-proxy', { ...config, credentialRef: 'shared' })
-    else {
-      const environment = environmentConfigSchema.parse({
-        environmentId: 'env-owner',
-        name: 'Owner',
-        kernelId: 'standard-chromium',
-        kernelVersion: 'local',
-        commonConfig: {},
-        proxyId: owner === 'dangling-proxy' ? 'missing-proxy' : undefined,
-        proxy: { ...config, credentialRef: 'shared' },
-      })
-      f.repository.create({
-        config: environment,
-        dataDir: join(f.root, 'profile'),
-        platform: 'darwin',
-        arch: 'arm64',
-      })
-      if (owner === 'trash-inline') f.repository.deleteEnvironment('env-owner')
-      if (owner === 'invalid-config')
-        f.database.sqlite.exec("UPDATE environments SET config_json = '{broken'")
-      if (owner === 'mismatched-link')
-        f.database.sqlite.exec("UPDATE environments SET proxy_id = 'unexpected'")
+    // Fault injection only: model corruption by an external writer after opening.
+    // The production connection never disables these guards; integrity.test.ts
+    // separately proves direct invalid writes and reopening corrupt files fail.
+    const corrupt = ['dangling-proxy', 'invalid-config', 'mismatched-link'].includes(owner)
+    if (corrupt)
+      f.database.sqlite.exec('PRAGMA foreign_keys = OFF; PRAGMA ignore_check_constraints = ON;')
+    try {
+      if (owner === 'shared-proxy')
+        f.repository.saveProxy('shared-proxy', { ...config, credentialRef: 'shared' })
+      else {
+        const environment = environmentConfigSchema.parse({
+          environmentId: 'env-owner',
+          name: 'Owner',
+          kernelId: 'standard-chromium',
+          kernelVersion: 'local',
+          commonConfig: {},
+          proxyId: owner === 'dangling-proxy' ? 'missing-proxy' : undefined,
+          proxy: { ...config, credentialRef: 'shared' },
+        })
+        f.repository.create({
+          config: environment,
+          dataDir: join(f.root, 'profile'),
+          platform: 'darwin',
+          arch: 'arm64',
+        })
+        if (owner === 'trash-inline') f.repository.deleteEnvironment('env-owner')
+        if (owner === 'invalid-config')
+          f.database.sqlite.exec("UPDATE environments SET config_json = '{broken'")
+        if (owner === 'mismatched-link')
+          f.database.sqlite.exec("UPDATE environments SET proxy_id = 'unexpected'")
+      }
+    } finally {
+      if (corrupt)
+        f.database.sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA ignore_check_constraints = OFF;')
     }
     expect(drainCredentialCleanup(f.repository, f.credentials)).toBe(false)
     expect(f.credentials.read('shared')).toBe('secret')

@@ -14,6 +14,7 @@ import type {
 } from '@contextweave/contracts'
 
 import { migrateDatabase, databaseVersion } from './migrations'
+import { verifyDatabaseRelations } from './integrity'
 
 type Row = Record<string, unknown>
 
@@ -32,6 +33,11 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
       throw new Error('This database requires a newer ContextWeave version')
     sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
     migrateDatabase(sqlite, filePath)
+    if (sqlite.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1)
+      throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
+    sqlite.exec('BEGIN')
+    verifyDatabaseRelations(sqlite)
+    sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
     sqlite.close()

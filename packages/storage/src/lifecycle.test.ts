@@ -2,6 +2,8 @@ import { mkdtempSync, readdirSync, rmSync, mkdirSync, writeFileSync, readFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { openVersion4Fixture } from './legacy-fixture'
+import { databaseVersion } from './migrations'
 import { afterEach, describe, expect, it } from 'vitest'
 import { environmentConfigSchema } from '@contextweave/contracts'
 import {
@@ -55,7 +57,9 @@ describe('configuration history and lifecycle', () => {
     expect(readFileSync(join(root, 'browser-data'), 'utf8')).toBe('retained')
   })
   it('records actual session identity and terminal time, and recovers unfinished commands', () => {
-    const { repository } = fixture()
+    const { repository, root } = fixture()
+    repository.create({ config, dataDir: root, platform: 'darwin', arch: 'arm64' })
+    repository.updateConfig({ ...config, name: 'Second revision' }, 1)
     repository.createRuntimeSession({
       sessionId: 's',
       environmentId: 'env-a',
@@ -149,17 +153,17 @@ it('upgrades v1 proxy names without changing existing credentials, IDs or enviro
   const root = mkdtempSync(join(tmpdir(), 'cw-proxy-migration-'))
   directories.push(root)
   const file = join(root, 'data.sqlite')
-  const previous = openLocalDatabase(file)
+  const previous = openVersion4Fixture(file)
   const repository = new EnvironmentRepository(previous.sqlite)
   repository.create({ config, dataDir: root, platform: 'darwin', arch: 'arm64' })
   repository.saveProxy('p', { type: 'socks5', host: 'proxy.example.test', port: 1080, username: 'fixture', credentialRef: 'ref-preserved' })
-  previous.sqlite.exec('ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; ALTER TABLE proxies DROP COLUMN name; PRAGMA user_version = 1;')
+  previous.sqlite.exec('BEGIN IMMEDIATE; ALTER TABLE runtime_sessions DROP COLUMN process_identity; DROP TABLE credential_cleanup; ALTER TABLE proxies DROP COLUMN name; PRAGMA user_version = 1; COMMIT;')
   previous.close()
   const migrated = openLocalDatabase(file); databases.push(migrated)
   const next = new EnvironmentRepository(migrated.sqlite)
   expect(next.getProxy('p')).toMatchObject({ name: 'proxy.example.test:1080', username: 'fixture', credentialRef: 'ref-preserved' })
   expect(next.get('env-a')?.revision).toBe(1)
-  expect(readdirSync(root).some((name) => name.includes('.before-v4-'))).toBe(true)
+  expect(readdirSync(root).some((name) => name.includes(`.before-v${databaseVersion}-`))).toBe(true)
 })
 
 it('fills a missing runtime identity only for the same starting session and PID', () => {

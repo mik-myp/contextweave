@@ -1,5 +1,8 @@
 export type StartupErrorCode =
   | 'DATABASE_CORRUPT'
+  | 'DATABASE_INTEGRITY_FAILED'
+  | 'DATABASE_SCHEMA_UNSUPPORTED'
+  | 'DATABASE_FOREIGN_KEYS_UNAVAILABLE'
   | 'DATABASE_VERSION_UNSUPPORTED'
   | 'DATA_ACCESS_DENIED'
   | 'DATA_BUSY'
@@ -14,6 +17,12 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
   const code = 'code' in error && typeof error.code === 'string' ? error.code : ''
   const sqlite = 'errcode' in error && typeof error.errcode === 'number' ? error.errcode & 255 : 0
   const message = error instanceof Error ? error.message : ''
+  if (
+    message === 'DATABASE_INTEGRITY_FAILED' ||
+    message === 'DATABASE_SCHEMA_UNSUPPORTED' ||
+    message === 'DATABASE_FOREIGN_KEYS_UNAVAILABLE'
+  )
+    return message
   if (message === 'UI_LOAD_FAILED') return 'UI_LOAD_FAILED'
   if (message === 'DATABASE_CORRUPT' || [11, 26].includes(sqlite)) return 'DATABASE_CORRUPT'
   if (message === 'This database requires a newer ContextWeave version')
@@ -27,6 +36,18 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
 }
 
 const descriptions: Record<StartupErrorCode, [string, string]> = {
+  DATABASE_INTEGRITY_FAILED: [
+    '数据库存在不一致的关联或不合法的历史值，升级或打开已停止。请先保留完整数据目录并反馈此错误代码；不会自动删除或改写异常记录。',
+    'The database contains inconsistent relations or invalid stored values. Opening or upgrading has stopped. Preserve the full data directory and report this code; invalid records will not be deleted or rewritten automatically.',
+  ],
+  DATABASE_SCHEMA_UNSUPPORTED: [
+    '数据库结构与受支持的版本不一致，升级已停止。请保留完整数据目录并反馈此错误代码；不会丢弃额外的列、索引或数据。',
+    'The database structure differs from the supported schema. Upgrading has stopped. Preserve the full data directory and report this code; extra columns, indexes or data will not be discarded.',
+  ],
+  DATABASE_FOREIGN_KEYS_UNAVAILABLE: [
+    '数据库关系保护无法启用，已停止打开数据。请保留数据目录并重新安装受支持的应用版本。',
+    'Database relationship enforcement could not be enabled. Opening has stopped. Preserve the data directory and reinstall a supported application version.',
+  ],
   DATABASE_CORRUPT: [
     '本地数据库无法读取或已损坏。请先保留数据目录副本，再从已验证的备份恢复。',
     'The database is unreadable or damaged. Preserve a copy of the data directory before restoring a verified backup.',

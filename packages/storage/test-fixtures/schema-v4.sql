@@ -1,8 +1,5 @@
-import type { DatabaseSync } from 'node:sqlite'
-import { randomUUID } from 'node:crypto'
-import { migrateIntegritySchema } from './integrity'
+-- Frozen DDL from v0.1.12 migrations.ts; test data only.
 
-const initialSchema = `
 CREATE TABLE IF NOT EXISTS environments (
   environment_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -59,41 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_runtime_sessions_environment ON runtime_sessions(
 CREATE INDEX IF NOT EXISTS idx_runtime_sessions_status ON runtime_sessions(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
-`
 
-export const databaseVersion = 5
-export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
-  let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
-  if (version > databaseVersion)
-    throw new Error('This database requires a newer ContextWeave version')
-  if (version === databaseVersion) return
-  const existing = sqlite
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='environments'")
-    .get()
-  if (existing && filePath !== ':memory:') {
-    const backupPath = `${filePath}.before-v${databaseVersion}-${Date.now()}-${randomUUID()}.bak`
-    // VACUUM INTO takes a consistent SQLite snapshot, including committed WAL pages.
-    sqlite.prepare('VACUUM INTO ?').run(backupPath)
-  }
-  // SQLite cannot change foreign_keys inside a transaction. Restore and verify it on
-  // every exit, including failure to acquire the write lock; openLocalDatabase closes
-  // a connection if rollback or restoration fails.
-  let transactionOpen = false
-  let failure: unknown
-  try {
-    sqlite.exec('PRAGMA foreign_keys = OFF')
-    if (sqlite.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 0)
-      throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
-    sqlite.exec('BEGIN IMMEDIATE')
-    transactionOpen = true
-    // Another process may have migrated while the pre-migration backup was captured.
-    // Only the version read under our write transaction is authoritative for DDL.
-    version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
-    if (version > databaseVersion)
-      throw new Error('This database requires a newer ContextWeave version')
-    if (version < 1) {
-      sqlite.exec(initialSchema)
-      sqlite.exec(`
+
       ALTER TABLE environments ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
       ALTER TABLE environments ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active';
       ALTER TABLE environments ADD COLUMN trashed_at TEXT;
@@ -114,52 +78,17 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       );
       CREATE INDEX idx_operations_started ON operations(started_at DESC);
       PRAGMA user_version = 1;
-    `)
-    }
-    if (version < 2)
-      sqlite.exec(`
+
+
       ALTER TABLE proxies ADD COLUMN name TEXT NOT NULL DEFAULT '';
       UPDATE proxies SET name = host || ':' || port WHERE name = '';
       PRAGMA user_version = 2;
-    `)
-    if (version < 3)
-      sqlite.exec(`
+
+
       CREATE TABLE credential_cleanup (
         credential_ref TEXT PRIMARY KEY NOT NULL,
         created_at TEXT NOT NULL
       );
       PRAGMA user_version = 3;
-    `)
-    if (version < 4)
-      sqlite.exec(
-        `ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`,
-      )
-    if (version < 5) migrateIntegritySchema(sqlite)
-    sqlite.exec('COMMIT')
-    transactionOpen = false
-  } catch (error) {
-    failure = error
-    if (transactionOpen) {
-      try {
-        sqlite.exec('ROLLBACK')
-        transactionOpen = false
-      } catch (rollbackError) {
-        failure = new AggregateError([error, rollbackError], 'MIGRATION_ROLLBACK_FAILED')
-      }
-    }
-  }
-  try {
-    sqlite.exec('PRAGMA foreign_keys = ON')
-    if (sqlite.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1)
-      throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
-  } catch (restoreError) {
-    failure =
-      failure === undefined
-        ? restoreError
-        : new AggregateError(
-            [failure, restoreError],
-            transactionOpen ? 'MIGRATION_ROLLBACK_FAILED' : 'MIGRATION_RECOVERY_FAILED',
-          )
-  }
-  if (failure !== undefined) throw failure
-}
+
+ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;

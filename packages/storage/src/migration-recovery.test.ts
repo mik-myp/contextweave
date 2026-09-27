@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openLocalDatabase } from './index'
 import { databaseVersion, migrateDatabase } from './migrations'
+import { openVersion4Fixture } from './legacy-fixture'
 
 const cleanup: Array<() => void> = []
 afterEach(() => {
@@ -15,7 +16,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'cw-migration-recovery-'))
   cleanup.push(() => rmSync(root, { recursive: true, force: true }))
   const file = join(root, 'data.sqlite')
-  const db = openLocalDatabase(file)
+  const db = openVersion4Fixture(file)
   let closed = false
   const close = () => {
     if (!closed) {
@@ -25,10 +26,12 @@ function fixture() {
   }
   cleanup.push(close)
   db.sqlite.exec(`
+    BEGIN IMMEDIATE;
     INSERT INTO app_settings VALUES ('fixture', '{"keep":true}', '2026-01-01T00:00:00Z');
     ALTER TABLE runtime_sessions DROP COLUMN process_identity;
     DROP TABLE credential_cleanup;
     PRAGMA user_version = 2;
+    COMMIT;
   `)
   return { root, file, sqlite: db.sqlite, close }
 }

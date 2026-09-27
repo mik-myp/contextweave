@@ -17,6 +17,9 @@ describe('safe startup recovery', () => {
       'DATABASE_VERSION_UNSUPPORTED',
     ],
     [new Error('UI_LOAD_FAILED'), 'UI_LOAD_FAILED'],
+    [new Error('DATABASE_INTEGRITY_FAILED'), 'DATABASE_INTEGRITY_FAILED'],
+    [new Error('DATABASE_SCHEMA_UNSUPPORTED'), 'DATABASE_SCHEMA_UNSUPPORTED'],
+    [new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE'), 'DATABASE_FOREIGN_KEYS_UNAVAILABLE'],
     [new Error('password=secret /private/db.sqlite'), 'INITIALIZATION_FAILED'],
     [null, 'INITIALIZATION_FAILED'],
   ] as const)('maps structured failure %# without raw details', (error, code) => {

@@ -18,6 +18,7 @@ export function environmentColumns({
   kernels,
   proxies,
   pending,
+  queued,
   onStart,
   onStop,
   onDelete,
@@ -28,6 +29,7 @@ export function environmentColumns({
   kernels: KernelSummary[]
   proxies: ProxySummary[]
   pending: ReadonlySet<string>
+  queued: ReadonlySet<string>
   onStart: (environment: OrganizedEnvironment) => void
   onStop: (environment: OrganizedEnvironment) => void
   onOrganize: (environment: OrganizedEnvironment) => void
@@ -66,6 +68,13 @@ export function environmentColumns({
       filterFn: 'isOneOf',
       enableGlobalFilter: false,
       cell: ({ row }) => {
+        if (queued.has(row.original.id))
+          return (
+            <Badge variant="outline">
+              <ClockIcon aria-hidden="true" data-icon="inline-start" />
+              {t('commands.queued')}
+            </Badge>
+          )
         const status = row.original.status
         const Icon =
           status === 'running'

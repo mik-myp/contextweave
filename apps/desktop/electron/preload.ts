@@ -1,4 +1,15 @@
 import {
+  environmentCommandRequestSchema,
+  environmentCommandReceiptSchema,
+  environmentRecoveryInspectionSchema,
+  environmentCommandPageInputSchema,
+  environmentCommandPageSchema,
+  environmentCommandActiveSchema,
+  type EnvironmentCommandPageInput,
+  commandRequestIdSchema,
+  type EnvironmentCommandRequest,
+} from '@contextweave/contracts'
+import {
   batchPreviewInputSchema,
   batchPreviewSchema,
   batchIdSchema,
@@ -117,6 +128,32 @@ async function invokeWorkspace(context: WorkspaceContext, channel: string, paylo
     for (const record of records) {
       if (record !== null && typeof record === 'object' && 'workspaceId' in record)
         assertWorkspaceContext(owner, { workspaceId: record.workspaceId })
+    }
+  }
+  return result
+}
+
+async function invokeEnvironmentCommand(
+  context: WorkspaceContext,
+  channel: 'environment:command' | 'environment:command-get' | 'environment:command-cancel',
+  payload: EnvironmentCommandRequest | string,
+) {
+  const result = ipcResultSchema(environmentCommandReceiptSchema).parse(
+    await invokeWorkspace(context, channel, payload),
+  )
+  if (result.ok) {
+    const id = typeof payload === 'string' ? payload : payload.requestId
+    if (result.data.requestId !== id) throw new Error('COMMAND_RECEIPT_MISMATCH')
+    if (typeof payload !== 'string') {
+      if (result.data.kind !== payload.kind) throw new Error('COMMAND_RECEIPT_MISMATCH')
+      if (payload.kind !== 'create') {
+        const target = payload.kind === 'update' ? payload.input : payload
+        if (
+          result.data.environmentId !== target.environmentId ||
+          result.data.expectedRevision !== target.expectedRevision
+        )
+          throw new Error('COMMAND_RECEIPT_MISMATCH')
+      }
     }
   }
   return result
@@ -433,6 +470,44 @@ const api = {
       ),
   },
   environment: {
+    commandPage: async (context: WorkspaceContext, input: EnvironmentCommandPageInput) =>
+      ipcResultSchema(environmentCommandPageSchema).parse(
+        await invokeWorkspace(
+          context,
+          'environment:command-page',
+          environmentCommandPageInputSchema.parse(input),
+        ),
+      ),
+    activeCommands: async (context: WorkspaceContext) =>
+      ipcResultSchema(environmentCommandActiveSchema).parse(
+        await invokeWorkspace(context, 'environment:command-active'),
+      ),
+    inspectRecovery: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(environmentRecoveryInspectionSchema).parse(
+        await invokeWorkspace(
+          context,
+          'environment:recovery-inspect',
+          environmentIdSchema.parse(id),
+        ),
+      ),
+    submitCommand: async (context: WorkspaceContext, input: EnvironmentCommandRequest) =>
+      invokeEnvironmentCommand(
+        context,
+        'environment:command',
+        environmentCommandRequestSchema.parse(input),
+      ),
+    commandReceipt: async (context: WorkspaceContext, requestId: string) =>
+      invokeEnvironmentCommand(
+        context,
+        'environment:command-get',
+        commandRequestIdSchema.parse(requestId),
+      ),
+    cancelCommand: async (context: WorkspaceContext, requestId: string) =>
+      invokeEnvironmentCommand(
+        context,
+        'environment:command-cancel',
+        commandRequestIdSchema.parse(requestId),
+      ),
     detectLocale: async (context: WorkspaceContext, input: IpLocaleRequest) =>
       ipcResultSchema(ipLocaleResultSchema).parse(
         await invokeWorkspace(

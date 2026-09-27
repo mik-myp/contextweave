@@ -1,3 +1,4 @@
+import { useActiveCommands, useCommandTracking } from '../commands/use-commands'
 import { useEffect, useRef, useState, type BaseSyntheticEvent } from 'react'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
 import { useForm, type FieldErrors } from 'react-hook-form'
@@ -15,6 +16,8 @@ import { useEnvironmentService, isEnvironmentReadOnly } from '../environment-ser
 
 export function useEnvironmentEditor(detail?: EnvironmentDetails) {
   const environmentService = useEnvironmentService()
+  const commandActivity = useActiveCommands(),
+    tracking = useCommandTracking()
   const { t } = useI18n()
   const navigate = useNavigate()
   const mounted = useRef(true)
@@ -46,13 +49,24 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
   const [expanded, setExpanded] = useState(false)
   const [error, setError] = useState<string>()
   const [stopOpen, setStopOpen] = useState(false)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
   const [stopping, setStopping] = useState(false)
   const busy = useRef(false)
   const allowLeave = useRef(false)
   const status = environments.find((item) => item.id === detail?.id)?.status ?? detail?.status
-  const readOnly = status ? isEnvironmentReadOnly(status) : false
+  const commandBusy = Boolean(
+    detail && commandActivity.data?.items.some((item) => item.environmentId === detail.id),
+  )
+  const unconfirmed = tracking.entries.some((entry) => entry.environmentId === (detail?.id ?? null))
+  const readOnly = commandBusy || (status ? isEnvironmentReadOnly(status) : false)
   const disabled =
-    !!configurationError || readOnly || form.formState.isSubmitting || stopping || loading
+    !!configurationError ||
+    !!tracking.problem ||
+    unconfirmed ||
+    readOnly ||
+    form.formState.isSubmitting ||
+    stopping ||
+    loading
   useEffect(() => {
     if (draft) form.reset(draft.values, { keepDefaultValues: true })
   }, [draft, form])
@@ -95,7 +109,7 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
   }
   const submit = (event?: BaseSyntheticEvent) =>
     form.handleSubmit(async (values) => {
-      if (busy.current || readOnly || stopping || loading || configurationError) return
+      if (busy.current || disabled) return
       if (
         !detail &&
         !kernels.some((kernel) => kernel.id === values.kernelId && kernel.status === 'available')
@@ -141,10 +155,10 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     setStopping(true)
     setError(undefined)
     try {
-      const stopped =
-        status === 'needs-recovery'
-          ? await environmentService.recover(detail.id)
-          : await environmentService.stop(detail.id)
+      const stopped = await environmentService.stop(
+        detail.id,
+        environments.find((item) => item.id === detail.id)?.revision ?? detail.revision,
+      )
       upsertEnvironment(stopped)
       await refresh()
       setStopOpen(false)
@@ -186,6 +200,10 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     disabled,
     readOnly,
     status,
+    commandBusy,
+    unconfirmed,
+    recoveryOpen,
+    setRecoveryOpen,
     error: error ?? configurationError,
     retryConfiguration: configurationError ? refresh : undefined,
     stopOpen,

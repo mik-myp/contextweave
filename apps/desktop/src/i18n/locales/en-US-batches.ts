@@ -64,7 +64,8 @@ export const batchMessages: Record<keyof typeof zh, string> = {
   'error.BATCH_STORAGE_FAILED':
     'Batch results cannot be saved reliably. New effects have stopped. Restart the app and review unfinished items.',
   'error.BATCH_STATE_CONFLICT': 'The batch state changed. Refresh the results.',
-  'error.BATCH_INTERRUPTED': 'The app was interrupted. This item was not replayed.',
+  'error.BATCH_INTERRUPTED':
+    'Execution was interrupted or its outcome is uncertain. Inspect it before any new attempt; it was not replayed.',
   'error.ENVIRONMENT_NOT_TRASHED': 'The environment is not in the trash; skipped.',
   'error.ENVIRONMENT_NOT_RUNNING': 'The environment is not running; skipped.',
 }

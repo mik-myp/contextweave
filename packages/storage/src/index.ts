@@ -1,3 +1,4 @@
+import { EnvironmentCommandRepository, verifyCommandStorage } from './commands'
 import { BatchRepository, verifyBatchStorage } from './batches'
 import { OrganizationRepository, verifyOrganizationStorage } from './organization'
 import { mkdirSync } from 'node:fs'
@@ -60,6 +61,7 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
     verifyWorkspaceScope(sqlite)
     verifyOrganizationStorage(sqlite)
     verifyBatchStorage(sqlite)
+    verifyCommandStorage(sqlite)
     sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
@@ -197,6 +199,7 @@ function mapKernelInstallation(row: Row): KernelInstallationRecord {
 }
 
 export class EnvironmentRepository {
+  readonly commands: EnvironmentCommandRepository
   readonly batches: BatchRepository
   readonly organization: OrganizationRepository
   readonly workspaceId: string
@@ -232,6 +235,7 @@ export class EnvironmentRepository {
     this.workspaceId = new WorkspaceRepository(sqlite).current().workspaceId
     this.organization = new OrganizationRepository(sqlite)
     this.batches = new BatchRepository(sqlite)
+    this.commands = new EnvironmentCommandRepository(sqlite)
     this.databasePath = databaseFilePath(sqlite)
     if (paths) {
       assertWorkspaceContext(this.context, paths.context)
@@ -808,3 +812,11 @@ export { WorkspacePaths } from './workspace-paths'
 export { OrganizationRepository } from './organization'
 
 export { BatchRepository } from './batches'
+
+export { EnvironmentCommandRepository, maxActiveEnvironmentCommands, type CommandIdentity } from './commands'
+
+/** Node SQLite failures must remain distinguishable from a definite domain refusal. */
+export function isSqliteFailure(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    typeof error.code === 'string' && error.code.startsWith('ERR_SQLITE_')
+}

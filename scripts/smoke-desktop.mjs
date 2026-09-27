@@ -1,3 +1,4 @@
+import { verifyEnvironmentCommands, seedInterruptedCommandFacts } from './smoke-commands.mjs'
 import { desktopStage, activateDesktopPage } from './smoke-desktop-stages.mjs'
 import { verifyBackendBatches } from './smoke-batches.mjs'
 import { assertWorkspaceIdentity, verifyWorkspaceUpgrade } from './smoke-workspace.mjs'
@@ -46,7 +47,7 @@ const desktop = await desktopStage('primary-launch', () => _electron.launch({
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
 }), { timeoutMs: 20000 })
-let id, fixtureServer, localeProxy, workspaceIdentity
+let id, fixtureServer, localeProxy, workspaceIdentity, commandEvidence
 let preserveSmokeDirectory = false
 let completed = false
 const registeredArtifacts = []
@@ -471,6 +472,7 @@ try {
       const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
+    commandEvidence = await verifyEnvironmentCommands(page)
     await verifyBackendBatches(page, () => desktopStage('batch-navigation-focus', () => activateDesktopPage(desktop, page), { timeoutMs: 5000 }))
     console.log(
       JSON.stringify({
@@ -536,7 +538,7 @@ try {
   await desktopStage('primary-close', () => desktop.close(), { timeoutMs: 20000, app: desktop })
   try {
     if (completed) {
-      await verifyArtifactRestart(entry, directory, registeredArtifacts, workspaceIdentity)
+      await verifyArtifactRestart(entry, directory, registeredArtifacts, workspaceIdentity, seedInterruptedCommandFacts(directory, commandEvidence))
       // The isolated ASAR lives inside directory and must still exist for this second fixture.
       await verifyWorkspaceUpgrade(entry)
     }

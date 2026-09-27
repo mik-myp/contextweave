@@ -670,3 +670,79 @@ it('recovers every old active session through one complete query, never the page
   expect(await runtime.recover('env-a')).toMatchObject({ ok: true })
   expect(fullList).not.toHaveBeenCalled()
 })
+
+describe('read-only recovery inspection', () => {
+  it('reports safe facts without changing config, history, locks, process ownership or private paths', () => {
+    const f = fixture(),
+      before = f.repository.get('env-a'),
+      sessions = f.repository.listActiveRuntimeSessions()
+    const kill = vi.spyOn(process, 'kill')
+    try {
+      const inspection = f.runtime.inspectRecovery('env-a')
+      expect(inspection).toMatchObject({
+        environmentId: 'env-a',
+        revision: 1,
+        lockState: 'absent',
+        ownedByThisApp: false,
+        possiblyLiveSessions: 0,
+        canRecover: true,
+        reason: null,
+      })
+      for (const field of ['dataDir', 'pid', 'processIdentity', 'controlPort', 'token'])
+        expect(inspection).not.toHaveProperty(field)
+      expect(f.repository.get('env-a')).toEqual(before)
+      expect(f.repository.listActiveRuntimeSessions()).toEqual(sessions)
+      expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+      expect(f.driver.launch).not.toHaveBeenCalled()
+      expect(kill.mock.calls.every((call) => call[1] === 0)).toBe(true)
+    } finally {
+      kill.mockRestore()
+    }
+  })
+  it('refuses owned or unreadable locks and rechecks a lock acquired after the earlier inspection', async () => {
+    const f = fixture()
+    expect(f.runtime.inspectRecovery('env-a').canRecover).toBe(true)
+    acquireRuntimeLock(f.dir, {
+      pid: process.pid,
+      sessionId: 'external-live',
+      controlPort: 9000,
+      startedAt: new Date().toISOString(),
+    })
+    const before = readFileSync(runtimeLockPath(f.dir), 'utf8')
+    expect(f.runtime.inspectRecovery('env-a')).toMatchObject({
+      canRecover: false,
+      lockState: 'live',
+      reason: 'RECOVERY_MANUAL_REQUIRED',
+    })
+    expect(await f.runtime.recover('env-a')).toMatchObject({
+      ok: false,
+      code: 'RECOVERY_MANUAL_REQUIRED',
+    })
+    expect(readFileSync(runtimeLockPath(f.dir), 'utf8')).toBe(before)
+    // The fixture owns this synthetic lock; inspection and recovery themselves may not remove it.
+    rmSync(runtimeLockPath(f.dir), { recursive: true })
+    writeFileSync(runtimeLockPath(f.dir), 'invalid-owner')
+    expect(f.runtime.inspectRecovery('env-a')).toMatchObject({
+      canRecover: false,
+      lockState: 'unreadable',
+      reason: 'RECOVERY_LOCK_UNREADABLE',
+    })
+    expect(await f.runtime.recover('env-a')).toMatchObject({
+      ok: false,
+      code: 'RECOVERY_LOCK_UNREADABLE',
+    })
+    expect(readFileSync(runtimeLockPath(f.dir), 'utf8')).toBe('invalid-owner')
+  })
+  it("does not confuse this app's owned live session with permission to recover it", async () => {
+    const f = fixture()
+    expect((await f.runtime.start('env-a')).ok).toBe(true)
+    const inspection = f.runtime.inspectRecovery('env-a')
+    expect(inspection).toMatchObject({
+      ownedByThisApp: true,
+      canRecover: false,
+      reason: 'RUNTIME_BUSY',
+    })
+    expect(f.child.kill).not.toHaveBeenCalled()
+    expect(f.repository.get('env-a')?.status).toBe('running')
+  })
+})

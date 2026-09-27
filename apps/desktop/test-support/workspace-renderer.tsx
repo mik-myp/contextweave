@@ -1,3 +1,4 @@
+import { createEnvironmentCommandClient } from '../src/features/environments/commands/command-client'
 import { useMemo, type ReactNode } from 'react'
 import { type WorkspaceContext } from '@contextweave/contracts'
 import { WorkspaceSessionContext } from '../src/features/workspaces/workspace-session-context'
@@ -12,7 +13,18 @@ export function TestWorkspaceProvider({
   children: ReactNode
   context?: WorkspaceContext
 }) {
-  const value = useMemo(() => ({ context, api: createWorkspaceApi(context) }), [context])
+  const value = useMemo(() => {
+    const api = createWorkspaceApi(context)
+    return {
+      context,
+      api,
+      commands: createEnvironmentCommandClient({
+        context,
+        api: api.environment,
+        storage: window.localStorage,
+      }),
+    }
+  }, [context])
   return (
     <WorkspaceSessionContext.Provider value={value}>{children}</WorkspaceSessionContext.Provider>
   )

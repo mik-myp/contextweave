@@ -4,6 +4,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { environmentDetailsSchema } from '@contextweave/contracts'
 import { I18nProvider } from '@/i18n'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
+import { fixtureWorkspace, withWorkspaceFixture } from '../../../../test-support/workspace'
 import type { EnvironmentDraft } from '../environment-draft-context'
 import { environmentFormDefaults } from '../environment-form'
 const { environmentService } = vi.hoisted(() => ({
@@ -81,10 +84,21 @@ const saved = environmentDetailsSchema.parse({
   updatedAt: '2026-09-27T00:00:00.000Z',
   browserSettings: { language: 'system', timezone: 'system', window: { width: 1440, height: 900 } },
 })
+let client: QueryClient
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  window.localStorage.clear()
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  vi.stubGlobal(
+    'contextweave',
+    withWorkspaceFixture({
+      environment: {
+        activeCommands: async () => ({ ok: true, data: { ...fixtureWorkspace, items: [] } }),
+      },
+    }),
+  )
   drafts.clear()
   drafts.set('new', { values: { ...defaults }, defaults: { ...defaults } })
   appState.loading = false
@@ -96,6 +110,7 @@ beforeEach(() => {
 })
 afterEach(async () => {
   await act(async () => root.unmount())
+  client.clear()
   container.remove()
   vi.restoreAllMocks()
   vi.clearAllMocks()
@@ -106,7 +121,11 @@ const render = async () =>
     root.render(
       <StrictMode>
         <I18nProvider>
-          <Fixture />
+          <QueryClientProvider client={client}>
+            <TestWorkspaceProvider>
+              <Fixture />
+            </TestWorkspaceProvider>
+          </QueryClientProvider>
         </I18nProvider>
       </StrictMode>,
     ),

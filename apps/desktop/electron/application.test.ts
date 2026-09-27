@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { symlinkSync, readdirSync } from 'node:fs'
 import { environmentConfigSchema, type DataChanged } from '@contextweave/contracts'
 import { scopedCommands } from '../test-support/workspace'
@@ -6,7 +7,7 @@ import { ArtifactRepository } from '@contextweave/storage'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
 
@@ -437,4 +438,201 @@ it('owns backend batch previews, confirmations, facts and events at the applicat
   })
   expect(events.some((event) => event.domains.includes('batches'))).toBe(true)
   expect(events.every((event) => event.workspaceId === repository.workspaceId)).toBe(true)
+})
+
+describe('public durable environment command boundary', () => {
+  function prepare() {
+    const f = fixture(),
+      dataDir = join(f.root, 'environments', 'command-target')
+    mkdirSync(dataDir)
+    const config = environmentConfigSchema.parse({
+      environmentId: 'command-target',
+      name: 'Original',
+      kernelId: 'standard-chromium',
+      kernelVersion: 'local',
+      commonConfig: {},
+    })
+    f.repository.create({ config, dataDir, platform: 'darwin', arch: 'arm64' })
+    return { ...f, config, dataDir }
+  }
+  async function completed(
+    app: ReturnType<typeof fixture>['app'],
+    requestId: string,
+    status = 'succeeded',
+  ) {
+    await vi.waitFor(async () =>
+      expect(await app.invoke('environment:command-get', requestId)).toMatchObject({
+        ok: true,
+        data: { requestId, status },
+      }),
+    )
+  }
+  it('exposes bounded read-only receipt pages and complete active state only in the owning workspace', async () => {
+    const f = prepare(),
+      requestId = randomUUID()
+    const request = {
+      requestId,
+      kind: 'update',
+      input: {
+        version: 1,
+        environmentId: 'command-target',
+        expectedRevision: 1,
+        name: 'Paged',
+        proxyId: null,
+        browserSettings: {
+          language: 'system',
+          timezone: 'system',
+          window: { width: 1440, height: 900 },
+        },
+      },
+    }
+    expect(await f.app.invoke('environment:command', request)).toMatchObject({ ok: true })
+    await completed(f.app, requestId)
+    expect(await f.app.invoke('environment:command-page', { limit: 1 })).toMatchObject({
+      ok: true,
+      data: {
+        workspaceId: f.repository.workspaceId,
+        items: [{ requestId, status: 'succeeded' }],
+        nextBeforeId: null,
+      },
+    })
+    expect(await f.app.invoke('environment:command-active')).toMatchObject({
+      ok: true,
+      data: { workspaceId: f.repository.workspaceId, items: [] },
+    })
+    for (const channel of ['environment:command-page', 'environment:command-active']) {
+      expect(
+        await f.rawApp.invoke(channel, { workspaceId: randomUUID(), payload: {} }),
+      ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+    }
+    expect(await f.app.invoke('environment:command-page', { limit: 101 })).toMatchObject({
+      ok: false,
+    })
+    expect(
+      await f.app.invoke('environment:command-page', { beforeId: randomUUID() }),
+    ).toMatchObject({ ok: false, code: 'COMMAND_CURSOR_INVALID' })
+    expect(f.repository.get('command-target')?.name).toBe('Paged')
+    expect(f.repository.commands.get(requestId)?.status).toBe('succeeded')
+  })
+  it('executes concurrent duplicate updates once, retains receipts after log cleanup and rejects different intent', async () => {
+    const f = prepare(),
+      requestId = randomUUID()
+    const request = {
+      requestId,
+      kind: 'update',
+      input: {
+        version: 1,
+        environmentId: 'command-target',
+        expectedRevision: 1,
+        name: 'Updated',
+        proxyId: null,
+        browserSettings: {
+          language: 'en-US',
+          timezone: 'UTC',
+          window: { width: 1000, height: 800 },
+        },
+      },
+    }
+    const replies = await Promise.all([
+      f.app.invoke('environment:command', request),
+      f.app.invoke('environment:command', request),
+    ])
+    for (const reply of replies)
+      expect(reply).toMatchObject({
+        ok: true,
+        data: { requestId, environmentId: 'command-target' },
+      })
+    await completed(f.app, requestId)
+    expect(f.repository.get('command-target')).toMatchObject({
+      name: 'Updated',
+      revision: 2,
+      dataDir: f.dataDir,
+    })
+    expect(f.repository.listOperations()).toHaveLength(1)
+    f.db.sqlite.exec('DELETE FROM operations')
+    expect(await f.app.invoke('environment:command', request)).toMatchObject({
+      ok: true,
+      data: { status: 'succeeded' },
+    })
+    expect(f.repository.listOperations()).toHaveLength(0)
+    expect(
+      await f.app.invoke('environment:command', {
+        ...request,
+        input: { ...request.input, name: 'Different' },
+      }),
+    ).toMatchObject({ ok: false, code: 'COMMAND_INTENT_CONFLICT' })
+    expect(f.repository.get('command-target')?.revision).toBe(2)
+  })
+  it('checks the frozen revision inside the reservation before any mutation', async () => {
+    const f = prepare(),
+      requestId = randomUUID()
+    const pending = f.app.invoke('environment:command', {
+      requestId,
+      kind: 'trash',
+      environmentId: 'command-target',
+      expectedRevision: 1,
+    })
+    f.repository.updateConfig({ ...f.config, name: 'External edit' }, 1)
+    expect(await pending).toMatchObject({ ok: true })
+    await completed(f.app, requestId, 'failed')
+    expect(await f.app.invoke('environment:command-get', requestId)).toMatchObject({
+      ok: true,
+      data: { errorCode: 'CONFIG_CONFLICT' },
+    })
+    expect(f.repository.get('command-target')).toMatchObject({
+      lifecycle: 'active',
+      name: 'External edit',
+    })
+  })
+  it('retains the same Main-assigned creation identity on a refused create and excludes intent bodies from lookup', async () => {
+    const f = prepare(),
+      requestId = randomUUID(),
+      before = readdirSync(join(f.root, 'environments'))
+    const request = {
+      requestId,
+      kind: 'create',
+      input: { name: 'Unavailable', kernelId: 'not-an-installed-kernel' },
+    }
+    const first = await f.app.invoke('environment:command', request)
+    expect(first).toMatchObject({ ok: true, data: { requestId, kind: 'create' } })
+    await completed(f.app, requestId, 'failed')
+    const next = await f.app.invoke('environment:command', request)
+    if (!first.ok || !next.ok) throw new Error('fixture command should have durable admission')
+    const receipt = f.repository.commands.get(requestId)!
+    expect(first.data).toMatchObject({ environmentId: receipt.environmentId })
+    expect(next.data).toMatchObject({
+      environmentId: receipt.environmentId,
+      errorCode: 'PROVIDER_UNVERIFIED',
+    })
+    for (const field of ['intentDigest', 'input', 'config', 'credential', 'dataDir'])
+      expect(next.data).not.toHaveProperty(field)
+    expect(readdirSync(join(f.root, 'environments'))).toEqual(before)
+  })
+  it('validates ownership, exposes read-only recovery inspection and preserves named legacy operations', async () => {
+    const f = prepare(),
+      requestId = randomUUID()
+    expect(
+      await f.rawApp.invoke('environment:command-get', {
+        workspaceId: randomUUID(),
+        payload: requestId,
+      }),
+    ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+    const before = f.repository.get('command-target')
+    expect(await f.app.invoke('environment:recovery-inspect', 'command-target')).toMatchObject({
+      ok: true,
+      data: { revision: 1, canRecover: true, lockState: 'absent' },
+    })
+    expect(f.repository.get('command-target')).toEqual(before)
+    expect(await f.app.invoke('environment:delete', 'command-target')).toEqual({
+      ok: true,
+      data: true,
+    })
+    expect(f.repository.get('command-target')?.lifecycle).toBe('trashed')
+    expect(await f.app.invoke('environment:restore', 'command-target')).toMatchObject({
+      ok: true,
+      data: { lifecycle: 'active' },
+    })
+    expect(existsSync(f.dataDir)).toBe(true)
+    expect(f.db.sqlite.prepare('SELECT count(*) AS n FROM environment_commands').get()?.n).toBe(2)
+  })
 })

@@ -18,6 +18,15 @@ export function OrphanDirectories() {
     <section className="flex flex-col gap-3" aria-label={t('life.orphans')}>
       <h3 className="font-medium">{t('life.orphans')}</h3>
       <p className="text-sm text-muted-foreground">{t('life.orphansHelp')}</p>
+      {query.data && (
+        <Alert>
+          <AlertDescription>
+            {t('commands.orphanScope')
+              .replace('{workspace}', workspaceContext.workspaceId)
+              .replace('{count}', String(query.data.length))}
+          </AlertDescription>
+        </Alert>
+      )}
       {query.isPending ? (
         <Skeleton className="h-16" />
       ) : query.error ? (

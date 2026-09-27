@@ -1,3 +1,4 @@
+import type { EnvironmentCommandClient } from '@/features/environments/commands/command-client'
 import { createContext, useContext } from 'react'
 import { workspaceContextSchema, type WorkspaceContext } from '@contextweave/contracts'
 import type { WorkspaceApi } from './workspace-api'
@@ -7,6 +8,7 @@ export function workspaceKey(context: WorkspaceContext, ...parts: readonly unkno
 }
 export type WorkspaceSession = {
   context: Readonly<WorkspaceContext>
+  commands: EnvironmentCommandClient
   api: WorkspaceApi
   /** Only the verified original default identity may claim ownerless pre-v2 drafts. */
   legacyDraftOwner?: string

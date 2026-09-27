@@ -1,3 +1,4 @@
+import { verifyEnvironmentCommandRestart } from './smoke-commands.mjs'
 import { desktopStage } from './smoke-desktop-stages.mjs'
 import { assertWorkspaceIdentity } from './smoke-workspace.mjs'
 // Real screenshot registration and restart through the public sandboxed bridge. No path IPC.
@@ -25,7 +26,7 @@ export async function assertRegisteredScreenshot(call, outcome, bytes, expectedC
   return item
 }
 
-export async function verifyArtifactRestart(entry, directory, expected, workspaceIdentity) {
+export async function verifyArtifactRestart(entry, directory, expected, workspaceIdentity, commandEvidence) {
   const { _electron } = require('playwright-core')
   const legacy = join(directory, 'contextweave', 'worker-results', 'run-legacy')
   await mkdir(legacy, { recursive: true })
@@ -36,6 +37,7 @@ export async function verifyArtifactRestart(entry, directory, expected, workspac
     const page = await desktopStage('artifact-restart-first-window', () => app.firstWindow(), { timeoutMs: 10000, app })
     await page.waitForFunction(() => typeof window.contextweave?.storage?.pageArtifacts === 'function', undefined, { timeout: 10000 })
     assert.deepEqual(await assertWorkspaceIdentity((...args) => page.evaluate(...args)), workspaceIdentity)
+    await verifyEnvironmentCommandRestart(page, commandEvidence)
     const budget = await page.evaluate(async () => window.contextweave.storage.getArtifactBudget({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
     assert(budget.ok && budget.data.limitMiB === 1024 && budget.data.revision === (expected.length ? 3 : 1))
     assert.deepEqual(budget.data.reserved, { count: 0, bytes: 0 })

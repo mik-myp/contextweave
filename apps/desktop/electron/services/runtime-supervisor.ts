@@ -7,12 +7,14 @@ import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
   environmentConfigSchema,
+  environmentRecoveryInspectionSchema,
   type EnvironmentSummary,
   type IpcResult,
   type PreflightReport,
 } from '@contextweave/contracts'
 import {
   acquireRuntimeLock,
+  isSqliteFailure,
   inspectRuntimeLock,
   isRuntimeProcessAlive,
   readProcessIdentityAsync,
@@ -349,6 +351,7 @@ export function createRuntimeSupervisor(options: {
       changed()
       return ok(toSummary(repository.get(id)!))
     } catch (error) {
+      const persistenceFailed = isSqliteFailure(error)
       // Freeze the startup outcome before slower child/proxy cleanup can cross its deadline.
       budget?.dispose()
       budget?.abort()
@@ -367,7 +370,7 @@ export function createRuntimeSupervisor(options: {
         if (isChildRunning(managed.child)) {
           repository.updateStatus(id, 'needs-recovery')
           changed()
-          return fail('STOP_TIMEOUT') // Keep the lock while the child may still own its data.
+          return fail(persistenceFailed ? 'COMMAND_STORAGE_FAILED' : 'STOP_TIMEOUT') // Keep the lock while the child may still own its data.
         }
       }
       if (locked) releaseRuntimeLock(record.dataDir, sessionId)
@@ -395,13 +398,15 @@ export function createRuntimeSupervisor(options: {
         'KERNEL_REMOVAL_PENDING',
       ]
       return fail(
-        cancelled
-          ? 'CANCELLED'
-          : budget?.timedOut
-            ? 'CONTROL_TIMEOUT'
-            : error instanceof Error && known.includes(error.message)
-              ? error.message
-              : 'START_FAILED',
+        persistenceFailed
+          ? 'COMMAND_STORAGE_FAILED'
+          : cancelled
+            ? 'CANCELLED'
+            : budget?.timedOut
+              ? 'CONTROL_TIMEOUT'
+              : error instanceof Error && known.includes(error.message)
+                ? error.message
+                : 'START_FAILED',
       )
     } finally {
       budget?.dispose()
@@ -467,6 +472,45 @@ export function createRuntimeSupervisor(options: {
     stopping.set(id, operation)
     return operation
   }
+  function inspectRecovery(id: string) {
+    const record = repository.get(id)
+    if (!record) throw new Error('NOT_FOUND')
+    const lock = inspectRuntimeLock(record.dataDir)
+    const previous = repository.listActiveRuntimeSessions(id)
+    const possiblyLiveSessions = previous.filter((session) =>
+      isRuntimeProcessAlive(session.pid, session.processIdentity),
+    ).length
+    const ownedByThisApp = sessions.has(id) || starting.has(id)
+    const lockState = lock.live
+      ? 'live'
+      : existsSync(lock.lockPath)
+        ? lock.owner
+          ? 'stale'
+          : 'unreadable'
+        : 'absent'
+    const reason = ownedByThisApp
+      ? 'RUNTIME_BUSY'
+      : lock.live || possiblyLiveSessions
+        ? 'RECOVERY_MANUAL_REQUIRED'
+        : lockState === 'unreadable'
+          ? 'RECOVERY_LOCK_UNREADABLE'
+          : null
+    return environmentRecoveryInspectionSchema.parse({
+      workspaceId: repository.workspaceId,
+      environmentId: id,
+      revision: record.revision,
+      status: record.status,
+      lifecycle: record.lifecycle,
+      inspectedAt: new Date().toISOString(),
+      ownedByThisApp,
+      lockState,
+      recordedActiveSessions: previous.length,
+      possiblyLiveSessions,
+      hasUnconfirmedCommand: repository.commands.needsInspection(id),
+      canRecover: reason === null,
+      reason,
+    })
+  }
   async function recover(id: string): Promise<IpcResult<EnvironmentSummary>> {
     const record = repository.get(id)
     if (!record) return fail('NOT_FOUND')
@@ -490,6 +534,7 @@ export function createRuntimeSupervisor(options: {
     start,
     stop,
     recover,
+    inspectRecovery,
     recoverOnStartup,
     cancelStarts: () => {
       for (const controller of starting.values()) controller.abort()

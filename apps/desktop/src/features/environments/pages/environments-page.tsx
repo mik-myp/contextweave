@@ -1,3 +1,5 @@
+import { EnvironmentCommands } from '../commands/environment-commands'
+import { useCommandTracking } from '../commands/use-commands'
 import { BatchPreviewDialog } from '../batches/batch-preview-dialog'
 import { BatchTasks } from '../batches/batch-tasks'
 import type { BatchAction } from '@contextweave/contracts'
@@ -33,6 +35,7 @@ const getRowId = (row: EnvironmentSummary) => row.id
 
 export function EnvironmentsPage() {
   const { t } = useI18n()
+  const tracking = useCommandTracking()
   const [tab, setTab] = useState('active'),
     [selectedTask, setSelectedTask] = useState<string>()
   const onCreated = useCallback((id: string) => {
@@ -48,8 +51,20 @@ export function EnvironmentsPage() {
       <TabsList className="shrink-0">
         <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
         <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
+        <TabsTrigger value="commands">{t('commands.title')}</TabsTrigger>
         <TabsTrigger value="batches">{t('batch.tasks')}</TabsTrigger>
       </TabsList>
+      {(tracking.problem || tracking.entries.length > 0) && tab !== 'commands' && (
+        <Alert>
+          <AlertDescription>{t('commands.pendingHelp')}</AlertDescription>
+          <Button type="button" size="sm" variant="outline" onClick={() => setTab('commands')}>
+            {t('commands.title')} ({tracking.entries.length})
+          </Button>
+        </Alert>
+      )}
+      <TabsContent value="commands" className="flex min-h-0 flex-col gap-4">
+        <EnvironmentCommands />
+      </TabsContent>
       <TabsContent value="active" className="flex min-h-0 flex-col gap-4">
         <ActiveEnvironmentsPage onCreated={onCreated} />
       </TabsContent>
@@ -87,7 +102,7 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
     [],
   )
   const { savedId, setSavedId } = useEnvironmentDrafts()
-  const { pending, start, setStopTarget } = actions
+  const { pending, queued, start, setStopTarget } = actions
   const columns = useMemo(
     () =>
       environmentColumns({
@@ -96,12 +111,13 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
         kernels,
         proxies,
         pending,
+        queued,
         onStart: start,
         onStop: setStopTarget,
         onDelete,
         onOrganize: setOrganizationTarget,
       }),
-    [t, locale, kernels, proxies, pending, start, setStopTarget, onDelete],
+    [t, locale, kernels, proxies, pending, queued, start, setStopTarget, onDelete],
   )
   const table = useDataTable({
     data: rows,
@@ -174,7 +190,7 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
         searchPlaceholder={t('org.search')}
         searchMaxLength={200}
         loading={loading || organization.isPending}
-        error={error ?? organization.error?.message}
+        error={error ?? actions.commandError ?? organization.error?.message}
         onRetry={() => {
           void refresh()
           void organization.refetch()

@@ -176,7 +176,7 @@ export class BatchRepository {
   finishItem(
     id: string,
     ordinal: number,
-    status: 'succeeded' | 'failed' | 'skipped' | 'cancelled',
+    status: 'succeeded' | 'failed' | 'skipped' | 'cancelled' | 'unknown',
     reason: BatchReason | null,
     now = new Date().toISOString(),
   ) {

@@ -1,3 +1,4 @@
+import { createEnvironmentCommandClient } from '@/features/environments/commands/command-client'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { workspaceContextSchema, type WorkspaceContext } from '@contextweave/contracts'
@@ -31,11 +32,21 @@ function Session({
   children: ReactNode
 }) {
   const client = useQueryClient()
-  const [session] = useState(() => ({
-    context: Object.freeze({ ...context }),
-    api: createWorkspaceApi(context),
-    legacyDraftOwner,
-  }))
+  const [session] = useState(() => {
+    const api = createWorkspaceApi(context)
+    let storage: Storage | undefined
+    try {
+      storage = window.localStorage
+    } catch {
+      /* Client remains read-only if tracking is unavailable. */
+    }
+    return {
+      context: Object.freeze({ ...context }),
+      api,
+      legacyDraftOwner,
+      commands: createEnvironmentCommandClient({ context, api: api.environment, storage }),
+    }
+  })
   useEffect(() => {
     const unsubscribe = window.contextweave.events.onDataChanged(session.context, (domains) => {
       for (const domain of domains)
@@ -52,6 +63,7 @@ function Session({
     reconcile()
     window.addEventListener('focus', reconcile)
     return () => {
+      session.commands.stopObserving()
       unsubscribe()
       window.removeEventListener('focus', reconcile)
       void client.cancelQueries({ queryKey: workspaceKey(session.context) })

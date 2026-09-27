@@ -1,3 +1,4 @@
+import { commandMessages } from './zh-CN-commands'
 import { batchMessages } from './zh-CN-batches'
 import { organizationMessages } from './zh-CN-organization'
 import { logMessages } from './zh-CN-logs'
@@ -12,6 +13,7 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   ...workspaceMessages,
   ...organizationMessages,
   ...batchMessages,
+  ...commandMessages,
   ...adminMessages,
   'common.retry': '重试',
   'theme.saveErrorTitle': '主题尚未保存',

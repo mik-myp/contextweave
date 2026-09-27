@@ -58,7 +58,7 @@ export const batchMessages = {
   'error.BATCH_STORAGE_FAILED':
     '后台批次无法可靠保存结果，已停止新操作。请退出重启并核对未完成项目。',
   'error.BATCH_STATE_CONFLICT': '批次状态已变化，请刷新结果。',
-  'error.BATCH_INTERRUPTED': '应用中断，未重放此项目。',
+  'error.BATCH_INTERRUPTED': '执行中断或结果未确认；未重放此项目，请先核对实际状态。',
   'error.ENVIRONMENT_NOT_TRASHED': '环境不在回收站，已跳过。',
   'error.ENVIRONMENT_NOT_RUNNING': '环境未运行，已跳过。',
 } as const

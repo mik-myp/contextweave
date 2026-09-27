@@ -29,9 +29,8 @@ export function EnvironmentRowActions({
   const needsReview = environment.status === 'error' || environment.status === 'needs-recovery'
   const edit: DataTableRowAction = {
     id: 'edit',
-    label: t(readOnly || needsReview ? 'env.view' : 'env.edit'),
+    label: t(readOnly || needsReview || pending ? 'env.view' : 'env.edit'),
     icon: readOnly || needsReview ? EyeIcon : PencilIcon,
-    disabled: pending,
     render: (
       <Link to="/environments/$environmentId/edit" params={{ environmentId: environment.id }} />
     ),

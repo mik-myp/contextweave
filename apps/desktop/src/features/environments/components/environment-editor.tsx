@@ -1,3 +1,5 @@
+import { PendingCommands } from '../commands/pending-commands'
+import { EnvironmentRecoveryDialog } from '../commands/recovery-dialog'
 import { EnvironmentPreflight } from './environment-preflight'
 import { FormSection } from '@/components/form-section'
 import { FormProvider } from 'react-hook-form'
@@ -68,7 +70,9 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
         </div>
         {editor.error && (
           <Alert variant="destructive">
-            <AlertTitle>{t('env.operationError')}</AlertTitle>
+            <AlertTitle>
+              {t(editor.unconfirmed ? 'commands.pendingTitle' : 'env.operationError')}
+            </AlertTitle>
             <AlertDescription>{editor.error}</AlertDescription>
             {editor.retryConfiguration && (
               <Button
@@ -82,14 +86,17 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
             )}
           </Alert>
         )}
+        <PendingCommands environmentId={detail?.id ?? null} />
         {editor.readOnly && (
           <Alert>
             <AlertTitle>{t('env.readOnly')}</AlertTitle>
             <AlertDescription>
               {t(
-                editor.status === 'needs-recovery'
-                  ? 'env.recoveryDescription'
-                  : 'env.readOnlyDescription',
+                editor.commandBusy
+                  ? 'commands.busy'
+                  : editor.status === 'needs-recovery'
+                    ? 'env.recoveryDescription'
+                    : 'env.readOnlyDescription',
               )}
             </AlertDescription>
             <Button
@@ -97,13 +104,25 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
               size="sm"
               variant="outline"
               disabled={
-                editor.stopping || editor.status === 'stopping' || editor.status === 'starting'
+                editor.stopping ||
+                editor.commandBusy ||
+                editor.status === 'stopping' ||
+                editor.status === 'starting'
               }
-              onClick={() => editor.setStopOpen(true)}
+              onClick={() =>
+                editor.status === 'needs-recovery'
+                  ? editor.setRecoveryOpen(true)
+                  : editor.setStopOpen(true)
+              }
             >
               {t(editor.status === 'needs-recovery' ? 'env.recover' : 'env.stopToEdit')}
             </Button>
           </Alert>
+        )}
+        {detail && !editor.readOnly && (editor.status === 'error' || editor.unconfirmed) && (
+          <Button type="button" variant="outline" onClick={() => editor.setRecoveryOpen(true)}>
+            {t('commands.recoveryTitle')}
+          </Button>
         )}
         <EnvironmentBasicFields
           kernels={editor.kernels}
@@ -147,6 +166,12 @@ export function EnvironmentEditor({ detail }: { detail?: EnvironmentDetails }) {
         <Separator />
         <EnvironmentPreflight detail={detail} />
       </form>
+      {detail && editor.recoveryOpen && (
+        <EnvironmentRecoveryDialog
+          environmentId={detail.id}
+          onClose={() => editor.setRecoveryOpen(false)}
+        />
+      )}
       <EnvironmentConfirmDialog
         kind="stop"
         open={editor.stopOpen}

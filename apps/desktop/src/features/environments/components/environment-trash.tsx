@@ -75,7 +75,16 @@ export function EnvironmentTrash({ onCreated }: { onCreated: (id: string) => voi
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Alert>
-        <AlertDescription>{t('life.trashHelp')}</AlertDescription>
+        <AlertDescription>
+          {t('life.trashHelp')}
+          {query.data && (
+            <p>
+              {t('commands.trashScope')
+                .replace('{workspace}', workspaceContext.workspaceId)
+                .replace('{count}', String(query.data.length))}
+            </p>
+          )}
+        </AlertDescription>
       </Alert>
       {targets && (
         <BatchPreviewDialog

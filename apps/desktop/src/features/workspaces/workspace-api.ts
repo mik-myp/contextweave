@@ -69,6 +69,12 @@ export function createWorkspaceApi(input: WorkspaceContext) {
       delete: bindWorkspace(() => window.contextweave.proxy.delete),
     },
     environment: {
+      commandPage: bindWorkspace(() => window.contextweave.environment.commandPage),
+      activeCommands: bindWorkspace(() => window.contextweave.environment.activeCommands),
+      inspectRecovery: bindWorkspace(() => window.contextweave.environment.inspectRecovery),
+      submitCommand: bindWorkspace(() => window.contextweave.environment.submitCommand),
+      commandReceipt: bindWorkspace(() => window.contextweave.environment.commandReceipt),
+      cancelCommand: bindWorkspace(() => window.contextweave.environment.cancelCommand),
       detectLocale: bindWorkspace(() => window.contextweave.environment.detectLocale),
       cancelLocale: bindWorkspace(() => window.contextweave.environment.cancelLocale),
       preflight: bindWorkspace(() => window.contextweave.environment.preflight),

@@ -420,3 +420,132 @@ it('validates batch requests and refuses a foreign task container even with owne
     payload: '00000000-0000-4000-8000-000000000004',
   })
 })
+
+describe('durable command preload API', () => {
+  const requestId = '9c0fb113-0c8d-46c7-a1e8-48dfb0958e13'
+  const request = { requestId, kind: 'start' as const, environmentId: 'env', expectedRevision: 1 }
+  const receipt = {
+    ...workspace,
+    version: 1,
+    ...request,
+    status: 'queued',
+    createdAt: '2026-09-27T00:00:00.000Z',
+    startedAt: null,
+    endedAt: null,
+    errorCode: null,
+  }
+  it('validates bounded receipt pages and complete active snapshots with nested ownership and cursor consistency', async () => {
+    const page = { ...workspace, items: [receipt], nextBeforeId: null }
+    bridge.invoke.mockResolvedValue({ ok: true, data: page })
+    expect(await api.environment.commandPage(workspace, { limit: 20 })).toEqual({
+      ok: true,
+      data: page,
+    })
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:command-page', {
+      ...workspace,
+      payload: { beforeId: null, limit: 20 },
+    })
+    const active = { ...workspace, items: [receipt] }
+    bridge.invoke.mockResolvedValue({ ok: true, data: active })
+    expect(await api.environment.activeCommands(workspace)).toEqual({ ok: true, data: active })
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:command-active', {
+      ...workspace,
+      payload: undefined,
+    })
+    const other = '5daf9da1-242b-4dfd-b3ea-96e7b00a9f7d'
+    for (const bad of [
+      { ...page, items: [{ ...receipt, workspaceId: other }] },
+      { ...page, items: [receipt, receipt] },
+      { ...page, nextBeforeId: other },
+      { ...page, items: [], nextBeforeId: requestId },
+      { ...page, items: Array.from({ length: 101 }, () => receipt) },
+    ]) {
+      bridge.invoke.mockResolvedValue({ ok: true, data: bad })
+      await expect(api.environment.commandPage(workspace, {})).rejects.toThrow()
+    }
+    bridge.invoke.mockResolvedValue({
+      ok: true,
+      data: {
+        ...workspace,
+        items: [
+          {
+            ...receipt,
+            status: 'succeeded',
+            startedAt: receipt.createdAt,
+            endedAt: receipt.createdAt,
+          },
+        ],
+      },
+    })
+    await expect(api.environment.activeCommands(workspace)).rejects.toThrow()
+    bridge.invoke.mockClear()
+    for (const input of [{ limit: 0 }, { limit: 101 }, { beforeId: 'invalid' }])
+      await expect(api.environment.commandPage(workspace, input)).rejects.toThrow()
+    expect(bridge.invoke).not.toHaveBeenCalled()
+  })
+  it('retains caller request identity and validates both request and owner-bound receipt', async () => {
+    bridge.invoke.mockResolvedValue({ ok: true, data: receipt })
+    expect(await api.environment.submitCommand(workspace, request)).toEqual({
+      ok: true,
+      data: receipt,
+    })
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:command', {
+      ...workspace,
+      payload: request,
+    })
+    expect(await api.environment.commandReceipt(workspace, requestId)).toEqual({
+      ok: true,
+      data: receipt,
+    })
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:command-get', {
+      ...workspace,
+      payload: requestId,
+    })
+    expect(await api.environment.cancelCommand(workspace, requestId)).toEqual({
+      ok: true,
+      data: receipt,
+    })
+    expect(bridge.invoke).toHaveBeenLastCalledWith('environment:command-cancel', {
+      ...workspace,
+      payload: requestId,
+    })
+    bridge.invoke.mockResolvedValue({
+      ok: true,
+      data: { ...receipt, workspaceId: '5daf9da1-242b-4dfd-b3ea-96e7b00a9f7d' },
+    })
+    await expect(api.environment.commandReceipt(workspace, requestId)).rejects.toThrow(
+      'WORKSPACE_MISMATCH',
+    )
+  })
+  it('refuses a valid receipt belonging to a different request, action or target in the same workspace', async () => {
+    bridge.invoke.mockResolvedValue({
+      ok: true,
+      data: { ...receipt, requestId: '67e7b89f-2a5f-414d-a067-147e6b40c67d' },
+    })
+    await expect(api.environment.commandReceipt(workspace, requestId)).rejects.toThrow(
+      'COMMAND_RECEIPT_MISMATCH',
+    )
+    bridge.invoke.mockResolvedValue({ ok: true, data: { ...receipt, kind: 'stop' } })
+    await expect(api.environment.submitCommand(workspace, request)).rejects.toThrow(
+      'COMMAND_RECEIPT_MISMATCH',
+    )
+    bridge.invoke.mockResolvedValue({ ok: true, data: { ...receipt, environmentId: 'other' } })
+    await expect(api.environment.submitCommand(workspace, request)).rejects.toThrow(
+      'COMMAND_RECEIPT_MISMATCH',
+    )
+  })
+  it('rejects malformed IDs, revisions, private payloads and impossible success facts', async () => {
+    await expect(
+      api.environment.submitCommand(workspace, { ...request, expectedRevision: 0 }),
+    ).rejects.toThrow()
+    await expect(api.environment.commandReceipt(workspace, 'not-an-id')).rejects.toThrow()
+    expect(bridge.invoke).not.toHaveBeenCalled()
+    for (const payload of [
+      { ...receipt, intentDigest: 'a'.repeat(64) },
+      { ...receipt, status: 'succeeded' },
+    ]) {
+      bridge.invoke.mockResolvedValue({ ok: true, data: payload })
+      await expect(api.environment.commandReceipt(workspace, requestId)).rejects.toThrow()
+    }
+  })
+})

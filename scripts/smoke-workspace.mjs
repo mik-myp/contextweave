@@ -1,5 +1,5 @@
 import { desktopStage } from './smoke-desktop-stages.mjs'
-// Real migration/organization checks use isolated published v8/v9/v10/v11 fixtures, never user data.
+// Real migration/organization checks use isolated published v8/v9/v10/v11/v12 fixtures, never user data.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,7 +21,7 @@ export async function assertWorkspaceIdentity(call) {
 }
 
 export async function verifyWorkspaceUpgrade(entry) {
-  for (const previousVersion of [8, 9, 10, 11]) await verifyUpgradeFrom(entry, previousVersion)
+  for (const previousVersion of [8, 9, 10, 11, 12]) await verifyUpgradeFrom(entry, previousVersion)
 }
 
 async function verifyUpgradeFrom(entry, previousVersion) {
@@ -104,7 +104,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
     const after = new DatabaseSync(file, { readOnly: true })
     try {
       assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
-      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 12)
+      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 13)
       assert.equal(after.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id, identity.workspaceId)
       assert.equal(after.prepare('SELECT data_dir FROM environments').get().data_dir, profile)
       assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())

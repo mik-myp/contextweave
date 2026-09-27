@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
+import { useActiveCommands, useCommandTracking } from '../commands/use-commands'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { EnvironmentSummary } from '@contextweave/contracts'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -6,11 +7,13 @@ import { useEnvironmentService } from '../environment-service'
 
 export function useEnvironmentActions() {
   const environmentService = useEnvironmentService()
+  const activity = useActiveCommands(),
+    tracking = useCommandTracking()
 
-  const { refresh, setNotice, upsertEnvironment } = useAppData(['environments'])
+  const { refresh, setNotice, upsertEnvironment, environments } = useAppData(['environments'])
   const { t } = useI18n()
   const active = useRef(new Set<string>())
-  const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
+  const [localPending, setPending] = useState<ReadonlySet<string>>(new Set())
   const [stopTarget, setStopTarget] = useState<EnvironmentSummary>()
   const run = useCallback(
     async (environment: EnvironmentSummary, action: 'start' | 'stop') => {
@@ -18,7 +21,7 @@ export function useEnvironmentActions() {
       active.current.add(environment.id)
       setPending(new Set(active.current))
       try {
-        upsertEnvironment(await environmentService[action](environment.id))
+        upsertEnvironment(await environmentService[action](environment.id, environment.revision))
         await refresh()
         setNotice({
           kind: 'success',
@@ -45,8 +48,29 @@ export function useEnvironmentActions() {
     },
     [run],
   )
+  const pending = useMemo(
+    () =>
+      new Set([
+        ...localPending,
+        ...(activity.data?.items.map((item) => item.environmentId) ?? []),
+        ...tracking.entries.flatMap((entry) => (entry.environmentId ? [entry.environmentId] : [])),
+        ...(tracking.problem ? environments.map((item) => item.id) : []),
+      ]),
+    [localPending, activity.data, tracking.entries, tracking.problem, environments],
+  )
+  const queued = useMemo(
+    () =>
+      new Set(
+        activity.data?.items
+          .filter((item) => item.status === 'queued')
+          .map((item) => item.environmentId),
+      ),
+    [activity.data],
+  )
   return {
     pending,
+    queued,
+    commandError: activity.error?.message,
     stopTarget,
     setStopTarget,
     start,

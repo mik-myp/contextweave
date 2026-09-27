@@ -1,0 +1,61 @@
+export const commandMessages = {
+  'commands.title': '命令回执',
+  'commands.help':
+    '回执跨页面和重启保留。启动按顺序执行，不限制已运行浏览器的数量；结果未知时不会自动重试。',
+  'commands.pendingTitle': '有待查证的请求',
+  'commands.pendingHelp':
+    '原请求编号已保留。请先查证，不要重复提交；关闭页面不会停止 Main 中已经接收的任务。',
+  'commands.none': '尚无命令回执',
+  'commands.requestId': '请求编号',
+  'commands.target': '环境',
+  'commands.created': '提交时间',
+  'commands.check': '查证原请求',
+  'commands.acknowledge': '结束本地跟踪',
+  'commands.ackTitle': '确认已核对原请求',
+  'commands.ackHelp':
+    '这只清除本地待查证提示，不取消任务、不删除权威回执，也不代表操作成功。查无回执时，原请求仍可能稍后被接收；请人工核对环境、浏览器及资料，勿重复创建或执行。',
+  'commands.notFound': '暂未找到回执，不能据此断定请求从未执行。已保留原编号，不会自动重试。',
+  'commands.cancelQueued': '取消排队',
+  'commands.cancelHelp': '只取消尚未开始的命令，已完成的操作不会回滚。',
+  'commands.previous': '上一页',
+  'commands.next': '下一页',
+  'commands.queued': '排队中',
+  'commands.running': '执行中',
+  'commands.succeeded': '已成功',
+  'commands.failed': '已确认失败',
+  'commands.cancelled': '已取消',
+  'commands.unknown': '结果未知，需核对',
+  'commands.trackingProblem':
+    '本地请求跟踪不可用，已禁止新的提交。权威回执仍保留在工作空间数据库中。',
+  'commands.resetTracking': '人工核对后重置本地索引',
+  'commands.resetTitle': '重置无法读取的本地索引？',
+  'commands.recoveryTitle': '核对并恢复运行状态',
+  'commands.recoveryHelp':
+    '先核对浏览器和资料，再明确确认。恢复只调整管理状态，不恢复网页内容，不删除资料，也不凭旧 PID 终止或接管进程。执行时会再次检查修订、进程身份及锁。',
+  'commands.recoveryConfirm': '已核对，恢复管理状态',
+  'commands.lock': '资料目录锁',
+  'commands.lock.absent': '没有锁',
+  'commands.lock.stale': '遗留锁（仍须核对）',
+  'commands.lock.live': '可能仍被进程持有',
+  'commands.lock.unreadable': '无法读取归属，需人工处理',
+  'commands.sessions': '记录中可能存活的会话：{live} / {total}',
+  'commands.unconfirmed': '存在结果尚未确认的命令。恢复不会把原回执改成成功。',
+  'commands.busy': '该环境存在排队或执行中的命令，暂不能修改配置。',
+  'commands.trashScope':
+    '当前工作空间：{workspace}；回收站共 {count} 个环境。配置、凭据引用、历史和浏览器资料仍保留，可能是唯一副本；还原不是从备份恢复。',
+  'commands.orphanScope':
+    '当前工作空间：{workspace}；发现 {count} 个未关联目录。这只说明缺少环境记录，不代表目录无用或可安全删除；其中的浏览器资料可能是唯一副本。此处不执行删除或自动恢复。',
+  'error.COMMAND_UNCONFIRMED': '请求已保留原编号，结果尚未确认。请在命令回执中查证，不要重复提交。',
+  'error.COMMAND_TRACKING_UNAVAILABLE':
+    '无法可靠保存或读取本地请求索引，已禁止后续提交。这不代表已提交的请求没有执行；请先核对权威回执并恢复本地存储。',
+  'error.COMMAND_TRACKING_LIMIT': '待查证请求已达上限，请先核对并结束已完成请求的本地跟踪。',
+  'error.COMMAND_LOOKUP_REQUIRED': '请先按原编号查证结果，再确认结束本地跟踪。',
+  'error.COMMAND_INTENT_CONFLICT': '此请求编号已经用于另一项意图，原操作没有重放。',
+  'error.COMMAND_RESULT_UNKNOWN': '无法确认操作是否完成，请核对实际环境和资料，不要直接重试。',
+  'error.COMMAND_STORAGE_FAILED':
+    '持久化失败，已停止派发新操作。当前结果可能未知；请保留资料并在恢复存储后重新核对。',
+  'error.COMMAND_INTERRUPTED': '应用中断，此命令没有自动重放，请核对原结果。',
+  'error.COMMAND_QUEUE_FULL': '命令队列已满，请等待或取消尚未开始的命令。',
+  'error.COMMAND_CURSOR_INVALID': '此回执分页位置不可用，请返回第一页重新查询。',
+  'error.COMMAND_RECEIPT_MISMATCH': '返回的回执不属于原请求，已拒绝将其当作成功。',
+} as const

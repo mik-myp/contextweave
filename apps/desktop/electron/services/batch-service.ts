@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   assertWorkspaceContext,
   batchIdSchema,
@@ -20,8 +20,14 @@ export const batchPreviewTtlMs = 5 * 60_000
 export function createBatchService(options: {
   repository: EnvironmentRepository
   busy(id: string): boolean
-  execute(action: BatchAction, id: string, revision: number): Promise<IpcResult<unknown>>
+  execute(
+    action: BatchAction,
+    id: string,
+    revision: number,
+    requestId: string,
+  ): Promise<IpcResult<unknown>>
   changed(): void
+  cancelQueuedCommand?(requestId: string): void
   clock?: { now(): number; monotonic(): number }
 }) {
   const { repository, changed } = options,
@@ -108,13 +114,26 @@ export function createBatchService(options: {
       changed()
       let result: IpcResult<unknown>
       try {
-        result = await options.execute(task.action, item.environmentId, item.revision)
-      } catch {
-        result = { ok: false, code: 'COMMAND_FAILED', message: 'COMMAND_FAILED' }
+        result = await options.execute(
+          task.action,
+          item.environmentId,
+          item.revision,
+          batchCommandRequestId(repository.workspaceId, task.id, item.ordinal),
+        )
+      } catch (error) {
+        const code =
+          error instanceof Error && error.message === 'COMMAND_STORAGE_FAILED'
+            ? 'COMMAND_STORAGE_FAILED'
+            : 'COMMAND_RESULT_UNKNOWN'
+        result = { ok: false, code, message: code }
       }
-      const reason = result.ok
-        ? null
-        : (batchReasonSchema.safeParse(result.code).data ?? 'COMMAND_FAILED')
+      const unknown =
+        !result.ok && ['COMMAND_RESULT_UNKNOWN', 'COMMAND_STORAGE_FAILED'].includes(result.code)
+      const reason = unknown
+        ? 'BATCH_INTERRUPTED'
+        : result.ok
+          ? null
+          : (batchReasonSchema.safeParse(result.code).data ?? 'COMMAND_FAILED')
       const skipped =
         !result.ok &&
         [
@@ -124,15 +143,18 @@ export function createBatchService(options: {
           'NOT_FOUND',
           'ENVIRONMENT_TRASHED',
         ].includes(result.code)
-      const status = result.ok
-        ? 'succeeded'
-        : reason === 'CANCELLED'
-          ? 'cancelled'
-          : skipped
-            ? 'skipped'
-            : 'failed'
+      const status = unknown
+        ? 'unknown'
+        : result.ok
+          ? 'succeeded'
+          : reason === 'CANCELLED'
+            ? 'cancelled'
+            : skipped
+              ? 'skipped'
+              : 'failed'
       storage(() => store.finishItem(task.id, item.ordinal, status, reason, timestamp()))
       changed()
+      if (!result.ok && result.code === 'COMMAND_STORAGE_FAILED') fatal = true
     }
   }
   function kick() {
@@ -185,6 +207,17 @@ export function createBatchService(options: {
       const id = batchIdSchema.parse(input)
       if (!store.get(id)) throw new Error('NOT_FOUND')
       const task = storage(() => store.cancel(id, timestamp()))
+      for (const item of task.items)
+        if (item.status === 'running') {
+          try {
+            options.cancelQueuedCommand?.(
+              batchCommandRequestId(repository.workspaceId, task.id, item.ordinal),
+            )
+          } catch {
+            fatal = true
+            throw new Error('BATCH_STORAGE_FAILED')
+          }
+        }
       changed()
       return task
     },
@@ -222,4 +255,19 @@ export function createBatchService(options: {
       if (failure) throw failure
     },
   }
+}
+
+/** RFC 9562 UUIDv8: stable, domain-separated batch-item identity, not an authorization token. */
+export function batchCommandRequestId(
+  workspaceId: string,
+  batchId: string,
+  ordinal: number,
+): string {
+  const hash = createHash('sha256')
+    .update(`ContextWeave/batch-command/v1\0${workspaceId}\0${batchId}\0${ordinal}`)
+    .digest()
+  hash[6] = (hash[6]! & 0x0f) | 0x80
+  hash[8] = (hash[8]! & 0x3f) | 0x80
+  const hex = hash.subarray(0, 16).toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }

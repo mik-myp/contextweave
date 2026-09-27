@@ -110,6 +110,7 @@ export const dataDomainSchema = z.enum([
   'environments',
   'organization',
   'batches',
+  'commands',
   'proxies',
   'kernels',
   'activity',

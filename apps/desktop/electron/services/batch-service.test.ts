@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { environmentConfigSchema, type IpcResult } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
-import { createBatchService, batchPreviewTtlMs } from './batch-service'
+import { createBatchService, batchPreviewTtlMs, batchCommandRequestId } from './batch-service'
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -44,7 +44,14 @@ function fixture() {
   let time = Date.now(),
     monotonic = 0
   const execute = vi
-      .fn<(action: string, id: string, revision: number) => Promise<IpcResult<unknown>>>()
+      .fn<
+        (
+          action: string,
+          id: string,
+          revision: number,
+          requestId: string,
+        ) => Promise<IpcResult<unknown>>
+      >()
       .mockResolvedValue({ ok: true, data: true }),
     changed = vi.fn(),
     busy = vi.fn(() => false)
@@ -96,7 +103,9 @@ describe('Main-owned serial batch queue', () => {
     )
     gate.resolve({ ok: true, data: true })
     await service.drain()
-    expect(execute.mock.calls).toEqual([['start', 'a', 1]])
+    expect(execute.mock.calls).toEqual([
+      ['start', 'a', 1, batchCommandRequestId(repository.workspaceId, task.id, 0)],
+    ])
     expect(
       service.get(task.id).items.map((item) => [item.environmentId, item.status, item.reason]),
     ).toEqual([
@@ -107,13 +116,18 @@ describe('Main-owned serial batch queue', () => {
     expect(service.confirm(p.id).status).toBe('completed')
   })
   it('continues without a page listener, serializes multiple batches, and cancels only unstarted items', async () => {
-    const { service, execute } = fixture(),
+    const { service, execute, repository } = fixture(),
       gate = deferred()
     execute.mockImplementationOnce(() => gate.promise)
     const a = service.confirm(service.preview({ action: 'start', environmentIds: ['a', 'b'] }).id)
     const b = service.confirm(service.preview({ action: 'start', environmentIds: ['c'] }).id)
     await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1))
-    expect(execute.mock.calls[0]).toEqual(['start', 'a', 1])
+    expect(execute.mock.calls[0]).toEqual([
+      'start',
+      'a',
+      1,
+      batchCommandRequestId(repository.workspaceId, a.id, 0),
+    ])
     expect(service.page({}).items).toHaveLength(2)
     expect(service.cancel(a.id).status).toBe('cancelling')
     gate.resolve({ ok: true, data: true })
@@ -205,4 +219,27 @@ describe('Main-owned serial batch queue', () => {
     expect(service.get(task.id).counts).toMatchObject({ succeeded: 1, cancelled: 1 })
     expect(execute).toHaveBeenCalledTimes(1)
   })
+})
+
+it('retains uncertain execution as unknown and excludes it from failed-only retry', async () => {
+  const { service, execute } = fixture()
+  execute.mockResolvedValueOnce({ ok: false, code: 'COMMAND_RESULT_UNKNOWN', message: 'unknown' })
+  const task = service.confirm(service.preview({ action: 'start', environmentIds: ['a', 'b'] }).id)
+  await service.drain()
+  expect(service.get(task.id).counts).toMatchObject({ unknown: 1, succeeded: 1, failed: 0 })
+  expect(service.get(task.id).items[0]).toMatchObject({
+    status: 'unknown',
+    reason: 'BATCH_INTERRUPTED',
+  })
+  expect(() => service.retryPreview(task.id)).toThrow('BATCH_NO_FAILED_ITEMS')
+})
+it('keeps deterministic batch command IDs separate by owner, batch and ordinal', () => {
+  const owner = randomUUID(),
+    batch = randomUUID()
+  const id = batchCommandRequestId(owner, batch, 0)
+  expect(id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-8[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)
+  expect(batchCommandRequestId(owner, batch, 0)).toBe(id)
+  expect(batchCommandRequestId(owner, batch, 1)).not.toBe(id)
+  expect(batchCommandRequestId(randomUUID(), batch, 0)).not.toBe(id)
+  expect(batchCommandRequestId(owner, randomUUID(), 0)).not.toBe(id)
 })

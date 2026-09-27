@@ -1,6 +1,6 @@
 {
   "name": "contextweave",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "An open-source multi-kernel browser workspace for personal and team operations.",
   "engines": {
@@ -20,6 +20,6 @@
     "test:packaged-native": "node scripts/smoke-native-packaged.mjs",
     "test:packaged-fuses": "node scripts/smoke-fuses.mjs",
     "test:fingerprint": "node scripts/smoke-fingerprint.mjs",
-    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs scripts/electron-fuses.test.mjs scripts/native-packaged-host.test.mjs scripts/smoke-window-lifecycle.test.mjs scripts/eslint-config.test.mjs scripts/smoke-worker-diagnostics.test.mjs scripts/smoke-batches.test.mjs scripts/smoke-desktop-stages.test.mjs"
+    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs scripts/electron-fuses.test.mjs scripts/native-packaged-host.test.mjs scripts/smoke-window-lifecycle.test.mjs scripts/eslint-config.test.mjs scripts/smoke-worker-diagnostics.test.mjs scripts/smoke-batches.test.mjs scripts/smoke-commands.test.mjs scripts/smoke-desktop-stages.test.mjs"
   }
 }

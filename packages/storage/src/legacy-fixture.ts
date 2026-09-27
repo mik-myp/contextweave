@@ -1,3 +1,4 @@
+import { commandTable } from './command-schema'
 import { batchTables } from './batch-schema'
 import { organizationTables } from './organization-schema'
 import { workspaceTables } from './workspace-scope'
@@ -34,7 +35,11 @@ export function openVersion11Fixture(filePath: string) {
   return openPublishedFixture(filePath, 11)
 }
 
-function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11) {
+export function openVersion12Fixture(filePath: string) {
+  return openPublishedFixture(filePath, 12)
+}
+
+function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11 | 12) {
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
   try {
@@ -201,6 +206,7 @@ export function legacyRows(sqlite: DatabaseSync, table: string, order = 'rowid')
 export function removeWorkspaceScopeForLegacyFixture(sqlite: DatabaseSync) {
   sqlite.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE')
   try {
+    sqlite.exec(`DROP TABLE IF EXISTS ${commandTable}`)
     for (const table of batchTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
     for (const table of organizationTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
     for (const table of workspaceTables)

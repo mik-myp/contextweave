@@ -1,3 +1,4 @@
+import { commandRequestIdSchema, commandRevisionSchema, commandEnvironmentIdSchema, environmentCommandReferenceSchema } from './commands'
 import { environmentStatusSchema } from './environment-status'
 import { historyPageSchema } from './history'
 import { workspaceContextSchema } from './workspaces'
@@ -244,6 +245,26 @@ export const updateEnvironmentInputSchema = z
   .strict()
 export type UpdateEnvironmentInput = z.infer<typeof updateEnvironmentInputSchema>
 
+/** Stable request identity; workspace ownership is supplied by the typed IPC envelope. */
+export const environmentCommandRequestSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    requestId: commandRequestIdSchema,
+    kind: z.literal('create'),
+    input: createEnvironmentInputSchema.omit({ proxy: true }).extend({
+      commonConfig: commonEnvironmentConfigSchema.strict().default(defaultCommonEnvironmentConfig),
+    }).strict(),
+  }),
+  z.strictObject({
+    requestId: commandRequestIdSchema,
+    kind: z.literal('update'),
+    input: updateEnvironmentInputSchema.extend({ environmentId: commandEnvironmentIdSchema, expectedRevision: commandRevisionSchema }),
+  }),
+  ...(['start', 'stop', 'trash', 'restore', 'recover'] as const).map((kind) =>
+    environmentCommandReferenceSchema.extend({ requestId: commandRequestIdSchema, kind: z.literal(kind) }),
+  ),
+])
+export type EnvironmentCommandRequest = z.infer<typeof environmentCommandRequestSchema>
+
 export const proxySummarySchema = proxyConfigSchema.omit({ credentialRef: true }).extend({
   workspaceId: workspaceContextSchema.shape.workspaceId,
   proxyId: z.string().min(1),
@@ -449,3 +470,5 @@ export * from './workspaces'
 export * from './organization'
 
 export * from './batches'
+
+export * from './commands'

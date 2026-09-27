@@ -20,6 +20,6 @@
     "test:packaged-native": "node scripts/smoke-native-packaged.mjs",
     "test:packaged-fuses": "node scripts/smoke-fuses.mjs",
     "test:fingerprint": "node scripts/smoke-fingerprint.mjs",
-    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs scripts/electron-fuses.test.mjs scripts/native-packaged-host.test.mjs"
+    "test:tooling": "node --test scripts/release-tools.test.mjs scripts/smoke-runtime-diagnostics.test.mjs scripts/smoke-kernel-diagnostics.test.mjs scripts/electron-fuses.test.mjs scripts/native-packaged-host.test.mjs scripts/smoke-window-lifecycle.test.mjs"
   }
 }

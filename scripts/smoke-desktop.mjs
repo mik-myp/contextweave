@@ -1,10 +1,11 @@
+import { verifyManagerReopen } from './smoke-window-lifecycle.mjs'
 import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
 import { installRuntimeDiagnostics, readRuntimeDiagnostics, readRuntimeFailureEvidence, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
 import { connectManagedBrowser, verifyDetachedControlSession } from './smoke-control.mjs'
 // End-to-end regression for the sandboxed bridge and native environment lifecycle.
 import { existsSync } from 'node:fs'
 import { findPackagedArchive } from './release-tools.mjs'
-import { spawn, execFile } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm, readFile, realpath, cp } from 'node:fs/promises'
@@ -38,6 +39,7 @@ const desktop = await _electron.launch({
   timeout: 20000,
 })
 let id, fixtureServer, localeProxy
+let preserveSmokeDirectory = false
 const controlClients = []
 try {
   const page = await desktop.firstWindow()
@@ -476,27 +478,13 @@ try {
       }),
     )
   }
-  if (process.platform === 'darwin') {
-    await page.close()
-    const reopened = desktop.waitForEvent('window', { timeout: 15000 })
-    const second = spawn(require('electron'), [entry], {
-      env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
-      stdio: 'ignore',
+  if (process.platform === 'darwin')
+    await verifyManagerReopen(desktop, page, {
+      executable: require('electron'), entry,
+      env: { CONTEXTWEAVE_USER_DATA: directory },
     })
-    const exited = once(second, 'exit')
-    const next = await reopened
-    await next.waitForFunction(() => Boolean(window.contextweave))
-    assert.equal((await exited)[0], 0)
-    assert((await next.evaluate(() => window.contextweave.app.getInfo())).ok)
-    await next.close()
-    const activated = desktop.waitForEvent('window', { timeout: 15000 })
-    await desktop.evaluate(({ app }) => app.emit('activate'))
-    const active = await activated
-    await active.waitForFunction(() => Boolean(window.contextweave))
-    assert((await active.evaluate(() => window.contextweave.environment.list())).ok)
-    console.log(JSON.stringify({ destroyedWindowSecondInstance: 'passed', macActivate: 'passed' }))
-  }
 } catch (error) {
+  preserveSmokeDirectory = error?.preserveSmokeDirectory === true
   // Capture before cleanup changes the process/transport state. No URL, payload,
   // headers, credential, arbitrary error message or screenshot bytes are recorded.
   const manager = desktop.windows()[0]
@@ -518,8 +506,8 @@ try {
   await restoreRuntimeDiagnostics(desktop)
   try {
     if (id) {
-      const page = await desktop.firstWindow()
-      await page.evaluate((id) => window.contextweave.environment.stop(id), id)
+      const page = desktop.windows()[0]
+      if (page) await page.evaluate((id) => window.contextweave.environment.stop(id), id)
     }
   } catch {
     /* Preserve the original test error; application shutdown also stops owned children. */
@@ -527,7 +515,8 @@ try {
   await desktop.close()
   if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
   if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
-  await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  if (!preserveSmokeDirectory)
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
 // The startup harness separately exercises the development bundle with injected native dialogs.

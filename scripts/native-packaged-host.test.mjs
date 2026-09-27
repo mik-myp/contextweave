@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   cleanElectronEnvironment,
   hasCommittedAppTarget,
+  probeCommittedAppTarget,
   requestNativeQuit,
   spawnOwned,
   stopOwned,
@@ -126,3 +127,57 @@ test(
     )
   },
 )
+
+test('transient loopback discovery failures stay within the original overall readiness budget', async () => {
+  let calls = 0
+  const request = async (_url, options) => {
+    assert.equal(options.redirect, 'error')
+    assert(options.signal instanceof AbortSignal)
+    if (++calls === 1) throw new DOMException('fixture', 'TimeoutError')
+    return { ok: true, json: async () => [{ type: 'page', url: 'contextweave://app/index.html' }] }
+  }
+  assert.equal(
+    await until(
+      () => probeCommittedAppTarget('http://127.0.0.1:1/json/list', request),
+      1000,
+      'ORIGINAL_BUDGET',
+    ),
+    true,
+  )
+  assert.equal(calls, 2)
+  const unavailable = async () => {
+    throw new TypeError('fixture', { cause: { code: 'ECONNREFUSED' } })
+  }
+  await assert.rejects(
+    until(
+      () => probeCommittedAppTarget('http://127.0.0.1:1/json/list', unavailable),
+      25,
+      'ORIGINAL_BUDGET',
+    ),
+    /ORIGINAL_BUDGET/,
+  )
+})
+
+test('discovery never treats bad HTTP, invalid JSON or non-transport errors as startup success', async () => {
+  await assert.rejects(
+    probeCommittedAppTarget('http://127.0.0.1:1/json/list', async () => ({ ok: false })),
+    /NATIVE_RENDERER_DISCOVERY_FAILED/,
+  )
+  const invalid = new SyntaxError('fixture')
+  await assert.rejects(
+    probeCommittedAppTarget('http://127.0.0.1:1/json/list', async () => ({
+      ok: true,
+      json: async () => {
+        throw invalid
+      },
+    })),
+    (actual) => actual === invalid,
+  )
+  const other = new TypeError('fixture', { cause: { code: 'EPERM' } })
+  await assert.rejects(
+    probeCommittedAppTarget('http://127.0.0.1:1/json/list', async () => {
+      throw other
+    }),
+    (actual) => actual === other,
+  )
+})

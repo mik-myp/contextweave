@@ -110,6 +110,26 @@ export function hasCommittedAppTarget(targets) {
     })
   )
 }
+// A listening debug socket may precede a responsive discovery handler. An
+// individual loopback probe may be not-ready, but never resets the caller's
+// original overall page deadline or permits a malformed/failed HTTP response.
+export async function probeCommittedAppTarget(discovery, request = fetch) {
+  try {
+    const response = await request(discovery, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(1000),
+    })
+    assert(response.ok, 'NATIVE_RENDERER_DISCOVERY_FAILED')
+    return hasCommittedAppTarget(await response.json())
+  } catch (error) {
+    if (error instanceof DOMException && ['TimeoutError', 'AbortError'].includes(error.name))
+      return false
+    if (error instanceof TypeError && ['ECONNREFUSED', 'ECONNRESET'].includes(error.cause?.code))
+      return false
+    throw error
+  }
+}
+
 export async function launchNative(layout, directory, options = {}) {
   const state = spawnOwned(
     layout.executable,
@@ -144,12 +164,7 @@ export async function launchNative(layout, directory, options = {}) {
     await until(
       async () => {
         if (state.exit || state.spawnError) throw new Error('NATIVE_EXITED_BEFORE_PAGE_COMMITTED')
-        const response = await fetch(discovery, {
-          redirect: 'error',
-          signal: AbortSignal.timeout(1000),
-        })
-        assert(response.ok, 'NATIVE_RENDERER_DISCOVERY_FAILED')
-        return hasCommittedAppTarget(await response.json())
+        return probeCommittedAppTarget(discovery)
       },
       10000,
       'NATIVE_PAGE_NOT_COMMITTED',

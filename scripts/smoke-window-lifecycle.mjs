@@ -1,3 +1,4 @@
+import { sampleOwnedMain } from './smoke-window-diagnostics.mjs'
 // Stock-Electron smoke only; no product API or native-Fuses test bypass is added.
 import assert from 'node:assert/strict'
 import { spawnOwned, stopOwned, until, withDeadline } from './native-packaged-host.mjs'
@@ -79,14 +80,16 @@ export async function windowFailureEvidence(desktop, second, stage) {
   } catch {
     /* Unavailable inspection must not replace the original error. */
   }
-  let primary = null
+  let primary = null, owned
   try {
-    primary = processEvidence(desktop.process())
+    owned = desktop.process()
+    primary = processEvidence(owned)
   } catch {
     /* The automation connection may already be disposed. */
   }
   return {
     stage: ['second-instance', 'activate'].includes(stage) ? stage : 'unknown',
+    mainSample: native === null ? await sampleOwnedMain(owned) : { status: 'not-needed' },
     primary,
     second: processEvidence(second),
     // Never include raw output, URLs, paths, arguments or error messages.

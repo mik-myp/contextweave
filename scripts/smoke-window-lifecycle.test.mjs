@@ -1,3 +1,5 @@
+import { classifyWindowSample, sampleOwnedMain } from './smoke-window-diagnostics.mjs'
+import { writeFile, access } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { EventEmitter } from 'node:events'
@@ -140,4 +142,48 @@ test('unconfirmed helper exit preserves the original failure and its data direct
     finishSecondInstance({}, primary, async () => {}),
     (actual) => actual === primary,
   )
+})
+
+
+test('OS sample retains only fixed bounded categories, never native paths or arguments', () => {
+  const secret = 'SENSITIVE_CANARY_MUST_NOT_ESCAPE'
+  const input = `Path: /${secret}/BrowserWindow
+Arguments: ${secret}
+    + 17 uv__io_poll (in libuv) /${secret}/BrowserWindow
+    + 4 mach_msg2_trap (in kernel)
+` + '   + 1 V8InspectorSession\n'.repeat(300)
+  const value = classifyWindowSample(input)
+  assert.equal(value.status, 'sampled')
+  assert.equal(value.frames.libuv, 1)
+  assert.equal(value.frames.mach, 1)
+  assert.equal(value.frames.nativeWindow, 0)
+  assert.equal(value.frames.inspector, 255)
+  assert(!JSON.stringify(value).includes(secret))
+  assert.deepEqual(classifyWindowSample('x'.repeat(2*1024*1024+1)), {status:'unavailable'})
+})
+test('sampling owns only one bounded native command and removes its private raw fixture', async () => {
+  const child = {pid:123,exitCode:null,signalCode:null}
+  let file
+  const value = await sampleOwnedMain(child,'darwin', async (command,args,options) => {
+    assert.equal(command,'/usr/bin/sample')
+    assert.deepEqual(args.slice(0,4),['123','1','10','-file'])
+    assert.equal(options.timeout,3000)
+    assert.equal(options.maxBuffer,65536)
+    file=args[4]
+    await writeFile(file,'  + 12 CFRunLoopRunSpecific\nPrivatePath: SENSITIVE\n')
+  })
+  assert.equal(value.frames.cocoaLoop,1)
+  assert(!JSON.stringify(value).includes('SENSITIVE'))
+  await assert.rejects(access(file),{code:'ENOENT'})
+})
+test('OS sample never runs for unsupported systems or no longer owned/live process handles',async()=>{
+  for(const [child,platform] of [[{pid:123,exitCode:null,signalCode:null},'win32'],[{pid:123,exitCode:0,signalCode:null},'darwin'],[{pid:-1,exitCode:null,signalCode:null},'darwin'],[undefined,'darwin']])
+    assert.notEqual((await sampleOwnedMain(child,platform,()=>assert.fail('must not spawn'))).status,'sampled')
+})
+test('exiting during sampling and sampler failures cannot produce trusted evidence',async()=>{
+  const child={pid:123,exitCode:null,signalCode:null}
+  const afterExit=await sampleOwnedMain(child,'darwin',async()=>{child.exitCode=0})
+  assert.deepEqual(afterExit,{status:'unavailable'})
+  const failure=await sampleOwnedMain({pid:123,exitCode:null,signalCode:null},'darwin',async()=>{throw new Error('SENSITIVE')})
+  assert.deepEqual(failure,{status:'unavailable'})
 })

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { unwrapIpc } from '@/shared/lib/ipc'
 
-export const localWorkspaceKey = ['local', 'workspace', 'current'] as const
+export const localWorkspaceKey = ['app', 'workspace', 'current'] as const
 export function useWorkspace() {
   return useQuery({
     queryKey: localWorkspaceKey,

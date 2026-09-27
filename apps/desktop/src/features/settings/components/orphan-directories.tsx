@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useQuery } from '@tanstack/react-query'
 import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
@@ -6,9 +7,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 export function OrphanDirectories() {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const query = useQuery({
-    queryKey: ['local', 'storage', 'orphans'],
+    queryKey: workspaceKey(workspaceContext, 'storage', 'orphans'),
     queryFn: () => unwrapIpc(workspaceApi.storage.orphans()),
   })
   return (

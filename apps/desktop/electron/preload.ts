@@ -1,4 +1,16 @@
 import {
+  organizationSnapshotSchema,
+  createGroupSchema,
+  updateGroupSchema,
+  reviseOrganizationItemSchema,
+  createEnvironmentViewSchema,
+  updateEnvironmentViewSchema,
+  saveEnvironmentOrganizationSchema,
+  environmentOrganizationSchema,
+  environmentGroupSchema,
+  savedEnvironmentViewSchema,
+} from '@contextweave/contracts'
+import {
   assertWorkspaceContext,
   workspaceContextSchema,
   type WorkspaceContext,
@@ -99,6 +111,76 @@ async function invokeWorkspace(context: WorkspaceContext, channel: string, paylo
 }
 
 const api = {
+  organization: {
+    list: async (context: WorkspaceContext) =>
+      ipcResultSchema(organizationSnapshotSchema).parse(
+        await invokeWorkspace(context, 'organization:list'),
+      ),
+    createGroup: async (context: WorkspaceContext, input: z.input<typeof createGroupSchema>) =>
+      ipcResultSchema(environmentGroupSchema).parse(
+        await invokeWorkspace(context, 'organization:group-create', createGroupSchema.parse(input)),
+      ),
+    updateGroup: async (context: WorkspaceContext, input: z.input<typeof updateGroupSchema>) =>
+      ipcResultSchema(environmentGroupSchema).parse(
+        await invokeWorkspace(context, 'organization:group-update', updateGroupSchema.parse(input)),
+      ),
+    deleteGroup: async (
+      context: WorkspaceContext,
+      input: z.input<typeof reviseOrganizationItemSchema>,
+    ) =>
+      ipcResultSchema(z.boolean()).parse(
+        await invokeWorkspace(
+          context,
+          'organization:group-delete',
+          reviseOrganizationItemSchema.parse(input),
+        ),
+      ),
+    saveEnvironment: async (
+      context: WorkspaceContext,
+      input: z.input<typeof saveEnvironmentOrganizationSchema>,
+    ) =>
+      ipcResultSchema(environmentOrganizationSchema).parse(
+        await invokeWorkspace(
+          context,
+          'organization:metadata-save',
+          saveEnvironmentOrganizationSchema.parse(input),
+        ),
+      ),
+    createView: async (
+      context: WorkspaceContext,
+      input: z.input<typeof createEnvironmentViewSchema>,
+    ) =>
+      ipcResultSchema(savedEnvironmentViewSchema).parse(
+        await invokeWorkspace(
+          context,
+          'organization:view-create',
+          createEnvironmentViewSchema.parse(input),
+        ),
+      ),
+    updateView: async (
+      context: WorkspaceContext,
+      input: z.input<typeof updateEnvironmentViewSchema>,
+    ) =>
+      ipcResultSchema(savedEnvironmentViewSchema).parse(
+        await invokeWorkspace(
+          context,
+          'organization:view-update',
+          updateEnvironmentViewSchema.parse(input),
+        ),
+      ),
+    deleteView: async (
+      context: WorkspaceContext,
+      input: z.input<typeof reviseOrganizationItemSchema>,
+    ) =>
+      ipcResultSchema(z.boolean()).parse(
+        await invokeWorkspace(
+          context,
+          'organization:view-delete',
+          reviseOrganizationItemSchema.parse(input),
+        ),
+      ),
+  },
+
   workspace: {
     current: async (...args: []) => {
       z.tuple([]).parse(args)
@@ -155,10 +237,12 @@ const api = {
       ),
   },
   events: {
-    onDataChanged: (listener: (domains: DataDomain[]) => void) => {
+    onDataChanged: (context: WorkspaceContext, listener: (domains: DataDomain[]) => void) => {
+      const owner = workspaceContextSchema.parse(context)
       const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
         const parsed = dataChangedSchema.safeParse(value)
-        if (parsed.success) listener(parsed.data.domains)
+        if (parsed.success && parsed.data.workspaceId === owner.workspaceId)
+          listener(parsed.data.domains)
       }
       ipcRenderer.on('data:changed', handler)
       return () => {

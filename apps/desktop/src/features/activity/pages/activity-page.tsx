@@ -1,4 +1,4 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { AppLogViewer } from '../components/app-log-viewer'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { OperationsTable } from './operations-table'
@@ -39,6 +39,7 @@ export function ActivityPage() {
   )
 }
 function SessionsTable() {
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const columns = useMemo<ColumnDef<DataTableFeatures, ActivitySummary, unknown>[]>(
     () => [

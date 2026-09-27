@@ -1,4 +1,10 @@
 export const lifecycleMessages = {
+  'error.ORGANIZATION_NAME_EXISTS':
+    'This name already exists. Choose a different group or view name.',
+  'error.ORGANIZATION_CONFLICT':
+    'Organization data changed in another operation. Reload it before saving.',
+  'error.ORGANIZATION_GROUP_MISSING': 'The selected group no longer exists. Choose another group.',
+
   'error.WORKSPACE_CONTEXT_INVALID':
     'Workspace context is missing or invalid. Reopen the application and try again.',
   'error.WORKSPACE_MISMATCH':

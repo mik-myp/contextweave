@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
@@ -40,9 +41,11 @@ afterEach(async () => {
 async function render() {
   await act(async () =>
     root.render(
-      <QueryClientProvider client={client}>
-        <CredentialCleanupNotice />
-      </QueryClientProvider>,
+      <TestWorkspaceProvider>
+        <QueryClientProvider client={client}>
+          <CredentialCleanupNotice />
+        </QueryClientProvider>
+      </TestWorkspaceProvider>,
     ),
   )
 }

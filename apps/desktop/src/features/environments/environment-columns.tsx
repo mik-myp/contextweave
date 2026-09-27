@@ -1,7 +1,8 @@
 import { selectionColumn } from '@/components/data-table/data-table-selection'
 import { Link } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { EnvironmentSummary } from '@contextweave/contracts'
+import { organizationNameKey } from '@contextweave/contracts'
+import type { OrganizedEnvironment } from './organization/use-organization'
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
 import { Badge } from '@/components/ui/badge'
 import { CircleIcon, CircleCheckIcon, CircleAlertIcon, ClockIcon } from 'lucide-react'
@@ -20,21 +21,23 @@ export function environmentColumns({
   onStart,
   onStop,
   onDelete,
+  onOrganize,
 }: {
   t: I18nContextValue['t']
   locale: string
   kernels: KernelSummary[]
   proxies: ProxySummary[]
   pending: ReadonlySet<string>
-  onStart: (environment: EnvironmentSummary) => void
-  onStop: (environment: EnvironmentSummary) => void
-  onDelete: (environment: EnvironmentSummary) => void
-}): ColumnDef<DataTableFeatures, EnvironmentSummary, unknown>[] {
+  onStart: (environment: OrganizedEnvironment) => void
+  onStop: (environment: OrganizedEnvironment) => void
+  onOrganize: (environment: OrganizedEnvironment) => void
+  onDelete: (environment: OrganizedEnvironment) => void
+}): ColumnDef<DataTableFeatures, OrganizedEnvironment, unknown>[] {
   return [
-    selectionColumn<EnvironmentSummary>(t),
+    selectionColumn<OrganizedEnvironment>(t),
     {
       id: 'name',
-      accessorFn: (row) => `${row.name} ${row.id}`,
+      accessorFn: (row) => `${row.name} ${row.id} ${row.groupName}`,
       header: t('env.name'),
       meta: { label: t('env.name') },
       enableHiding: false,
@@ -123,6 +126,45 @@ export function environmentColumns({
       },
     },
     {
+      id: 'groupId',
+      accessorFn: (row) => row.groupId ?? 'ungrouped',
+      header: t('org.group'),
+      meta: { label: t('org.group') },
+      filterFn: 'isOneOf',
+      enableGlobalFilter: false,
+      cell: ({ row }) => (
+        <span className="block max-w-40 truncate" title={row.original.groupName}>
+          {row.original.groupName || t('org.ungrouped')}
+        </span>
+      ),
+    },
+    {
+      id: 'tags',
+      accessorFn: (row) => row.tags.map(organizationNameKey),
+      header: t('org.tags'),
+      meta: { label: t('org.tags') },
+      filterFn: 'hasAny',
+      cell: ({ row }) => (
+        <div className="flex max-w-64 flex-wrap gap-1">
+          {row.original.tags.map((tag) => (
+            <Badge key={tag} variant="secondary" className="max-w-full truncate" title={tag}>
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'note',
+      header: t('org.note'),
+      meta: { label: t('org.note') },
+      cell: ({ row }) => (
+        <span className="block max-w-64 truncate" title={row.original.note}>
+          {row.original.note}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'updatedAt',
       header: t('env.updated'),
       meta: { label: t('env.updated') },
@@ -157,6 +199,7 @@ export function environmentColumns({
           onStart={() => onStart(row.original)}
           onStop={() => onStop(row.original)}
           onDelete={() => onDelete(row.original)}
+          onOrganize={() => onOrganize(row.original)}
         />
       ),
     },

@@ -5,9 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { environmentDetailsSchema, type EnvironmentDetails } from '@contextweave/contracts'
 import { I18nProvider } from '@/i18n'
 import { EnvironmentConfigPage } from './environment-config-page'
-import { environmentService } from '../environment-service'
+const { environmentService } = vi.hoisted(() => ({ environmentService: { get: vi.fn() } }))
 
-vi.mock('../environment-service', () => ({ environmentService: { get: vi.fn() } }))
+vi.mock('../environment-service', () => ({ useEnvironmentService: () => environmentService }))
 vi.mock('../components/environment-editor', () => ({
   EnvironmentEditor: ({ detail }: { detail?: EnvironmentDetails }) => (
     <output>{detail?.name ?? 'new environment'}</output>

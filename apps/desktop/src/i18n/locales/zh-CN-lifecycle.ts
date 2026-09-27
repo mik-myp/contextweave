@@ -1,4 +1,8 @@
 export const lifecycleMessages = {
+  'error.ORGANIZATION_NAME_EXISTS': '此名称已存在。请使用不同的分组或视图名称。',
+  'error.ORGANIZATION_CONFLICT': '组织信息已被其他操作修改。请先重新加载，再决定是否保存。',
+  'error.ORGANIZATION_GROUP_MISSING': '选择的分组已不存在。请重新选择分组。',
+
   'error.WORKSPACE_CONTEXT_INVALID': '工作空间上下文缺失或无效，请重新打开应用后重试。',
   'error.WORKSPACE_MISMATCH': '请求不属于当前工作空间，已拒绝访问数据和凭据。',
   'error.WORKSPACE_PATH_UNSAFE':

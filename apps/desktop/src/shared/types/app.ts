@@ -1,13 +1,13 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import type { WorkspaceApi } from '@/features/workspaces/workspace-api'
 import type { EnvironmentSummary } from '@contextweave/contracts'
 
 export type KernelSummary = Extract<
-  Awaited<ReturnType<typeof workspaceApi.kernel.list>>,
+  Awaited<ReturnType<WorkspaceApi['kernel']['list']>>,
   { ok: true }
 >['data'][number]
 
 export type ProxySummary = Extract<
-  Awaited<ReturnType<typeof workspaceApi.proxy.list>>,
+  Awaited<ReturnType<WorkspaceApi['proxy']['list']>>,
   { ok: true }
 >['data'][number]
 

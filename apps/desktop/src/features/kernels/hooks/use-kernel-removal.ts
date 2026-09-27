@@ -1,4 +1,4 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useRef, useState } from 'react'
 import type { KernelSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
@@ -6,6 +6,7 @@ import { useAppData } from '@/app/use-app-data'
 import { unwrapIpc } from '@/shared/lib/ipc'
 
 export function useKernelRemoval() {
+  const workspaceApi = useWorkspaceApi()
   const { t } = useI18n()
   const { refresh, setNotice } = useAppData(['kernels'])
   const [selected, setSelected] = useState<KernelSummary>()

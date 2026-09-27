@@ -1,12 +1,18 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import type { WorkspaceContext } from '@contextweave/contracts'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { artifactBudgetUpdateSchema } from '@contextweave/contracts'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
 
-export const artifactBudgetKey = ['local', 'storage', 'artifact-budget'] as const
+export const artifactBudgetKey = (context: WorkspaceContext) =>
+  workspaceKey(context, 'storage', 'artifact-budget')
 export function useArtifactBudget() {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
+  const key = artifactBudgetKey(workspaceContext)
   const client = useQueryClient()
   const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null)
   const [isSaving, setSaving] = useState(false)
@@ -20,7 +26,7 @@ export function useArtifactBudget() {
     [],
   )
   const query = useQuery({
-    queryKey: artifactBudgetKey,
+    queryKey: key,
     queryFn: async ({ signal }) => {
       const value = await unwrapIpc(workspaceApi.storage.getArtifactBudget())
       signal.throwIfAborted()
@@ -71,12 +77,12 @@ export function useArtifactBudget() {
       try {
         const value = await unwrapIpc(workspaceApi.storage.updateArtifactBudget(parsed.data))
         if (generation !== request.current.generation) return
-        await client.cancelQueries({ queryKey: artifactBudgetKey, exact: true })
+        await client.cancelQueries({ queryKey: key, exact: true })
         if (generation !== request.current.generation) return
-        client.setQueryData(artifactBudgetKey, value)
+        client.setQueryData(key, value)
         setDraft(null)
         setSaved(true)
-        void client.invalidateQueries({ queryKey: ['local', 'storage'] })
+        void client.invalidateQueries({ queryKey: workspaceKey(workspaceContext, 'storage') })
       } catch (failure) {
         if (generation === request.current.generation)
           setError(failure instanceof Error ? failure.message : errorMessage('COMMAND_FAILED'))

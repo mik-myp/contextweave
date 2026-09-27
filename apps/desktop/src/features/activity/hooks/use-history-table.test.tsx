@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -91,11 +92,13 @@ describe('server history table', () => {
   async function render(visible = true) {
     await act(async () =>
       root.render(
-        <I18nProvider>
-          <QueryClientProvider client={client}>
-            <DataTableStateProvider>{visible && <Harness />}</DataTableStateProvider>
-          </QueryClientProvider>
-        </I18nProvider>,
+        <TestWorkspaceProvider>
+          <I18nProvider>
+            <QueryClientProvider client={client}>
+              <DataTableStateProvider>{visible && <Harness />}</DataTableStateProvider>
+            </QueryClientProvider>
+          </I18nProvider>
+        </TestWorkspaceProvider>,
       ),
     )
     await flush()
@@ -227,7 +230,9 @@ describe('server history table', () => {
     expect(history.table.getRowModel().rows[0]?.id).toBe('second')
     loadPage.mockResolvedValueOnce({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
     await act(async () => {
-      await client.invalidateQueries({ queryKey: ['local', 'operations'] })
+      await client.invalidateQueries({
+        queryKey: ['workspace', '00000000-0000-4000-8000-000000000001', 'operations'],
+      })
     })
     await flush()
     expect(history.error).toContain('分页边界记录已移除')

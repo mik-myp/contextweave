@@ -55,6 +55,7 @@ describe('sandboxed preload contract', () => {
       'kernel',
       'logs',
       'operation',
+      'organization',
       'proxy',
       'settings',
       'storage',
@@ -131,20 +132,23 @@ describe('sandboxed preload contract', () => {
   it('only forwards validated domains, never the Electron event, and unsubscribes each listener', () => {
     const one = vi.fn()
     const two = vi.fn()
-    const unsubscribe = api.events.onDataChanged(one)
-    const unsubscribeTwo = api.events.onDataChanged(two)
+    const unsubscribe = api.events.onDataChanged(workspace, one)
+    const unsubscribeTwo = api.events.onDataChanged(workspace, two)
     const emit = (value: unknown) => {
       for (const handler of bridge.listeners.get('data:changed') ?? [])
         handler({ sender: 'must-not-cross-the-bridge' }, value)
     }
-    emit({ domains: ['environments', 'proxies'] })
+    emit({ ...workspace, domains: ['environments', 'proxies'] })
     expect(one).toHaveBeenCalledExactlyOnceWith(['environments', 'proxies'])
-    emit({ domains: ['private-domain'] })
+    emit({ ...workspace, domains: ['private-domain'] })
     emit(null)
+    emit({ workspaceId: '00000000-0000-4000-8000-000000000002', domains: ['kernels'] })
+    emit({ domains: ['kernels'] })
+    emit({ ...workspace, domains: ['kernels'], extra: true })
     expect(one).toHaveBeenCalledOnce()
     unsubscribe()
     unsubscribe()
-    emit({ domains: ['kernels'] })
+    emit({ ...workspace, domains: ['kernels'] })
     expect(one).toHaveBeenCalledOnce()
     expect(two).toHaveBeenLastCalledWith(['kernels'])
     unsubscribeTwo()
@@ -350,4 +354,49 @@ it('rejects otherwise valid owned records from another workspace, including page
     },
   })
   await expect(api.operation.page(workspace)).rejects.toThrow('WORKSPACE_MISMATCH')
+})
+
+it('validates named organization methods and rejects mixed-owner snapshots before Renderer state', async () => {
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: { ...workspace, groups: [], environments: [], views: [] },
+  })
+  await expect(api.organization.list(workspace)).resolves.toMatchObject({ ok: true })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('organization:list', {
+    ...workspace,
+    payload: undefined,
+  })
+  bridge.invoke.mockClear()
+  await expect(
+    api.organization.saveEnvironment(workspace, {
+      environmentId: 'env',
+      groupId: null,
+      tags: ['duplicate', 'DUPLICATE'],
+      note: '',
+      expectedRevision: 0,
+    }),
+  ).rejects.toThrow()
+  await expect(
+    api.organization.deleteGroup(workspace, { id: 'not-uuid', expectedRevision: 1 }),
+  ).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: {
+      ...workspace,
+      groups: [],
+      views: [],
+      environments: [
+        {
+          workspaceId: '00000000-0000-4000-8000-000000000002',
+          environmentId: 'same-id',
+          groupId: null,
+          tags: [],
+          note: 'private',
+          revision: 0,
+        },
+      ],
+    },
+  })
+  await expect(api.organization.list(workspace)).rejects.toThrow()
 })

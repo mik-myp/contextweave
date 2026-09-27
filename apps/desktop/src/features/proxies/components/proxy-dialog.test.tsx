@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act, StrictMode } from 'react'
@@ -59,11 +60,13 @@ afterEach(async () => {
 const render = async () =>
   act(async () =>
     root.render(
-      <StrictMode>
-        <I18nProvider>
-          <ProxyDialog proxy={savedProxy} onClose={onClose} />
-        </I18nProvider>
-      </StrictMode>,
+      <TestWorkspaceProvider>
+        <StrictMode>
+          <I18nProvider>
+            <ProxyDialog proxy={savedProxy} onClose={onClose} />
+          </I18nProvider>
+        </StrictMode>
+      </TestWorkspaceProvider>,
     ),
   )
 const button = (text: string) =>

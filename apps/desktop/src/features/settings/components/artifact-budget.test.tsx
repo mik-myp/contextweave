@@ -1,3 +1,5 @@
+import { fixtureWorkspace } from '../../../../test-support/workspace'
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
@@ -51,11 +53,13 @@ async function flush() {
 async function render() {
   await act(async () =>
     root.render(
-      <I18nProvider>
-        <QueryClientProvider client={client}>
-          <ArtifactBudget />
-        </QueryClientProvider>
-      </I18nProvider>,
+      <TestWorkspaceProvider>
+        <I18nProvider>
+          <QueryClientProvider client={client}>
+            <ArtifactBudget />
+          </QueryClientProvider>
+        </I18nProvider>
+      </TestWorkspaceProvider>,
     ),
   )
   await flush()
@@ -122,7 +126,7 @@ it('preserves an unsaved draft on background changes and requires explicit adopt
   await render()
   await edit('128')
   await act(async () => {
-    client.setQueryData(artifactBudgetKey, budget(64, 2))
+    client.setQueryData(artifactBudgetKey(fixtureWorkspace), budget(64, 2))
   })
   await flush()
   expect(input().value).toBe('128')
@@ -165,7 +169,7 @@ it('does not let a late save mutate shared query state after the component unmou
   await act(async () => root.render(null))
   await act(async () => pending.resolve({ ok: true, data: budget(64, 2) }))
   await flush()
-  expect(client.getQueryData(artifactBudgetKey)).toEqual(budget())
+  expect(client.getQueryData(artifactBudgetKey(fixtureWorkspace))).toEqual(budget())
 })
 it('renders loading and failed reads without allowing a policy write, and can explicitly retry', async () => {
   const pending = deferred()

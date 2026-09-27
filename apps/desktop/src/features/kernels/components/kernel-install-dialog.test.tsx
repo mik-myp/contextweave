@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
@@ -38,7 +39,13 @@ afterEach(async () => {
 })
 async function render(release: Partial<KernelRelease> = {}) {
   client.setQueryData(
-    ['local', 'kernels', 'catalog', 'fingerprint-chromium'],
+    [
+      'workspace',
+      '00000000-0000-4000-8000-000000000001',
+      'kernels',
+      'catalog',
+      'fingerprint-chromium',
+    ],
     kernelCatalogSchema.parse({
       sourceStatus: 'cached',
       releases: [
@@ -58,11 +65,13 @@ async function render(release: Partial<KernelRelease> = {}) {
   )
   await act(async () =>
     root.render(
-      <I18nProvider>
-        <QueryClientProvider client={client}>
-          <KernelInstallDialog open onOpenChange={() => {}} />
-        </QueryClientProvider>
-      </I18nProvider>,
+      <TestWorkspaceProvider>
+        <I18nProvider>
+          <QueryClientProvider client={client}>
+            <KernelInstallDialog open onOpenChange={() => {}} />
+          </QueryClientProvider>
+        </I18nProvider>
+      </TestWorkspaceProvider>,
     ),
   )
 }
@@ -102,20 +111,22 @@ it('displays a localized install failure without exposing backend text and allow
 it('does not display declared but unverified fingerprint capabilities as verified', async () => {
   await act(async () =>
     root.render(
-      <I18nProvider>
-        <KernelCapabilities
-          report={{
-            cdp: {
-              declared: true,
-              state: 'verified',
-              version: '148.0.7778.215',
-              checkedAt: '2026-09-25T00:00:00Z',
-              evidence: 'Fixture handshake',
-            },
-            timezone: { declared: true, state: 'unverified' },
-          }}
-        />
-      </I18nProvider>,
+      <TestWorkspaceProvider>
+        <I18nProvider>
+          <KernelCapabilities
+            report={{
+              cdp: {
+                declared: true,
+                state: 'verified',
+                version: '148.0.7778.215',
+                checkedAt: '2026-09-25T00:00:00Z',
+                evidence: 'Fixture handshake',
+              },
+              timezone: { declared: true, state: 'unverified' },
+            }}
+          />
+        </I18nProvider>
+      </TestWorkspaceProvider>,
     ),
   )
   const rows = container.querySelectorAll('dl > div')

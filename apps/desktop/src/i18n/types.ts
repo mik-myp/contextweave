@@ -1,3 +1,4 @@
+import type { organizationMessages } from './locales/zh-CN-organization'
 import type { logMessages } from './locales/zh-CN-logs'
 import type { lifecycleMessages } from './locales/zh-CN-lifecycle'
 import type { adminMessages } from './locales/zh-CN-admin'
@@ -5,6 +6,7 @@ import type { workspaceMessages } from './locales/zh-CN-workspace'
 export type Locale = 'zh-CN' | 'en-US'
 
 export type TranslationKey =
+  | keyof typeof organizationMessages
   | keyof typeof logMessages
   | keyof typeof lifecycleMessages
   | keyof typeof adminMessages

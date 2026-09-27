@@ -1,4 +1,4 @@
-// Real migration and identity checks use an isolated published-v8 fixture, never user data.
+// Real migration/organization checks use isolated published v8/v9/v10 fixtures, never user data.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
@@ -20,7 +20,7 @@ export async function assertWorkspaceIdentity(call) {
 }
 
 export async function verifyWorkspaceUpgrade(entry) {
-  for (const previousVersion of [8, 9]) await verifyUpgradeFrom(entry, previousVersion)
+  for (const previousVersion of [8, 9, 10]) await verifyUpgradeFrom(entry, previousVersion)
 }
 
 async function verifyUpgradeFrom(entry, previousVersion) {
@@ -39,9 +39,9 @@ async function verifyUpgradeFrom(entry, previousVersion) {
     const config = JSON.stringify({ environmentId: 'old-environment', name: 'Existing workspace environment', kernelId: 'standard-chromium', kernelVersion: 'local', commonConfig: {} })
     const at = '2026-09-27T00:00:00.000Z'
     sqlite.prepare(`INSERT INTO environments(environment_id,name,status,kernel_id,kernel_version,proxy_id,config_json,data_dir,platform,arch,created_at,updated_at,revision,lifecycle,trashed_at) VALUES(?,?,'stopped','standard-chromium','local',NULL,?,?,?,?,?,?,1,'active',NULL)`).run('old-environment', 'Existing workspace environment', config, profile, process.platform, process.arch, at, at)
-    sqlite.prepare('INSERT INTO environment_revisions VALUES(?,1,?,?)').run('old-environment', config, at)
+    sqlite.prepare('INSERT INTO environment_revisions(environment_id,revision,config_json,created_at) VALUES(?,1,?,?)').run('old-environment', config, at)
     sqlite.exec('UPDATE screenshot_budget SET limit_mib=64, revision=2; COMMIT;')
-    if (previousVersion === 9) originalIdentity = sqlite.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id
+    if (previousVersion >= 9) originalIdentity = sqlite.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id
   } finally { sqlite.close() }
   const { _electron } = require('playwright-core')
   let identity
@@ -63,21 +63,39 @@ async function verifyUpgradeFrom(entry, previousVersion) {
         await page.locator('[data-workspace-id]').waitFor()
         assert.equal(await page.locator('[data-workspace-id]').textContent(), identity.workspaceId)
         await page.keyboard.press('Escape')
+        const organization = await page.evaluate(async (run) => {
+          const context = {workspaceId:(await window.contextweave.workspace.current()).data.workspaceId}
+          if (run === 0) {
+            const group = await window.contextweave.organization.createGroup(context, {name:'Retained organization'})
+            if (!group.ok) return group
+            const saved = await window.contextweave.organization.saveEnvironment(context, {environmentId:'old-environment',groupId:group.data.id,tags:['Review','中文'],note:'Retained note',expectedRevision:0})
+            if (!saved.ok) return saved
+            const view = await window.contextweave.organization.createView(context, {name:'Retained view',view:{version:1,search:'Existing',filters:{statuses:[],kernelIds:[],proxyIds:[],groupIds:[group.data.id],tags:['review']},sorting:[{id:'name',desc:false}],hiddenColumns:['note']}})
+            if (!view.ok) return view
+          }
+          return window.contextweave.organization.list(context)
+        },run)
+        assert(organization.ok, 'ORGANIZATION_REAL_IPC_FAILED')
+        assert.equal(organization.data.groups[0].name,'Retained organization')
+        assert.equal(organization.data.environments[0].note,'Retained note')
+        assert.deepEqual(organization.data.environments[0].tags,['Review','中文'])
+        assert.equal(organization.data.views[0].name,'Retained view')
+
       } finally { await app.close() }
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
-    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v10-'))
+    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v11-'))
     assert.equal(backups.length, 1, 'WORKSPACE_MIGRATION_REPEATED')
     const before = new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
     const after = new DatabaseSync(file, { readOnly: true })
     try {
       assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
-      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 10)
+      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 11)
       assert.equal(after.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id, identity.workspaceId)
       assert.equal(after.prepare('SELECT data_dir FROM environments').get().data_dir, profile)
-      assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT * FROM environment_revisions').all())
+      assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
     } finally { before.close(); after.close() }
-    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v10-backup' }))
+    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v11-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart' }))
   } finally { await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
 }

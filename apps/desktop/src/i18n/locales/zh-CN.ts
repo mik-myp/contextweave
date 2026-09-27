@@ -1,3 +1,4 @@
+import { organizationMessages } from './zh-CN-organization'
 import { logMessages } from './zh-CN-logs'
 import { lifecycleMessages } from './zh-CN-lifecycle'
 import { adminMessages } from './zh-CN-admin'
@@ -8,6 +9,7 @@ export const zhCNMessages: Record<TranslationKey, string> = {
   ...logMessages,
   ...lifecycleMessages,
   ...workspaceMessages,
+  ...organizationMessages,
   ...adminMessages,
   'common.retry': '重试',
   'theme.saveErrorTitle': '主题尚未保存',

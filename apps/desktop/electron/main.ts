@@ -201,7 +201,8 @@ if (hasInstanceLock)
         secure: safeStorage,
         workerPath: join(__dirname, 'worker.js'),
         forkWorker: createUtilityWorkerLauncher(utilityProcess),
-        changed: (domains) => {
+        changed: (event) => {
+          const { domains } = event
           if (domains.includes('environments')) {
             for (const record of repository.listAll()) {
               if (environmentStates.get(record.environmentId) !== record.status) {
@@ -222,7 +223,7 @@ if (hasInstanceLock)
           }
           const mainWindow = windows.get()
           if (mainWindow)
-            mainWindow.webContents.send('data:changed', dataChangedSchema.parse({ domains }))
+            mainWindow.webContents.send('data:changed', dataChangedSchema.parse(event))
         },
       })
       application.recover()

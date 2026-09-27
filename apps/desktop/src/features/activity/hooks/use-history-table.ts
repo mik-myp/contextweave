@@ -1,3 +1,4 @@
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
 import { useContext, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -35,6 +36,7 @@ export function useHistoryTable<T extends RowData, Q extends HistoryQuery>({
   schema: z.ZodType<Q>
   loadPage: (query: Q) => Promise<IpcResult<HistoryPage<T>>>
 }) {
+  const workspaceContext = useWorkspaceContext()
   const { t } = useI18n()
   const client = useQueryClient()
   const snapshots = useContext(DataTableStateContext)
@@ -56,7 +58,7 @@ export function useHistoryTable<T extends RowData, Q extends HistoryQuery>({
     cursor: view.cursor,
   }
   const requestKey = JSON.stringify(request)
-  const queryKey = ['local', domain, 'page', request] as const
+  const queryKey = workspaceKey(workspaceContext, domain, 'page', request)
   const updateView = (updater: (value: View) => View) => {
     setCancelledKey(null)
     if (snapshots) snapshots.set(domain, { ...snapshots.get(domain), scrollTop: 0 })

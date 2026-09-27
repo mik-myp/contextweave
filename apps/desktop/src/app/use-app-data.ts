@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { EnvironmentSummary } from '@contextweave/contracts'
@@ -10,32 +11,49 @@ const noDomains: readonly AppDomain[] = []
 
 /** Queries are enabled by their consuming page; this hook does not poll other domains. */
 export function useAppData(domains: readonly AppDomain[] = noDomains) {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
   const context = React.useContext(AppDataContext)
   if (!context) throw new Error('useAppData must be used within AppDataProvider')
   const client = useQueryClient()
   const environments = useQuery({
-    queryKey: ['local', 'environments', 'list'],
-    queryFn: () => unwrapIpc(workspaceApi.environment.list()),
+    queryKey: workspaceKey(workspaceContext, 'environments', 'list'),
+    queryFn: async ({ signal }) => {
+      signal.throwIfAborted()
+      const value = await unwrapIpc(workspaceApi.environment.list())
+      signal.throwIfAborted()
+      return value
+    },
     enabled: domains.includes('environments'),
   })
   const proxies = useQuery({
-    queryKey: ['local', 'proxies'],
-    queryFn: () => unwrapIpc(workspaceApi.proxy.list()),
+    queryKey: workspaceKey(workspaceContext, 'proxies'),
+    queryFn: async ({ signal }) => {
+      signal.throwIfAborted()
+      const value = await unwrapIpc(workspaceApi.proxy.list())
+      signal.throwIfAborted()
+      return value
+    },
     enabled: domains.includes('proxies'),
   })
   const kernels = useQuery({
-    queryKey: ['local', 'kernels'],
-    queryFn: () => unwrapIpc(workspaceApi.kernel.list()),
+    queryKey: workspaceKey(workspaceContext, 'kernels'),
+    queryFn: async ({ signal }) => {
+      signal.throwIfAborted()
+      const value = await unwrapIpc(workspaceApi.kernel.list())
+      signal.throwIfAborted()
+      return value
+    },
     enabled: domains.includes('kernels'),
   })
   const appInfo = useQuery({
-    queryKey: ['local', 'app', 'info'],
+    queryKey: ['app', 'info'],
     queryFn: () => unwrapIpc(window.contextweave.app.getInfo()),
     enabled: domains.includes('app'),
     staleTime: Infinity,
   })
   const paths = useQuery({
-    queryKey: ['local', 'app', 'paths'],
+    queryKey: ['app', 'paths'],
     queryFn: () => unwrapIpc(window.contextweave.app.getPaths()),
     enabled: domains.includes('app'),
     staleTime: Infinity,
@@ -44,25 +62,33 @@ export function useAppData(domains: readonly AppDomain[] = noDomains) {
   const refresh = React.useCallback(async () => {
     const selected = domainKey ? domainKey.split(',') : []
     if (!selected.length) {
-      await client.invalidateQueries({ queryKey: ['local'], refetchType: 'active' })
+      await client.invalidateQueries({
+        queryKey: workspaceKey(workspaceContext),
+        refetchType: 'active',
+      })
       return
     }
     await Promise.all(
-      selected.map((domain) => client.invalidateQueries({ queryKey: ['local', domain] })),
+      selected.map((domain) =>
+        client.invalidateQueries({
+          queryKey: domain === 'app' ? ['app'] : workspaceKey(workspaceContext, domain),
+        }),
+      ),
     )
-  }, [client, domainKey])
+  }, [client, domainKey, workspaceContext])
   const upsertEnvironment = React.useCallback(
     (environment: EnvironmentSummary) => {
-      void client.cancelQueries({ queryKey: ['local', 'environments'] })
+      if (environment.workspaceId !== workspaceContext.workspaceId) return
+      void client.cancelQueries({ queryKey: workspaceKey(workspaceContext, 'environments') })
       client.setQueryData<EnvironmentSummary[]>(
-        ['local', 'environments', 'list'],
+        workspaceKey(workspaceContext, 'environments', 'list'),
         (current = []) =>
           current.some((item) => item.id === environment.id)
             ? current.map((item) => (item.id === environment.id ? environment : item))
             : [environment, ...current],
       )
     },
-    [client],
+    [client, workspaceContext],
   )
   const { setNotice } = context
   const perform = React.useCallback(

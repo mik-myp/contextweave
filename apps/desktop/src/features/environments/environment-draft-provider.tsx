@@ -1,13 +1,19 @@
+import { useWorkspaceSession } from '@/features/workspaces/workspace-session-context'
 import { createDraftStore } from './draft-storage'
 import { useMemo, useState, type ReactNode } from 'react'
 import { EnvironmentDraftContext } from './environment-draft-context'
 
 export function EnvironmentDraftProvider({ children }: { children: ReactNode }) {
+  const { context, legacyDraftOwner } = useWorkspaceSession()
   const [drafts] = useState(() => {
     try {
-      return createDraftStore(typeof window === 'undefined' ? undefined : window.sessionStorage)
+      return createDraftStore(
+        context,
+        typeof window === 'undefined' ? undefined : window.sessionStorage,
+        legacyDraftOwner,
+      )
     } catch {
-      return createDraftStore()
+      return createDraftStore(context)
     }
   })
   const [resumeId, setResumeId] = useState<string>()

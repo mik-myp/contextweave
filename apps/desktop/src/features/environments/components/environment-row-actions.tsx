@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import type { EnvironmentSummary } from '@contextweave/contracts'
-import { EyeIcon, PencilIcon, PlayIcon, SquareIcon, Trash2Icon } from 'lucide-react'
+import { TagsIcon, EyeIcon, PencilIcon, PlayIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import {
   DataTableRowActions,
   type DataTableRowAction,
@@ -14,11 +14,13 @@ export function EnvironmentRowActions({
   onStart,
   onStop,
   onDelete,
+  onOrganize,
 }: {
   environment: EnvironmentSummary
   pending: boolean
   onStart: () => void
   onStop: () => void
+  onOrganize: () => void
   onDelete: () => void
 }) {
   const { t } = useI18n()
@@ -53,6 +55,13 @@ export function EnvironmentRowActions({
           : needsReview
             ? [edit, run]
             : [run, edit]),
+        {
+          id: 'organize',
+          label: t('org.edit'),
+          icon: TagsIcon,
+          disabled: pending,
+          onClick: onOrganize,
+        },
         {
           id: 'trash',
           label: t('life.op.trash'),

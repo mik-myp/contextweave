@@ -1,4 +1,4 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useEffect, useRef, useState, type BaseSyntheticEvent } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -36,6 +36,7 @@ import { ProxyTestResult } from './proxy-test-result'
 
 const protocols = proxyTypeSchema.options.map((value) => ({ value, label: value.toUpperCase() }))
 export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose: () => void }) {
+  const workspaceApi = useWorkspaceApi()
   const { t } = useI18n()
   const { refresh, setNotice, appInfo } = useAppData(['proxies', 'app'])
   const [error, setError] = useState<string>()

@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
@@ -66,11 +67,13 @@ async function flush() {
 async function render() {
   await act(async () =>
     root.render(
-      <I18nProvider>
-        <QueryClientProvider client={client}>
-          <ArtifactInventory />
-        </QueryClientProvider>
-      </I18nProvider>,
+      <TestWorkspaceProvider>
+        <I18nProvider>
+          <QueryClientProvider client={client}>
+            <ArtifactInventory />
+          </QueryClientProvider>
+        </I18nProvider>
+      </TestWorkspaceProvider>,
     ),
   )
   await flush()
@@ -146,7 +149,9 @@ it('refreshes through the storage data domain without retaining stale capacity',
   await render()
   call.mockResolvedValue({ ok: true, data: first })
   await act(async () => {
-    await client.invalidateQueries({ queryKey: ['local', 'storage'] })
+    await client.invalidateQueries({
+      queryKey: ['workspace', '00000000-0000-4000-8000-000000000001', 'storage'],
+    })
   })
   await flush()
   expect(container.textContent).toContain('4,096')

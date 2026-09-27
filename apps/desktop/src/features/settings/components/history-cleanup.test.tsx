@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act } from 'react'
@@ -55,11 +56,13 @@ async function click(text: string) {
 async function render() {
   await act(async () =>
     root.render(
-      <I18nProvider>
-        <QueryClientProvider client={client}>
-          <HistoryCleanup />
-        </QueryClientProvider>
-      </I18nProvider>,
+      <TestWorkspaceProvider>
+        <I18nProvider>
+          <QueryClientProvider client={client}>
+            <HistoryCleanup />
+          </QueryClientProvider>
+        </I18nProvider>
+      </TestWorkspaceProvider>,
     ),
   )
   await flush()
@@ -123,7 +126,9 @@ it('defaults to 90 days, requires preview plus explicit confirmation, and report
   expect(container.textContent).toContain('本批清理已提交')
   expect(previewCall).toHaveBeenCalledOnce()
   for (const domain of ['activity', 'operations', 'storage'])
-    expect(invalidation).toHaveBeenCalledWith({ queryKey: ['local', domain] })
+    expect(invalidation).toHaveBeenCalledWith({
+      queryKey: ['workspace', '00000000-0000-4000-8000-000000000001', domain],
+    })
 })
 it('invalidates a preview when the retention selection changes and offers all four presets', async () => {
   await render()

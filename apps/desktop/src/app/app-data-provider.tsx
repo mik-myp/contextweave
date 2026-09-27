@@ -1,3 +1,8 @@
+import { useWorkspace } from '@/features/workspaces/hooks/use-workspace'
+import { WorkspaceSessionProvider } from '@/features/workspaces/workspace-session-provider'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n'
 import * as React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Notice } from '@/shared/types/app'
@@ -12,23 +17,35 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         },
       }),
   )
+  return (
+    <QueryClientProvider client={client}>
+      <Bootstrap>{children}</Bootstrap>
+    </QueryClientProvider>
+  )
+}
+function Bootstrap({ children }: { children: React.ReactNode }) {
+  const identity = useWorkspace()
+  const { t } = useI18n()
+  if (identity.error)
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>{t('workspace.unavailable')}</AlertTitle>
+        <AlertDescription>{identity.error.message}</AlertDescription>
+        <Button onClick={() => void identity.refetch()}>{t('common.retry')}</Button>
+      </Alert>
+    )
+  if (!identity.data) return <p role="status">{t('workspace.loading')}</p>
+  const context = { workspaceId: identity.data.workspaceId }
+  return (
+    <WorkspaceSessionProvider context={context} legacyDraftOwner={context.workspaceId}>
+      <SessionState>{children}</SessionState>
+    </WorkspaceSessionProvider>
+  )
+}
+function SessionState({ children }: { children: React.ReactNode }) {
   const [selectedEnvironment, setSelectedEnvironment] = React.useState<string>()
   const [notice, setNotice] = React.useState<Notice>()
   const [lastWorkerResult, setLastWorkerResult] = React.useState<string>()
-  React.useEffect(() => {
-    const unsubscribe = window.contextweave.events.onDataChanged((domains) => {
-      for (const domain of domains) void client.invalidateQueries({ queryKey: ['local', domain] })
-    })
-    // Events only invalidate snapshots. Focus reconciles active pages after a missed event.
-    const reconcile = () => {
-      void client.invalidateQueries({ queryKey: ['local'], refetchType: 'active' })
-    }
-    window.addEventListener('focus', reconcile)
-    return () => {
-      unsubscribe()
-      window.removeEventListener('focus', reconcile)
-    }
-  }, [client])
   const value = React.useMemo(
     () => ({
       selectedEnvironment,
@@ -40,9 +57,5 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }),
     [selectedEnvironment, notice, lastWorkerResult],
   )
-  return (
-    <QueryClientProvider client={client}>
-      <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>
-    </QueryClientProvider>
-  )
+  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>
 }

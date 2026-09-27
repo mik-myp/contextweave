@@ -108,6 +108,7 @@ export const operationHistoryPageSchema = historyPageSchema(operationSummarySche
 export type OperationSummary = z.infer<typeof operationSummarySchema>
 export const dataDomainSchema = z.enum([
   'environments',
+  'organization',
   'proxies',
   'kernels',
   'activity',
@@ -115,7 +116,8 @@ export const dataDomainSchema = z.enum([
   'storage',
 ])
 export type DataDomain = z.infer<typeof dataDomainSchema>
-export const dataChangedSchema = z.object({ domains: z.array(dataDomainSchema) })
+export const dataChangedSchema = workspaceContextSchema.extend({ domains: z.array(dataDomainSchema).min(1) })
+export type DataChanged = z.infer<typeof dataChangedSchema>
 export const orphanDirectorySchema = z.object({
   name: z.string(),
   modifiedAt: z.string().datetime(),

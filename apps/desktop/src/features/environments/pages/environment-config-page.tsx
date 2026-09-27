@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { environmentService } from '../environment-service'
+import { useEnvironmentService } from '../environment-service'
 import { EnvironmentEditor } from '../components/environment-editor'
 
 export function EnvironmentConfigPage({ environmentId }: { environmentId?: string }) {
@@ -13,6 +13,7 @@ export function EnvironmentConfigPage({ environmentId }: { environmentId?: strin
 }
 
 function EnvironmentConfigContent({ environmentId }: { environmentId?: string }) {
+  const environmentService = useEnvironmentService()
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -45,7 +46,7 @@ function EnvironmentConfigContent({ environmentId }: { environmentId?: string })
     return () => {
       cancelled = true
     }
-  }, [environmentId, attempt])
+  }, [environmentId, attempt, environmentService])
   const current =
     loaded?.environmentId === environmentId && loaded?.attempt === attempt ? loaded : undefined
   const detail = current?.detail

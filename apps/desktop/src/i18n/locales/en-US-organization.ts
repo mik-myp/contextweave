@@ -1,0 +1,40 @@
+export const organizationMessages = {
+  'org.groups': 'Manage groups',
+  'org.group': 'Group',
+  'org.ungrouped': 'Ungrouped',
+  'org.tags': 'Tags',
+  'org.note': 'Note',
+  'org.edit': 'Edit group, tags and note',
+  'org.editHelp':
+    'Update organization only, without changing browser identity or runtime state. Tags are not permissions.',
+  'org.tagsHelp':
+    'One tag per line, up to 20 tags of 40 characters each. Case-insensitive duplicates are rejected.',
+  'org.noteHelp': 'Up to 4000 characters. Do not enter passwords, cookies or other credentials.',
+  'org.invalid': 'Check label, tag and note lengths. Avoid empty labels and duplicate tags.',
+  'org.save': 'Save organization',
+  'org.name': 'Name',
+  'org.newGroup': 'New group',
+  'org.rename': 'Rename',
+  'org.delete': 'Delete',
+  'org.groupHelp':
+    'Single-level groups. Deleting a group ungroups its environments without deleting browser data.',
+  'org.noGroups': 'No groups yet',
+  'org.deleteGroupTitle': 'Delete this group?',
+  'org.deleteGroupHelp':
+    'All environments in this group become ungrouped. Their tags and notes are retained.',
+  'org.views': 'Saved views',
+  'org.viewName': 'View name',
+  'org.saveView': 'Save current view',
+  'org.applyView': 'Apply view',
+  'org.updateView': 'Replace with current list',
+  'org.viewHelp':
+    'Saves filters, sorting and visible columns, not page position, selection or data. Applying resets selection and returns to page one.',
+  'org.noViews': 'No saved views yet',
+  'org.deleteViewTitle': 'Delete this view?',
+  'org.deleteViewHelp': 'Deletes only this list preference, not environments.',
+  'org.saved': 'Saved',
+  'org.loadError': 'Organization data has not loaded. Retry before editing.',
+  'org.reload': 'Reload saved content',
+  'org.affected': '{count} environments',
+  'org.search': 'Search name, ID, group, tags or note…',
+} as const

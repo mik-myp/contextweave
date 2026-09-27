@@ -1,3 +1,4 @@
+import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
 // @vitest-environment jsdom
 import { withWorkspaceFixture } from '../../../../test-support/workspace'
 import { act, useLayoutEffect } from 'react'
@@ -56,7 +57,13 @@ beforeEach(async () => {
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
-  await act(async () => root.render(<Fixture />))
+  await act(async () =>
+    root.render(
+      <TestWorkspaceProvider>
+        <Fixture />
+      </TestWorkspaceProvider>,
+    ),
+  )
 })
 afterEach(async () => {
   await act(async () => root.unmount())

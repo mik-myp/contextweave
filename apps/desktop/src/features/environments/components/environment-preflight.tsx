@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useQuery } from '@tanstack/react-query'
 import type { EnvironmentDetails } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
@@ -10,9 +11,17 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FormSection } from '@/components/form-section'
 export function EnvironmentPreflight({ detail }: { detail?: EnvironmentDetails }) {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
   const { t } = useI18n()
   const query = useQuery({
-    queryKey: ['local', 'environments', 'preflight', detail?.id, detail?.revision],
+    queryKey: workspaceKey(
+      workspaceContext,
+      'environments',
+      'preflight',
+      detail?.id,
+      detail?.revision,
+    ),
     queryFn: () => unwrapIpc(workspaceApi.environment.preflight(detail!.id)),
     enabled: !!detail,
     staleTime: 10_000,

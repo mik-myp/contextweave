@@ -92,7 +92,7 @@ try {
   const before = await page.evaluate(async () => {
     const first = await window.contextweave.operation.page({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { search: 'Cleanup fixture', limit: 20 })
     window.__cleanupEvents = []
-    window.contextweave.events.onDataChanged((domains) => window.__cleanupEvents.push(domains))
+    window.contextweave.events.onDataChanged({workspaceId:(await window.contextweave.workspace.current()).data.workspaceId}, (domains) => window.__cleanupEvents.push(domains))
     return first
   })
   assert(before.ok && before.data.nextCursor)
@@ -167,7 +167,7 @@ try {
   desktop = undefined
   const check = new DatabaseSync(file)
   try {
-    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 10)
+    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 11)
     assert.equal(check.prepare('SELECT count(*) AS n FROM runtime_sessions').get().n, 6)
     assert.equal(
       check

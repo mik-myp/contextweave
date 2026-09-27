@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { ArchiveRestoreIcon } from 'lucide-react'
 import { DataTableRowActions } from '@/components/data-table/data-table-row-actions'
 import { selectionColumn } from '@/components/data-table/data-table-selection'
@@ -16,10 +17,12 @@ import { BatchResult } from '@/components/batch-result'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 const getRowId = (row: EnvironmentSummary) => row.id
 export function EnvironmentTrash() {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const batch = useBatchMutation(['environments'])
   const query = useQuery({
-    queryKey: ['local', 'environments', 'trash'],
+    queryKey: workspaceKey(workspaceContext, 'environments', 'trash'),
     queryFn: () => unwrapIpc(workspaceApi.environment.trash()),
   })
   const restore = async (items: EnvironmentSummary[]) => {

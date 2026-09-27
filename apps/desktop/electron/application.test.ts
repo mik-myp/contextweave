@@ -1,5 +1,5 @@
 import { symlinkSync, readdirSync } from 'node:fs'
-import { environmentConfigSchema } from '@contextweave/contracts'
+import { environmentConfigSchema, type DataChanged } from '@contextweave/contracts'
 import { scopedCommands } from '../test-support/workspace'
 import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
@@ -19,6 +19,7 @@ function fixture() {
   mkdirSync(join(root, 'environments'))
   const db = openLocalDatabase(join(root, 'data.sqlite'))
   const repository = new EnvironmentRepository(db.sqlite)
+  const events: DataChanged[] = []
   const app = createApplication({
     workspaceRepository: new WorkspaceRepository(db.sqlite),
     artifactRepository: new ArtifactRepository(db.sqlite),
@@ -35,14 +36,14 @@ function fixture() {
     forkWorker: () => {
       throw new Error('Worker must not run in boundary tests')
     },
-    changed: () => {},
+    changed: (event) => events.push(event),
   })
   cleanups.push(async () => {
     await app.shutdown()
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
-  return { app: scopedCommands(app, repository.context), rawApp: app, root, db, repository }
+  return { app: scopedCommands(app, repository.context), rawApp: app, root, db, repository, events }
 }
 
 describe('application command boundary', () => {
@@ -62,6 +63,7 @@ describe('application command boundary', () => {
 
   it.each([
     'workspace:current',
+    'organization:list',
     'kernel:providers',
     'kernel:list',
     'environment:list',
@@ -354,4 +356,41 @@ it('rechecks controlled roots after startup and refuses a replaced symlink befor
   // Restore the fixture root so teardown exercises normal shutdown, not another test error.
   rmSync(join(a.root, 'environments'))
   mkdirSync(join(a.root, 'environments'))
+})
+
+it('keeps organization CRUD behind the fixed workspace boundary and emits source-owned events', async () => {
+  const f = fixture(),
+    other = fixture()
+  expect(
+    await f.rawApp.invoke('organization:group-create', {
+      ...other.repository.context,
+      payload: { name: 'foreign' },
+    }),
+  ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+  expect(await f.rawApp.invoke('organization:group-create', { name: 'unscoped' })).toMatchObject({
+    ok: false,
+    code: 'WORKSPACE_CONTEXT_INVALID',
+  })
+  expect(f.repository.organization.snapshot().groups).toEqual([])
+  expect(await f.app.invoke('organization:group-create', { name: 'Owned group' })).toMatchObject({
+    ok: true,
+    data: { workspaceId: f.repository.workspaceId, name: 'Owned group', revision: 1 },
+  })
+  expect(f.events.at(-1)).toEqual({
+    workspaceId: f.repository.workspaceId,
+    domains: ['organization'],
+  })
+  expect(other.repository.organization.snapshot().groups).toEqual([])
+  expect(await f.app.invoke('organization:group-create', { name: 'OWNED GROUP' })).toMatchObject({
+    ok: false,
+    code: 'ORGANIZATION_NAME_EXISTS',
+  })
+  const snapshot = f.repository.organization.snapshot()
+  expect(
+    await f.app.invoke('organization:group-delete', {
+      id: snapshot.groups[0]!.id,
+      expectedRevision: 999,
+    }),
+  ).toMatchObject({ ok: false, code: 'ORGANIZATION_CONFLICT' })
+  expect(f.repository.organization.snapshot()).toEqual(snapshot)
 })

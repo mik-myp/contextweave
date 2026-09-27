@@ -1,4 +1,4 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { operationHistoryQuerySchema, type OperationSummary } from '@contextweave/contracts'
@@ -11,6 +11,7 @@ import type { DataTableFeatures } from '@/components/data-table/data-table-featu
 import { Badge } from '@/components/ui/badge'
 const getRowId = (row: OperationSummary) => row.operationId
 export function OperationsTable() {
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const columns = useMemo<ColumnDef<DataTableFeatures, OperationSummary, unknown>[]>(
     () => [

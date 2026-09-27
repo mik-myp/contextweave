@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, RefreshCwIcon } from 'lucide-react'
@@ -37,6 +38,8 @@ export function KernelInstallDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const { setNotice, refresh } = useAppData(['kernels'])
   const client = useQueryClient()
@@ -46,7 +49,7 @@ export function KernelInstallDialog({
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string>()
   const catalog = useQuery({
-    queryKey: ['local', 'kernels', 'catalog', providerId],
+    queryKey: workspaceKey(workspaceContext, 'kernels', 'catalog', providerId),
     queryFn: () => unwrapIpc(workspaceApi.kernel.catalog(providerId)),
     enabled: open,
   })
@@ -69,7 +72,7 @@ export function KernelInstallDialog({
     setRefreshing(true)
     try {
       client.setQueryData(
-        ['local', 'kernels', 'catalog', providerId],
+        workspaceKey(workspaceContext, 'kernels', 'catalog', providerId),
         await unwrapIpc(workspaceApi.kernel.catalog(providerId, true)),
       )
     } catch (cause) {

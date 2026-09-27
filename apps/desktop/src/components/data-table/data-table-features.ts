@@ -17,7 +17,7 @@ import {
   sortFn_text,
   tableFeatures,
 } from '@tanstack/react-table'
-import { filterIsOneOf } from './data-table-filter-functions'
+import { filterIsOneOf, filterHasAny } from './data-table-filter-functions'
 
 // Shared v9 features. Each feature decides which rows and actions are eligible.
 export const dataTableFeatures = tableFeatures({
@@ -37,6 +37,7 @@ export const dataTableFeatures = tableFeatures({
     includesString: filterFn_includesString,
     equalsString: filterFn_equalsString,
     isOneOf: filterIsOneOf,
+    hasAny: filterHasAny,
   },
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
   // TanStack v9 uses phantom metadata types to infer column/table options.

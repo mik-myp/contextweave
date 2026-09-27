@@ -6,7 +6,13 @@ import { environmentDetailsSchema } from '@contextweave/contracts'
 import { I18nProvider } from '@/i18n'
 import type { EnvironmentDraft } from '../environment-draft-context'
 import { environmentFormDefaults } from '../environment-form'
-import { environmentService } from '../environment-service'
+const { environmentService } = vi.hoisted(() => ({
+  environmentService: { save: vi.fn(), stop: vi.fn(), recover: vi.fn() },
+}))
+vi.mock('../environment-service', async (original) => ({
+  ...(await original<typeof import('../environment-service')>()),
+  useEnvironmentService: () => environmentService,
+}))
 import { useEnvironmentEditor } from './use-environment-editor'
 
 const {
@@ -177,4 +183,27 @@ it('keeps an editable draft after save failure and guards unavailable configurat
   })
   expect(environmentService.save).toHaveBeenCalledOnce()
   expect(hook.disabled).toBe(true)
+})
+
+it('does not navigate or clear another session after an old save finishes on an unmounted editor', async () => {
+  await render()
+  await changeName('Remain scoped')
+  let resolve!: (value: typeof saved) => void
+  vi.mocked(environmentService.save).mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done
+    }),
+  )
+  let request!: Promise<void>
+  await act(async () => {
+    request = hook.submit()
+  })
+  await act(async () => root.render(null))
+  await act(async () => {
+    resolve(saved)
+    await request
+  })
+  expect(navigate).not.toHaveBeenCalled()
+  expect(setSavedId).not.toHaveBeenCalled()
+  expect(drafts.get('new')?.values.name).toBe('Remain scoped')
 })

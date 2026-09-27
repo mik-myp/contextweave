@@ -1,4 +1,4 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useCallback, useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { proxyTypeSchema } from '@contextweave/contracts'
@@ -22,6 +22,7 @@ import { ProxyImportDialog } from '../components/proxy-import-dialog'
 const getRowId = (row: ProxySummary) => row.proxyId
 
 export function ProxiesPage() {
+  const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
   const { proxies, environments, loading, proxyError, refresh, setNotice } = useAppData([
     'proxies',
@@ -64,7 +65,7 @@ export function ProxiesPage() {
         })
       }
     },
-    [setNotice, t],
+    [setNotice, t, workspaceApi.proxy],
   )
   const columns = useMemo(
     () =>

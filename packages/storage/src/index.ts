@@ -1,3 +1,4 @@
+import { OrganizationRepository, verifyOrganizationStorage } from './organization'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
@@ -56,6 +57,7 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
     sqlite.exec('BEGIN')
     verifyDatabaseRelations(sqlite)
     verifyWorkspaceScope(sqlite)
+    verifyOrganizationStorage(sqlite)
     sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
@@ -193,6 +195,7 @@ function mapKernelInstallation(row: Row): KernelInstallationRecord {
 }
 
 export class EnvironmentRepository {
+  readonly organization: OrganizationRepository
   readonly workspaceId: string
   readonly databasePath: string
   get context() {
@@ -224,6 +227,7 @@ export class EnvironmentRepository {
 
   constructor(private readonly sqlite: DatabaseSync, private readonly paths?: WorkspacePaths) {
     this.workspaceId = new WorkspaceRepository(sqlite).current().workspaceId
+    this.organization = new OrganizationRepository(sqlite)
     this.databasePath = databaseFilePath(sqlite)
     if (paths) {
       assertWorkspaceContext(this.context, paths.context)
@@ -796,3 +800,5 @@ export { ArtifactRepository } from './artifacts'
 export { WorkspaceRepository } from './workspaces'
 
 export { WorkspacePaths } from './workspace-paths'
+
+export { OrganizationRepository } from './organization'

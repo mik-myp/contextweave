@@ -4,9 +4,11 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpLocaleResult } from '@contextweave/contracts'
 import { useIpLocale } from './use-ip-locale'
-import { environmentService } from '../environment-service'
-vi.mock('../environment-service', () => ({
+const { environmentService } = vi.hoisted(() => ({
   environmentService: { detectLocale: vi.fn(), cancelLocale: vi.fn().mockResolvedValue(true) },
+}))
+vi.mock('../environment-service', () => ({
+  useEnvironmentService: () => environmentService,
 }))
 let hook: ReturnType<typeof useIpLocale>
 function Fixture({

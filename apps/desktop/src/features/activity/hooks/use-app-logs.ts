@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapIpc } from '@/shared/lib/ipc'
 
-const logKey = ['local', 'app-logs'] as const
+const logKey = ['app', 'logs']
 
 export function useAppLogs(autoRefresh: boolean) {
   const client = useQueryClient()

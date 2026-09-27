@@ -1,4 +1,5 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -9,8 +10,10 @@ import {
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
 
-const receiptKey = ['local', 'storage', 'history-cleanup-receipt'] as const
 export function useHistoryCleanup() {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
+  const receiptKey = workspaceKey(workspaceContext, 'storage', 'history-cleanup-receipt')
   const client = useQueryClient()
   const [retentionDays, setRetentionDays] = useState<HistoryCleanupRetentionDays>(90)
   const [preview, setPreview] = useState<HistoryCleanupPreview | null>(null)
@@ -36,7 +39,7 @@ export function useHistoryCleanup() {
   })
   const invalidate = () => {
     for (const domain of ['activity', 'operations', 'storage'])
-      void client.invalidateQueries({ queryKey: ['local', domain] })
+      void client.invalidateQueries({ queryKey: workspaceKey(workspaceContext, domain) })
   }
   const accept = (value: HistoryCleanupResult) => {
     setResult(value)

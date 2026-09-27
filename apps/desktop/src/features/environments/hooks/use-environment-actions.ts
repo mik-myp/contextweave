@@ -2,9 +2,11 @@ import { useCallback, useRef, useState } from 'react'
 import type { EnvironmentSummary } from '@contextweave/contracts'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
-import { environmentService } from '../environment-service'
+import { useEnvironmentService } from '../environment-service'
 
 export function useEnvironmentActions() {
+  const environmentService = useEnvironmentService()
+
   const { refresh, setNotice, upsertEnvironment } = useAppData(['environments'])
   const { t } = useI18n()
   const active = useRef(new Set<string>())
@@ -35,7 +37,7 @@ export function useEnvironmentActions() {
         setPending(new Set(active.current))
       }
     },
-    [refresh, setNotice, upsertEnvironment, t],
+    [refresh, setNotice, upsertEnvironment, t, environmentService],
   )
   const start = useCallback(
     (environment: EnvironmentSummary) => {

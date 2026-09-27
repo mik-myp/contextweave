@@ -1,8 +1,11 @@
-import { workspaceApi } from '@/features/workspaces/workspace-api'
+import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
+import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapIpc } from '@/shared/lib/ipc'
-const key = ['local', 'proxies', 'credential-cleanup'] as const
 export function useCredentialCleanup() {
+  const workspaceContext = useWorkspaceContext()
+  const workspaceApi = useWorkspaceApi()
+  const key = workspaceKey(workspaceContext, 'proxies', 'credential-cleanup')
   const client = useQueryClient()
   const status = useQuery({
     queryKey: key,

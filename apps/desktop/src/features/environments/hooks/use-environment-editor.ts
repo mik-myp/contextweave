@@ -11,11 +11,19 @@ import {
   environmentFormDefaults,
   type EnvironmentFormValues,
 } from '../environment-form'
-import { environmentService, isEnvironmentReadOnly } from '../environment-service'
+import { useEnvironmentService, isEnvironmentReadOnly } from '../environment-service'
 
 export function useEnvironmentEditor(detail?: EnvironmentDetails) {
+  const environmentService = useEnvironmentService()
   const { t } = useI18n()
   const navigate = useNavigate()
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const {
     kernels,
     proxies,
@@ -110,12 +118,14 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
           detail?.id,
           draft?.revision ?? detail?.revision,
         )
+        if (!mounted.current) return
         upsertEnvironment(saved)
         clearDraft()
         setSavedId(saved.id)
         form.reset(values)
         allowLeave.current = true
         await refresh()
+        if (!mounted.current) return
         setNotice({ kind: 'success', message: t(detail ? 'env.saved' : 'env.created') })
         await navigate({ to: '/environments' })
       } catch (cause) {

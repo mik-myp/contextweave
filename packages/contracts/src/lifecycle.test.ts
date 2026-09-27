@@ -18,6 +18,6 @@ it('requires evidence instead of treating a declaration as verified capability',
   ).toBe(true)
 })
 it('restricts cache invalidation events to known local domains', () => {
-  expect(dataChangedSchema.safeParse({ domains: ['environments', 'activity'] }).success).toBe(true)
+  expect(dataChangedSchema.safeParse({ workspaceId:'00000000-0000-4000-8000-000000000001', domains: ['environments', 'activity'] }).success).toBe(true)
   expect(dataChangedSchema.safeParse({ domains: ['arbitrary:channel'] }).success).toBe(false)
 })

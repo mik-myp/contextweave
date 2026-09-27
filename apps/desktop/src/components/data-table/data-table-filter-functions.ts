@@ -13,3 +13,11 @@ export const filterIsOneOf = constructFilterFn({
   autoRemove: (value: unknown) => getFilterValues(value).length === 0,
   filter: (value: unknown, selected: string[]) => selected.includes(String(value ?? '')),
 })
+
+export const filterHasAny = constructFilterFn({
+  resolveFilterValue: getFilterValues,
+  autoRemove: (value: unknown) => getFilterValues(value).length === 0,
+  filter: (value: unknown, selected: string[]) =>
+    Array.isArray(value) &&
+    value.some((item) => typeof item === 'string' && selected.includes(item)),
+})

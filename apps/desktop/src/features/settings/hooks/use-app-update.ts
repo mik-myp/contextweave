@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
 
-const updateKey = ['local', 'app-update'] as const
+const updateKey = ['app', 'update']
 type UpdateCommand = 'check' | 'download' | 'install' | 'cancel' | 'openInstaller'
 
 export function useAppUpdate() {

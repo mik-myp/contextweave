@@ -1,20 +1,11 @@
+import { environmentStatusSchema } from './environment-status'
 import { historyPageSchema } from './history'
 import { workspaceContextSchema } from './workspaces'
 import { z } from 'zod'
 
 export const protocolVersion = 1 as const
 
-export const environmentStatusSchema = z.enum([
-  'created',
-  'ready',
-  'starting',
-  'running',
-  'stopping',
-  'stopped',
-  'error',
-  'needs-recovery',
-])
-export type EnvironmentStatus = z.infer<typeof environmentStatusSchema>
+export { environmentStatusSchema, type EnvironmentStatus } from './environment-status'
 
 export const kernelFamilySchema = z.enum(['chromium', 'firefox'])
 export type KernelFamily = z.infer<typeof kernelFamilySchema>
@@ -454,3 +445,5 @@ export * from './artifacts'
 export * from './artifact-budget'
 
 export * from './workspaces'
+
+export * from './organization'

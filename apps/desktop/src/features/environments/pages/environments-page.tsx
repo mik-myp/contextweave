@@ -1,10 +1,19 @@
+import {
+  organizeEnvironments,
+  useOrganization,
+  type OrganizedEnvironment,
+} from '../organization/use-organization'
+import { EnvironmentOrganizationDialog } from '../organization/environment-organization-dialog'
+import { GroupManagerDialog } from '../organization/group-manager-dialog'
+import { SavedViewsDialog } from '../organization/saved-views-dialog'
+import { organizationNameKey } from '@contextweave/contracts'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { EnvironmentTrash } from '../components/environment-trash'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
 import { BatchResult } from '@/components/batch-result'
 import { useBatchMutation } from '@/shared/hooks/use-batch-mutation'
-import { environmentService, isEnvironmentReadOnly } from '../environment-service'
+import { useEnvironmentService, isEnvironmentReadOnly } from '../environment-service'
 import { useMemo, useState, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
 import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
@@ -41,12 +50,21 @@ export function EnvironmentsPage() {
   )
 }
 function ActiveEnvironmentsPage() {
+  const environmentService = useEnvironmentService()
   const { t, locale } = useI18n()
   const { environments, kernels, proxies, loading, error, refresh } = useAppData([
     'environments',
     'kernels',
     'proxies',
   ])
+  const organization = useOrganization()
+  const rows = useMemo(
+    () => organizeEnvironments(environments, organization.data),
+    [environments, organization.data],
+  )
+  const [organizationTarget, setOrganizationTarget] = useState<OrganizedEnvironment>()
+  const [groupsOpen, setGroupsOpen] = useState(false)
+  const [viewsOpen, setViewsOpen] = useState(false)
   const actions = useEnvironmentActions()
   const batch = useBatchMutation(['environments'])
   const [target, setTarget] = useState<{
@@ -70,17 +88,18 @@ function ActiveEnvironmentsPage() {
         onStart: start,
         onStop: setStopTarget,
         onDelete,
+        onOrganize: setOrganizationTarget,
       }),
     [t, locale, kernels, proxies, pending, start, setStopTarget, onDelete],
   )
   const table = useDataTable({
-    data: environments,
+    data: rows,
     columns,
     getRowId,
     stateKey: 'environments',
     enableRowSelection: true,
     loading,
-    initialState: { sorting: [{ id: 'updatedAt', desc: true }] },
+    initialState: { sorting: [{ id: 'updatedAt', desc: true }], columnVisibility: { note: false } },
   })
   const selected = table.getFilteredSelectedRowModel().rows.map((row) => row.original)
   const eligible = {
@@ -151,16 +170,48 @@ function ActiveEnvironmentsPage() {
           </AlertDescription>
         </Alert>
       )}
+      {organizationTarget && (
+        <EnvironmentOrganizationDialog
+          environment={organizationTarget}
+          onClose={() => setOrganizationTarget(undefined)}
+        />
+      )}
+      {groupsOpen && <GroupManagerDialog onClose={() => setGroupsOpen(false)} />}
+      {viewsOpen && <SavedViewsDialog table={table} onClose={() => setViewsOpen(false)} />}
       <BatchResult failures={batch.failures} />
       <DataTable
         table={table}
         label={t('env.list')}
-        searchPlaceholder={t('env.search')}
-        loading={loading}
-        error={error}
-        onRetry={() => void refresh()}
+        searchPlaceholder={t('org.search')}
+        searchMaxLength={200}
+        loading={loading || organization.isPending}
+        error={error ?? organization.error?.message}
+        onRetry={() => {
+          void refresh()
+          void organization.refetch()
+        }}
         selectedRowId={savedId}
-        actions={newAction}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!organization.data || organization.isError}
+              onClick={() => setGroupsOpen(true)}
+            >
+              {t('org.groups')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!organization.data || organization.isError}
+              onClick={() => setViewsOpen(true)}
+            >
+              {t('org.views')}
+            </Button>
+            {newAction}
+          </>
+        }
         bulkActions={
           <DataTableBulkActions
             table={table}
@@ -178,6 +229,30 @@ function ActiveEnvironmentsPage() {
         }
         filters={
           <>
+            <DataTableFilter
+              column={table.getColumn('groupId')}
+              label={t('org.group')}
+              options={[
+                { value: 'ungrouped', label: t('org.ungrouped') },
+                ...(organization.data?.groups ?? []).map((group) => ({
+                  value: group.id,
+                  label: group.name,
+                })),
+              ]}
+              onFilterChange={() => table.setPageIndex(0)}
+            />
+            <DataTableFilter
+              column={table.getColumn('tags')}
+              label={t('org.tags')}
+              options={[
+                ...new Map(
+                  rows.flatMap((row) => row.tags).map((tag) => [organizationNameKey(tag), tag]),
+                ).entries(),
+              ].map(([value, label]) => ({ value, label }))}
+              onFilterChange={() => table.setPageIndex(0)}
+              showCounts={false}
+            />
+
             <DataTableFilter
               column={table.getColumn('status')}
               label={t('env.status')}

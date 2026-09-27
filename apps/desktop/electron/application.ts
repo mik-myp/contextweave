@@ -1,3 +1,4 @@
+import { dataChangedSchema, type DataChanged } from '@contextweave/contracts'
 import { realpathSync } from 'node:fs'
 import { WorkspacePaths } from '@contextweave/storage'
 import { createArtifactService } from './services/artifacts'
@@ -66,10 +67,12 @@ export function createApplication(options: {
   secure: SecureStorage
   workerPath: string
   forkWorker: ForkWorker
-  changed(domains: DataDomain[]): void
+  changed(event: DataChanged): void
 }) {
-  const { dataRoot, platform, arch, changed } = options
+  const { dataRoot, platform, arch } = options
   const workspace = options.workspaceRepository.current()
+  const changed = (domains: DataDomain[]) =>
+    options.changed(dataChangedSchema.parse({ workspaceId: workspace.workspaceId, domains }))
   assertWorkspaceContext(workspace, options.repository.context)
   assertWorkspaceContext(workspace, { workspaceId: options.artifactRepository.workspaceId })
   const paths = new WorkspacePaths({ workspaceId: workspace.workspaceId }, dataRoot)
@@ -138,6 +141,42 @@ export function createApplication(options: {
     string,
     (input?: unknown) => IpcResult<unknown> | Promise<IpcResult<unknown>>
   > = {
+    'organization:list': () => ok(repository.organization.snapshot()),
+    'organization:group-create': (input) => {
+      const result = repository.organization.createGroup(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:group-update': (input) => {
+      const result = repository.organization.updateGroup(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:group-delete': (input) => {
+      const result = repository.organization.deleteGroup(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:metadata-save': (input) => {
+      const result = repository.organization.saveEnvironment(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:view-create': (input) => {
+      const result = repository.organization.createView(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:view-update': (input) => {
+      const result = repository.organization.updateView(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:view-delete': (input) => {
+      const result = repository.organization.deleteView(input)
+      changed(['organization'])
+      return ok(result)
+    },
     'kernel:providers': () => ok(kernelProviders),
     'kernel:prepare-custom': async (input) =>
       ok(await kernels.prepareCustom(customKernelSourceSchema.parse(input))),
@@ -259,6 +298,7 @@ export function createApplication(options: {
   }
   const noInput = new Set([
     'workspace:current',
+    'organization:list',
     'kernel:providers',
     'kernel:list',
     'environment:list',

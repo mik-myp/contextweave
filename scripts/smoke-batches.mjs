@@ -17,7 +17,7 @@ export async function waitForBatchTask(read, { now = () => performance.now(), pa
 }
 
 // Real public IPC and real browsers; no injected queue or renderer-owned scheduling.
-export async function verifyBackendBatches(page) {
+export async function verifyBackendBatches(page, activateManager) {
   const ids = await page.evaluate(async () => {
     const context = { workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }
     const ids = []
@@ -48,13 +48,22 @@ export async function verifyBackendBatches(page) {
   }
   const start = await submit('start', [...ids, 'missing-batch-target'])
   assert(start.ok, 'BATCH_START_CONFIRM_FAILED')
-  // The original environment table and selection disappear while Main keeps executing.
-  await page.getByRole('link', { name: '代理', exact: true }).click()
   const started = await finish(start.data.id)
   assert.equal(started.counts.skipped, 1)
   assert.equal(started.items.at(-1).reason, 'NOT_FOUND')
   assert.deepEqual(started.items.map(item => item.environmentId), [...ids, 'missing-batch-target'])
-  for (const action of ['stop', 'trash', 'restore']) {
+  const stop = await submit('stop', ids)
+  assert(stop.ok, 'BATCH_STOP_CONFIRM_FAILED')
+  assert(['queued', 'running'].includes(stop.data.status), 'BATCH_STOP_NOT_SUBMITTED_ACTIVE')
+  // Navigate after confirming the stop task, while Main owns the work. Startup
+  // intentionally foregrounds external browsers; a real user returns to the
+  // manager before navigating. Stop does not launch another window to steal focus.
+  const before = await page.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus() }))
+  await activateManager()
+  console.log(JSON.stringify({ batchNavigationWindow: { before, after: await page.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus() })) } }))
+  await page.getByRole('link', { name: '代理', exact: true }).click()
+  await finish(stop.data.id)
+  for (const action of ['trash', 'restore']) {
     const submitted = await submit(action, ids)
     assert(submitted.ok, `BATCH_${action.toUpperCase()}_CONFIRM_FAILED`)
     await finish(submitted.data.id)

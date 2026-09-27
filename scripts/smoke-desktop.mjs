@@ -1,4 +1,4 @@
-import { desktopStage } from './smoke-desktop-stages.mjs'
+import { desktopStage, activateDesktopPage } from './smoke-desktop-stages.mjs'
 import { verifyBackendBatches } from './smoke-batches.mjs'
 import { assertWorkspaceIdentity, verifyWorkspaceUpgrade } from './smoke-workspace.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
@@ -37,8 +37,11 @@ if (process.argv.includes('--packaged')) {
   if (existsSync(`${archive}.unpacked`))
     await cp(`${archive}.unpacked`, `${entry}.unpacked`, { recursive: true })
 }
+// Electron may synchronously install its development binary on first require.
+// Resolve it before the original 20-second application-launch deadline begins.
+const electronExecutable = require('electron')
 const desktop = await desktopStage('primary-launch', () => _electron.launch({
-  executablePath: require('electron'),
+  executablePath: electronExecutable,
   args: [entry],
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
@@ -468,7 +471,7 @@ try {
       const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
-    await verifyBackendBatches(page)
+    await verifyBackendBatches(page, () => desktopStage('batch-navigation-focus', () => activateDesktopPage(desktop, page), { timeoutMs: 5000 }))
     console.log(
       JSON.stringify({
         bridge: 'passed',

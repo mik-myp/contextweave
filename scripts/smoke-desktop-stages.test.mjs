@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { test } from 'node:test'
-import { desktopStage, stopFailedDesktop } from './smoke-desktop-stages.mjs'
+import { desktopStage, stopFailedDesktop, activateDesktopPage } from './smoke-desktop-stages.mjs'
 
 test('a stage waits for its real result without cleanup or a second invocation', async () => {
   const logs = []; let calls = 0
@@ -24,7 +24,7 @@ test('timeout diagnoses and cleans up only the owned app, then still fails', asy
   assert.equal(calls, 1)
   assert.equal(stops, 1)
   assert.deepEqual(logs.map(item => item.state), ['started', 'failed'])
-  assert.equal(logs[1].cleanup, 'owned-process-exited-after-failed-check')
+  assert.equal(logs[1].cleanup, 'owned-main-exited-fixture-retained')
 })
 
 test('errors are retained, but raw error text is not copied into diagnostics', async () => {
@@ -53,4 +53,39 @@ test('unconfirmed cleanup is not silently successful', async () => {
   const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null })
   await assert.rejects(stopFailedDesktop({ process: () => child }, async () => {}), /DESKTOP_EXIT_UNCONFIRMED/)
   assert.equal(child.listenerCount('exit'), 0)
+})
+
+
+test('navigation activates only its owned manager and still uses the real page', async () => {
+  const order = []; const page = { bringToFront: async () => order.push('bringToFront') }
+  const native = {
+    show: () => order.push('show'), focus: () => order.push('focus'),
+    isVisible: () => true, isFocused: () => true,
+  }
+  await activateDesktopPage({ browserWindow: async actual => {
+    assert.equal(actual, page)
+    return { evaluate: async fn => fn(native), dispose: async () => order.push('dispose') }
+  } }, page)
+  assert.deepEqual(order, ['show', 'focus', 'bringToFront', 'dispose'])
+})
+
+test('an unactivated manager fails rather than force-clicking or bypassing visibility', async () => {
+  let disposed = false
+  await assert.rejects(activateDesktopPage({ browserWindow: async () => ({
+    evaluate: async fn => fn({ show() {}, focus() {}, isVisible: () => true, isFocused: () => false }),
+    dispose: async () => { disposed = true },
+  }) }, { bringToFront: async () => {} }, 10), /MANAGER_NOT_ACTIVATED/)
+  assert.equal(disposed, true)
+})
+
+
+test('native activation acknowledgement may arrive after the focus request returns', async () => {
+  let requests = 0, observations = 0, disposed = false
+  const native = { show() {}, focus: () => requests++, isVisible: () => true, isFocused: () => ++observations === 2 }
+  await activateDesktopPage({ browserWindow: async () => ({
+    evaluate: async fn => fn(native), dispose: async () => { disposed = true },
+  }) }, { bringToFront: async () => {} }, 1000)
+  assert.equal(requests, 1)
+  assert.equal(observations, 2)
+  assert.equal(disposed, true)
 })

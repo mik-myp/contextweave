@@ -81,7 +81,9 @@ export function useHistoryTable<T extends RowData, Q extends HistoryQuery>({
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data: query.data?.items ?? [],
+    // A failed revalidation can mean the cursor was deleted by explicit history cleanup.
+    // Do not keep showing an obsolete successful page under an error.
+    data: query.isError || cancelled ? [] : (query.data?.items ?? []),
     getRowId,
     meta: { stateKey: domain },
     initialState: { ...saved?.state, rowSelection: {} },
@@ -156,7 +158,7 @@ export function useHistoryTable<T extends RowData, Q extends HistoryQuery>({
       const cursor = query.data?.nextCursor
       if (cursor) updateView((value) => ({ ...value, cursor }))
     },
-    hasPrevious: Boolean(query.data?.previousCursor),
-    hasNext: Boolean(query.data?.nextCursor),
+    hasPrevious: !query.isError && !cancelled && Boolean(query.data?.previousCursor),
+    hasNext: !query.isError && !cancelled && Boolean(query.data?.nextCursor),
   }
 }

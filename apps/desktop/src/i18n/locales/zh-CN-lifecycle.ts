@@ -237,4 +237,48 @@ export const lifecycleMessages = {
   'error.KERNEL_IN_USE':
     '此内核仍被启动中、运行中、停止中或待恢复的环境占用。请先停止相关环境并完成恢复，再重试删除。',
   'kernel.pinnedVersion': '环境固定版本',
+  'cleanup.title': '历史记录清理',
+  'cleanup.help':
+    '仅清理指定期限之前已结束的会话和操作记录。需先预览，再确认本批次；不会自动执行或继续下一批。',
+  'cleanup.protected':
+    '运行中、启动/停止中及待恢复环境的关联记录、未完成或语义不明的记录，以及每个环境最近一次内核版本判断所需的记录都会保留。',
+  'cleanup.retention': '保留最近',
+  'cleanup.days': '{days} 天',
+  'cleanup.preview': '预览清理范围',
+  'cleanup.discard': '放弃本批预览',
+  'cleanup.batch': '本批最多清理 {sessions} 条会话记录和 {operations} 条操作记录。',
+  'cleanup.cutoff': '仅考虑结束时间早于 {date} 的记录。',
+  'cleanup.cutoffLabel': '截止时间',
+  'cleanup.expires': '预览有效期至 {date}；到期后需重新预览。',
+  'cleanup.more':
+    '仍有后续候选记录。本页数量不是全库总数；本批完成后，如有需要，请重新预览并单独确认下一批。',
+  'cleanup.review': '确认本批清理…',
+  'cleanup.empty': '本批没有可清理的记录',
+  'cleanup.emptyHelp': '这不代表没有历史记录；近期、受保护或无法安全判断的记录不会进入候选。',
+  'cleanup.limit':
+    '每批最多 500 条会话和 500 条操作。候选数量有限，但查询耗时仍受历史规模影响。不会清理浏览器文件、凭据、回收站或截图，不自动压缩数据库，也不保证数据库文件立即变小。',
+  'cleanup.uncertain':
+    '本次确认尚未得到可核实的结果，错误不一定代表未提交。请查询最近已提交回执，或重新确认同一批次。重试同一批次不会清理新记录；放弃预览也不会撤销已经提交的清理。',
+  'cleanup.committed': '本批清理已提交，详情见最近回执。状态变化或已不存在的候选已跳过。',
+  'cleanup.replayed': '已核对到本批之前提交的回执，没有再次删除或执行新批次。',
+  'cleanup.receipt': '最近已提交的清理回执',
+  'cleanup.checkReceipt': '查询回执',
+  'cleanup.completedAt': '提交时间',
+  'cleanup.batchId': '批次标识',
+  'cleanup.sessions': '会话记录',
+  'cleanup.operations': '操作记录',
+  'cleanup.outcome': '候选 {selected} · 已删除 {deleted} · 已跳过 {skipped}',
+  'cleanup.noReceipt': '尚无已提交的清理回执。',
+  'cleanup.receiptHelp':
+    '仅保留最近一次已提交结果，重开应用后可查询；不是永久审计或备份。查询不会执行删除，也不会把不同批次的回执当作本次成功。',
+  'cleanup.confirmTitle': '永久删除本批历史记录？',
+  'cleanup.confirmHelp':
+    '此操作不可撤销。确认时会再次核验保护条件，跳过已变化的记录，不会扩大本批范围或自动继续。',
+  'cleanup.confirm': '永久删除本批',
+  'error.HISTORY_CLEANUP_PREVIEW_INVALID':
+    '预览已被替换、失效或在重启后丢失；请先核对最近回执，再重新预览。',
+  'error.HISTORY_CLEANUP_PREVIEW_EXPIRED': '预览已过期，本次没有执行清理。请重新预览并确认。',
+  'error.HISTORY_CLEANUP_EMPTY': '本批没有候选记录，未执行清理。',
+  'error.HISTORY_CLEANUP_RECEIPT_INVALID':
+    '最近清理回执无法安全读取，已停止清理。请保留数据库并检查诊断信息。',
 } as const

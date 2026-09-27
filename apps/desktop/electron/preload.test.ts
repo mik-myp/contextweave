@@ -157,3 +157,23 @@ it('validates both directions of the history page bridge', async () => {
   bridge.invoke.mockResolvedValue({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
   expect(await api.activity.page()).toMatchObject({ ok: false, code: 'HISTORY_CURSOR_STALE' })
 })
+
+it('whitelists history maintenance and validates the bounded request/response protocol', async () => {
+  await expect(
+    api.storage.previewHistoryCleanup({ retentionDays: 90, cutoffAt: 'unsafe' } as never),
+  ).rejects.toThrow()
+  await expect(api.storage.confirmHistoryCleanup({ previewId: 'operation-id' })).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({ ok: true, data: null })
+  expect(await api.storage.getHistoryCleanupReceipt()).toEqual({ ok: true, data: null })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-receipt')
+  const denied = { ok: false, code: 'HISTORY_CLEANUP_PREVIEW_EXPIRED', message: 'expired' }
+  bridge.invoke.mockResolvedValue(denied)
+  const input = { previewId: 'e4c3b366-6342-4630-b533-93ec809bafce' }
+  expect(await api.storage.confirmHistoryCleanup(input)).toEqual(denied)
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:history-confirm', input)
+  bridge.invoke.mockResolvedValue({ ok: true, data: { receipt: null, replayed: false } })
+  await expect(api.storage.confirmHistoryCleanup(input)).rejects.toThrow()
+  bridge.invoke.mockResolvedValue({ ok: true, data: { sessions: { count: 999 } } })
+  await expect(api.storage.previewHistoryCleanup({ retentionDays: 90 })).rejects.toThrow()
+})

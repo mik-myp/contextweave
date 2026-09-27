@@ -1,9 +1,12 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
-import { environmentConfigSchema } from '@contextweave/contracts'
+import { environmentConfigSchema, historyCleanupReceiptSchema } from '@contextweave/contracts'
 import type {
   EnvironmentConfig,
+  HistoryCleanupPreview,
+  HistoryCleanupReceipt,
+  HistoryCleanupResult,
   ActivityHistoryQuery,
   OperationHistoryQuery,
   OperationKind,
@@ -16,6 +19,12 @@ import type {
 } from '@contextweave/contracts'
 
 import { initializeHistoryQueries, readActivityPage, readOperationPage } from './history'
+import {
+  initializeHistoryCleanup,
+  readHistoryCleanupCandidates,
+  deleteHistoryCleanupCandidates,
+  type HistoryCleanupCandidates,
+} from './history-cleanup'
 import { migrateDatabase, databaseVersion } from './migrations'
 import { verifyDatabaseRelations } from './integrity'
 
@@ -192,6 +201,7 @@ export class EnvironmentRepository {
 
   constructor(private readonly sqlite: DatabaseSync) {
     initializeHistoryQueries(sqlite)
+    initializeHistoryCleanup(sqlite)
     this.listStatement = sqlite.prepare(
       "SELECT * FROM environments WHERE lifecycle = 'active' ORDER BY updated_at DESC",
     )
@@ -451,6 +461,45 @@ export class EnvironmentRepository {
 
   pageOperations(input: Partial<OperationHistoryQuery> = {}) {
     return readOperationPage(this.sqlite, input)
+  }
+
+  previewHistoryCleanup(cutoffAt: string): HistoryCleanupCandidates {
+    return this.transaction(() => readHistoryCleanupCandidates(this.sqlite, cutoffAt))
+  }
+
+  getHistoryCleanupReceipt(): HistoryCleanupReceipt | null {
+    try {
+      const raw = this.getSetting<unknown>('history-cleanup:last-committed')
+      return raw === undefined ? null : historyCleanupReceiptSchema.parse(raw)
+    } catch {
+      throw new Error('HISTORY_CLEANUP_RECEIPT_INVALID')
+    }
+  }
+
+  commitHistoryCleanup(
+    preview: HistoryCleanupPreview,
+    candidates: HistoryCleanupCandidates,
+    completedAt: string,
+  ): HistoryCleanupResult {
+    return this.transaction(() => {
+      const previous = this.getHistoryCleanupReceipt()
+      if (previous?.previewId === preview.previewId) return { receipt: previous, replayed: true }
+      if (
+        preview.cutoffAt !== candidates.cutoffAt ||
+        preview.sessions.count !== candidates.sessions.length ||
+        preview.operations.count !== candidates.operations.length
+      )
+        throw new Error('HISTORY_CLEANUP_PREVIEW_INVALID')
+      const receipt = historyCleanupReceiptSchema.parse({
+        previewId: preview.previewId,
+        retentionDays: preview.retentionDays,
+        cutoffAt: preview.cutoffAt,
+        completedAt,
+        ...deleteHistoryCleanupCandidates(this.sqlite, candidates),
+      })
+      this.setSetting('history-cleanup:last-committed', receipt)
+      return { receipt, replayed: false }
+    })
   }
 
   /** Recovery must see every active session, including older-than-page-cap rows. */

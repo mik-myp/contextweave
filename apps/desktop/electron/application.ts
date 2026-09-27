@@ -1,3 +1,4 @@
+import { createHistoryCleanupService } from './services/history-cleanup'
 import { createIpLocaleService } from './services/ip-locale'
 import { createIpLocalePreview } from './services/ip-locale-preview'
 import { randomUUID } from 'node:crypto'
@@ -109,6 +110,7 @@ export function createApplication(options: {
   const commands = createCommandCoordinator(repository, () =>
     changed(['environments', 'operations', 'activity', 'storage']),
   )
+  const historyCleanup = createHistoryCleanupService(repository, changed)
   let closing = false
   let updating = false
   const id = (input: unknown) => environmentIdSchema.parse(input)
@@ -175,6 +177,9 @@ export function createApplication(options: {
     'operation:page': (input) =>
       ok(repository.pageOperations(operationHistoryQuerySchema.parse(input))),
     'storage:orphans': () => ok(environments.orphans()),
+    'storage:history-preview': (input) => ok(historyCleanup.preview(input)),
+    'storage:history-confirm': (input) => ok(historyCleanup.confirm(input)),
+    'storage:history-receipt': () => ok(historyCleanup.receipt()),
     'proxy:test': async (input) => {
       const { config, password } = resolveProxyTestConfiguration(repository, input, credentials)
       return ok(await testProxyTransport(config, password))
@@ -236,6 +241,7 @@ export function createApplication(options: {
     'activity:list',
     'operation:list',
     'storage:orphans',
+    'storage:history-receipt',
     'proxy:list',
     'settings:get-theme',
     'proxy:cleanup-status',

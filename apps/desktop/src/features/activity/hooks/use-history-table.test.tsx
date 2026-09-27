@@ -220,6 +220,23 @@ describe('server history table', () => {
     expect(history.table.getRowModel().rows[0]?.id).toBe('first')
   })
 
+  it('drops a previously displayed page when cleanup deletes its cursor and revalidation fails', async () => {
+    await render()
+    await change(history.next)
+    expect(history.table.getRowModel().rows[0]?.id).toBe('second')
+    loadPage.mockResolvedValueOnce({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['local', 'operations'] })
+    })
+    await flush()
+    expect(history.error).toContain('分页边界记录已移除')
+    expect(history.table.getRowModel().rows).toHaveLength(0)
+    expect(history.hasPrevious).toBe(false)
+    expect(history.hasNext).toBe(false)
+    await change(history.first)
+    expect(history.table.getRowModel().rows[0]?.id).toBe('first')
+    expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: null }))
+  })
   it('surfaces failures and can retry or reset a stale cursor without falsely displaying a total', async () => {
     loadPage.mockResolvedValueOnce({ ok: false, code: 'HISTORY_CURSOR_STALE', message: 'stale' })
     await render()

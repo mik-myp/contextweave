@@ -41,6 +41,14 @@ try {
   const call = (...args) => withDeadline(page.evaluate(...args), 35000, 'NATIVE_TYPED_API_TIMEOUT')
   const environments = await call(() => window.contextweave.environment.list())
   assert(environments.ok && environments.data.length === 0, 'NATIVE_PROFILE_NOT_FRESH')
+  const cleanupReceipt = await call(() => window.contextweave.storage.getHistoryCleanupReceipt())
+  assert.deepEqual(cleanupReceipt, { ok: true, data: null }, 'NATIVE_HISTORY_RECEIPT_NOT_FRESH')
+  const cleanupPreview = await call(() => window.contextweave.storage.previewHistoryCleanup({ retentionDays: 90 }))
+  assert(cleanupPreview.ok, 'NATIVE_HISTORY_PREVIEW_FAILED')
+  for (const kind of ['sessions', 'operations'])
+    assert.deepEqual(cleanupPreview.data[kind], { count: 0, hasMore: false }, 'NATIVE_HISTORY_NOT_EMPTY')
+  const emptyCleanup = await call((previewId) => window.contextweave.storage.confirmHistoryCleanup({ previewId }), cleanupPreview.data.previewId)
+  assert(!emptyCleanup.ok && emptyCleanup.code === 'HISTORY_CLEANUP_EMPTY', 'NATIVE_EMPTY_HISTORY_NOT_REJECTED')
   const kernels = await call(() => window.contextweave.kernel.list())
   assert(
     kernels.ok &&
@@ -180,6 +188,7 @@ try {
 console.log(
   JSON.stringify({
     nativePackagedExecutable: 'passed',
+    nativeHistoryMaintenance: 'passed-empty-preview-receipt-confirm-guard',
     fuses: 'all-nine-policy-readback',
     utilityWorker: 'two-screenshots-and-real-navigation-cancel-passed',
     lifecycle: 'start-stop-restart-delete-quit',

@@ -286,4 +286,53 @@ export const lifecycleMessages = {
   'error.KERNEL_IN_USE':
     'This kernel is used by an environment that is starting, running, stopping or needs recovery. Stop and recover the affected environments before retrying deletion.',
   'kernel.pinnedVersion': 'Pinned by an environment',
+  'cleanup.title': 'History maintenance',
+  'cleanup.help':
+    'Remove ended sessions and operations older than the selected retention period. Preview first, then confirm this batch. Nothing runs automatically or continues to another batch.',
+  'cleanup.protected':
+    'History for active or recovery-required environments, incomplete or ambiguous records, and each environment’s latest executable-version evidence are protected.',
+  'cleanup.retention': 'Keep the last',
+  'cleanup.days': '{days} days',
+  'cleanup.preview': 'Preview cleanup',
+  'cleanup.discard': 'Discard this preview',
+  'cleanup.batch':
+    'This batch includes at most {sessions} session records and {operations} operation records.',
+  'cleanup.cutoff': 'Only records ending before {date} are considered.',
+  'cleanup.cutoffLabel': 'Cutoff',
+  'cleanup.expires': 'Preview expires at {date}; a new preview is required afterwards.',
+  'cleanup.more':
+    'More candidates remain. These counts are not database-wide totals. After this batch, preview and confirm another batch separately if needed.',
+  'cleanup.review': 'Review this batch…',
+  'cleanup.empty': 'No eligible records in this batch',
+  'cleanup.emptyHelp':
+    'This does not mean history is empty. Recent, protected or ambiguous records are excluded.',
+  'cleanup.limit':
+    'Each batch is limited to 500 sessions and 500 operations. Query time can still depend on history size. Browser files, credentials, trash and screenshots are untouched. The database is not automatically compacted and its file may not immediately shrink.',
+  'cleanup.uncertain':
+    'The confirmation outcome is not yet verified; an error does not prove it was rolled back. Check the latest committed receipt or confirm the same batch again. Retrying it cannot delete a new batch. Discarding the preview does not undo any committed cleanup.',
+  'cleanup.committed':
+    'This batch was committed. See the latest receipt for details. Changed or missing candidates were skipped.',
+  'cleanup.replayed':
+    'This batch’s earlier commit was verified. No additional deletion or new batch was performed.',
+  'cleanup.receipt': 'Latest committed cleanup receipt',
+  'cleanup.checkReceipt': 'Check receipt',
+  'cleanup.completedAt': 'Committed at',
+  'cleanup.batchId': 'Batch ID',
+  'cleanup.sessions': 'Sessions',
+  'cleanup.operations': 'Operations',
+  'cleanup.outcome': 'Selected {selected} · Deleted {deleted} · Skipped {skipped}',
+  'cleanup.noReceipt': 'No committed cleanup receipt yet.',
+  'cleanup.receiptHelp':
+    'Only the latest committed result is retained across restarts. It is not a permanent audit or backup. Checking never deletes records or treats another batch’s receipt as success for this one.',
+  'cleanup.confirmTitle': 'Permanently delete this history batch?',
+  'cleanup.confirmHelp':
+    'This cannot be undone. Protection conditions are rechecked; changed records are skipped. The batch cannot expand or continue automatically.',
+  'cleanup.confirm': 'Delete this batch permanently',
+  'error.HISTORY_CLEANUP_PREVIEW_INVALID':
+    'The preview was replaced, is unknown, or was lost on restart. Check the latest receipt before previewing again.',
+  'error.HISTORY_CLEANUP_PREVIEW_EXPIRED':
+    'This preview expired; this attempt did not execute cleanup. Preview and confirm again.',
+  'error.HISTORY_CLEANUP_EMPTY': 'This batch has no candidates; no cleanup was executed.',
+  'error.HISTORY_CLEANUP_RECEIPT_INVALID':
+    'The latest cleanup receipt cannot be read safely. Cleanup is disabled. Preserve the database and check diagnostics.',
 } as const

@@ -442,3 +442,5 @@ export type CustomKernelSource = z.infer<typeof customKernelSourceSchema>
 export * from './updates'
 
 export * from './logs'
+
+export * from './history-cleanup'

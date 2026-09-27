@@ -172,3 +172,5 @@ try {
   if (desktop) await desktop.close()
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
+
+await import('./smoke-history-cleanup.mjs')

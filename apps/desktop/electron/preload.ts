@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  historyCleanupRequestSchema,
+  historyCleanupConfirmSchema,
+  historyCleanupPreviewSchema,
+  historyCleanupReceiptSchema,
+  historyCleanupResultSchema,
+  type HistoryCleanupRetentionDays,
   appInfoSchema,
   appPathsSchema,
   externalUrlSchema,
@@ -160,6 +166,24 @@ const api = {
       ),
   },
   storage: {
+    previewHistoryCleanup: async (input: { retentionDays: HistoryCleanupRetentionDays }) =>
+      ipcResultSchema(historyCleanupPreviewSchema).parse(
+        await ipcRenderer.invoke(
+          'storage:history-preview',
+          historyCleanupRequestSchema.parse(input),
+        ),
+      ),
+    confirmHistoryCleanup: async (input: { previewId: string }) =>
+      ipcResultSchema(historyCleanupResultSchema).parse(
+        await ipcRenderer.invoke(
+          'storage:history-confirm',
+          historyCleanupConfirmSchema.parse(input),
+        ),
+      ),
+    getHistoryCleanupReceipt: async () =>
+      ipcResultSchema(historyCleanupReceiptSchema.nullable()).parse(
+        await ipcRenderer.invoke('storage:history-receipt'),
+      ),
     orphans: async () =>
       ipcResultSchema(z.array(orphanDirectorySchema)).parse(
         await ipcRenderer.invoke('storage:orphans'),

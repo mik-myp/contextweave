@@ -1,3 +1,4 @@
+import { HistoryCleanup } from '../components/history-cleanup'
 import { OrphanDirectories } from '../components/orphan-directories'
 import { Separator } from '@/components/ui/separator'
 import { CopyIcon } from 'lucide-react'
@@ -80,6 +81,8 @@ export function SettingsStoragePage() {
               </div>
             ))}
           </dl>
+          <Separator />
+          <HistoryCleanup />
           <Separator />
           <OrphanDirectories />
         </>

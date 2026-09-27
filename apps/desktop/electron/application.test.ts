@@ -124,3 +124,37 @@ it('bounds history IPC pages and rejects invalid query/cursor fields without cha
   }
   expect(repository.listOperations()).toHaveLength(100)
 })
+
+it('routes explicit history maintenance only through strict Main-side request validation', async () => {
+  const { app, repository, db } = fixture()
+  expect(await app.invoke('storage:history-receipt')).toEqual({ ok: true, data: null })
+  for (const [channel, input] of [
+    ['storage:history-receipt', {}],
+    ['storage:history-preview', { retentionDays: 90, ids: ['old'] }],
+    ['storage:history-confirm', { previewId: 'old' }],
+  ] as const)
+    expect(await app.invoke(channel, input)).toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  repository.createOperation('cleanup-fixture', 'install', null)
+  db.sqlite.exec(
+    "UPDATE operations SET started_at = '2020-01-01T00:00:00.000Z', ended_at = '2020-01-02T00:00:00.000Z', status = 'succeeded', phase = 'completed'",
+  )
+  const result = await app.invoke('storage:history-preview', { retentionDays: 90 })
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error('Expected preview')
+  const { historyCleanupPreviewSchema, historyCleanupResultSchema } =
+    await import('@contextweave/contracts')
+  const preview = historyCleanupPreviewSchema.parse(result.data)
+  const confirmation = await app.invoke('storage:history-confirm', { previewId: preview.previewId })
+  if (!confirmation.ok) throw new Error(confirmation.code)
+  expect(historyCleanupResultSchema.parse(confirmation.data)).toMatchObject({
+    replayed: false,
+    receipt: { operations: { deleted: 1 } },
+  })
+  const replay = await app.invoke('storage:history-confirm', { previewId: preview.previewId })
+  expect(replay).toMatchObject({ ok: true, data: { replayed: true } })
+  app.setUpdating(true)
+  expect(await app.invoke('storage:history-preview', { retentionDays: 90 })).toMatchObject({
+    ok: false,
+    code: 'APP_UPDATING',
+  })
+})

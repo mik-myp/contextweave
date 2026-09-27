@@ -65,6 +65,34 @@ ContextWeave 的差异化约束：三渠道复用同一恢复引擎；恢复为�
 
 Camoufox 的源码可见语言/地区处理、指纹配置及按平台选包逻辑，适合作为能力分层与验证样本。它基于 Firefox，不能视作 Chromium 扩展或 CDP 的等价替代，更不能直接填上 Intel Mac 的现有指纹内核缺口。只借鉴显式能力报告、网络派生配置与固定版本策略，不在个人首发增加第二个正式提供方。对应 R05、R06。
 
+#### 3.3.1 v0.3.0 提供方准入复核
+
+核验日期：2026-09-27（UTC）。
+
+本次只读取上游源文件并检查下载物，不改动提供方注册、不执行候选浏览器、不把社区移植自动加入正式矩阵。以下结果补充 R06/T05，不改变三平台、开源和不维护内核源码的要求。
+
+**现有上游的实际 Mac 发行物。** 从 GitHub 下载以下4个、且仅这4个已具 API SHA-256 的适配范围内 DMG，分别核对文件大小/摘要后只读挂载，以 Mach-O 架构和 bundle Info.plist 核实，而不是按 `_macos.dmg` 文件名猜测架构：
+
+| adryfish 版本    | 下载物 SHA-256                                                     | 实际架构 | bundle 声明最低 macOS |
+| ---------------- | ------------------------------------------------------------------ | -------- | --------------------- |
+| `148.0.7778.215` | `b72f091e2e1a7583eed389c4b8e3534ed355e568af8c8bbf8fc30a25e23ca679` | ARM64    | 12.0                  |
+| `142.0.7444.175` | `ae3349a2d6368406543a84e43c783d019ac0743bf4fe08f6391933d207a65696` | ARM64    | 12.0                  |
+| `139.0.7258.154` | `0cc679d6cf83fef5cc0e413719dae58a4afdf75e9ba976bad66cd37aa0236603` | ARM64    | 12.0                  |
+| `136.0.7103.113` | `1caa5c9f02272ab67daa160469116c07554f47fff20016d451a67390f6ceb7f6` | ARM64    | 11.0                  |
+
+这些文件都没有 Intel slice；不能据此扩大为“所有历史版本或其他项目都不支持 Intel”。135/132等未提供API摘要的历史文件没有据此获得准入，也没有降级已有环境。当前148 tag仍对应前述`3f61b0d...`树，而144历史树仍有16份指纹补丁；当前发行物的源码对应缺口未解决。ContextWeave当前本机打包声明最低macOS13.0，不能因为某个内核声明11/12就承诺客户端支持11/12；声明与最低设备实测仍是两类证据。
+
+**发现了真实 Intel 社区候选，但尚未合格。**
+
+- [pocchian Intel 移植的发布源码](https://github.com/pocchian/fingerprint-chromium-macos-x86_64/tree/c1ab3abd0d29ad5871a0df1cdf93b666abe5f7a8)与`v152.0.7977.82`对应；有指纹补丁、移植历史bundle及BSD三条款文本，发行说明自述从该仓库补丁构建。当前分支`a105aa2b...`与发布commit不同，准入以发布commit取证，不以分支当前文件替代。其DMG `ungoogled-chromium_152.0.7977.82-1.1_x86_64-macos-adhoc-tellsfix.dmg`大小147,123,561字节，SHA-256 `95177259f4f86ef09c5a8690230fce5c3de2c8f140f3128c94df06383ebf55e7`；实际只读检查为x86_64、版本152.0.7977.82、最低macOS13.0。
+- 同一维护者的[ARM64仓库](https://github.com/pocchian/fingerprint-chromium-arm-mac/tree/20fa9cbd204eb404647ee4748c5f8678ceec0c9d)的`v1.0.0`发行物实际为Chromium152.0.7977.82/ARM64，最低macOS13.0，大小138,446,628字节，SHA-256 `f3160f6fa74848aa79ef6e6d56e5b41fea1f9f6fddb9230f3ca2164d53c767a6`。但对应树只有README，所引用的`fingerprint-chromium-intel-mac`源码地址本次API返回404；不能拿另一个名称相近仓库的许可/补丁自动证明它的源码对应关系，也不据404断言该项目从未存在。
+- 两份实际下载的DMG摘要均匹配API；主可执行文件均为ad-hoc、无TeamIdentifier。对未经修改的只读bundle执行`codesign --verify --deep --strict`均退出1，在`app_mode_loader`子组件报告resource fork/Finder信息不允许。随后用当前生产`extractBrowserArchive`的有界路径/符号链接检查与原有`fs.cp`解包两份同一文件，主程序头检查及解包后同一严格签名校验均通过。没有修改提取器、重新签名、显式清除扩展属性或执行上游README中的绕过步骤，也没有运行浏览器；原挂载失败记录保留，不把它继续写为解包产物的未通过项。通过的是ad-hoc完整性，不是Developer ID身份、公证或实际运行验收。
+- 它们是第三方移植发行，不是adryfish原包，也没有因此形成同一正式提供方的Windows/ARM64/Intel闭环。采用需要记录提供方/信任边界决定，随后再验证源码对应、许可、包完整性、最低系统、适配参数、稳定身份、扩展与资料目录兼容；现阶段不添加152白名单、不让旧profile直接试跑，也不由ContextWeave接手构建或维护这些补丁。
+
+**其他候选的排除理由。** [BotBrowser固定源码](https://github.com/botswin/BotBrowser/tree/518614cc6e872da115d9baa1e4b139a7dbbaba66)的155.0.8059.5发行列表确有Win x64、Mac ARM64和Mac x64文件；但其[patches说明](https://github.com/botswin/BotBrowser/blob/518614cc6e872da115d9baa1e4b139a7dbbaba66/patches/README.md)和README明确说明完整内核为专有、公开补丁只是示例，150及以上配置还需订阅或联系上游。仓库MIT标签不覆盖“内核已开源”的证明，不能作为本项目开源内核要求的直接替代。CloakBrowser的二进制专有条款、Camoufox的Firefox/扩展协议差异仍适用前述结论。另核查[0131LWG发行库](https://github.com/0131LWG/fingerprint-chromium-builds/tree/0b349dfe9e78cb4ac5285cf43eb41248543e39a5)：列出的142运行包覆盖Windows x64/ARM64 Mac，但没有Intel；该树只有README并称源码另处维护，本次未从该发行库取得具体源码链接或许可，因此不能作为三平台已合格提供方。没有从这些项目复制代码或新增依赖。
+
+**结论：** 已找到可进一步评估的Intel社区发行物，但没有证明一个符合原范围的正式开源上游覆盖三平台。v0.3.0进入提供方决定/补证阶段，不宣布完成，不静默删除Intel要求或源代码门槛，也不跳至v0.3.1。后续需要维护者决定候选/范围；持续开发授权不等于已批准改变产品边界。
+
 ### 3.4 BrowserForge 与 fingerprint-suite：受约束的配置而非独立乱填字段
 
 证据：[browserforge/fingerprints/generator.py](https://github.com/daijro/browserforge/blob/a8b798f37460d1dd02aea33f80c83647913a1bbd/browserforge/fingerprints/generator.py)、[browserforge/headers/generator.py](https://github.com/daijro/browserforge/blob/a8b798f37460d1dd02aea33f80c83647913a1bbd/browserforge/headers/generator.py)、[packages/fingerprint-generator/src/fingerprint-generator.ts](https://github.com/apify/fingerprint-suite/blob/67866a6196658076a7b61ecbe2c590a2ff3f4057/packages/fingerprint-generator/src/fingerprint-generator.ts)、[packages/header-generator/src/header-generator.ts](https://github.com/apify/fingerprint-suite/blob/67866a6196658076a7b61ecbe2c590a2ff3f4057/packages/header-generator/src/header-generator.ts)。

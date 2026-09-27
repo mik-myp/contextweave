@@ -150,6 +150,12 @@ Renderer / GUI
 - 配置 JSON 和加密凭据文件保留原格式，工作空间凭据引用仅在受信任 repository 与秘密服务之间组成，验证后才取出文件内的旧引用键。路径服务把 SQLite 实际文件、可信数据根、空间身份和资源 ID 绑定；业务与产物 repository 必须指向同一权威文件。业务分发时重新检查受控根，持久路径要求精确规范形态，拒绝 `alias/../` 与符号链接；不通过空间/环境显示名称拼接路径。
 - 全局应用信息、更新、日志、主题与退出仍是应用级接口；所有环境、代理、内核、历史、存储与 Worker 命令归属于固定本地空间。UI 缓存/订阅切换不在本版冒充完成；后续 v0.2.2 负责隔离。没有新增依赖、托管端点或数据上传。
 
+### 3.7 v0.2.2 状态归属与环境组织设计
+
+本节先冻结实现边界，不代表已交付。QueryClient 的应用级 key 与 `workspace/UUID/domain` key 分开；消费 AbortSignal 并在不可中断 IPC 返回后再次检查，卸载只取消对应空间查询。具名 workspace client 固定不可变上下文，由按 UUID 挂载的会话 provider 提供；服务、在途批次和取消闭包不得临时解析新空间身份。`data:changed` 仅含业务域，升级为严格的工作空间事件，应用日志/更新保留现有独立机制。
+
+会话草稿 v2 校验 UUID、字段白名单和条数，旧草稿仅由原默认空间一次认领；表格快照/恢复状态按空间实例隔离。schema v11 的 `environment_groups`、`environment_organization` 和 `environment_views` 由独立 OrganizationRepository 维护，但复用 EnvironmentRepository 的同一 SQLite 与固定所有者约束。组织修订独立于浏览器配置；删除分组在事务中解除归属并增加组织修订，不删除环境。保存视图是严格的版本化表格偏好，不含行选择或数据内容。UI 继续使用现有 Base UI 与 TanStack Table，不另造列表，不新增依赖或远程服务。
+
 ## 4. 本地 SQLite、文件与凭据
 
 ### 4.1 SQLite 与 repository

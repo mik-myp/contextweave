@@ -1,4 +1,7 @@
 import {
+  artifactBudgetSchema,
+  artifactBudgetUpdateSchema,
+  type ArtifactBudgetUpdate,
   artifactQuerySchema,
   artifactPageSchema,
   type ArtifactQuery,
@@ -171,6 +174,17 @@ const api = {
       ),
   },
   storage: {
+    getArtifactBudget: async () =>
+      ipcResultSchema(artifactBudgetSchema).parse(
+        await ipcRenderer.invoke('storage:artifact-budget'),
+      ),
+    updateArtifactBudget: async (input: ArtifactBudgetUpdate) =>
+      ipcResultSchema(artifactBudgetSchema).parse(
+        await ipcRenderer.invoke(
+          'storage:artifact-budget-update',
+          artifactBudgetUpdateSchema.parse(input),
+        ),
+      ),
     pageArtifacts: async (input: Partial<ArtifactQuery> = {}) =>
       ipcResultSchema(artifactPageSchema).parse(
         await ipcRenderer.invoke('storage:artifacts-page', artifactQuerySchema.parse(input)),

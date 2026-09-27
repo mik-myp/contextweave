@@ -206,3 +206,34 @@ it('validates artifact pagination both ways and rejects ownership/path leakage',
   bridge.invoke.mockResolvedValue({ ok: true, data: { ...empty, items: [item] } })
   await expect(api.storage.pageArtifacts()).rejects.toThrow()
 })
+
+it('validates screenshot policies and accounting both ways without accepting arbitrary release commands', async () => {
+  const budget = {
+    limitMiB: 32,
+    revision: 1,
+    registered: { count: 0, bytes: 0 },
+    reserved: { count: 0, bytes: 0 },
+    availableBytes: 33554432,
+  }
+  bridge.invoke.mockResolvedValue({ ok: true, data: budget })
+  expect(await api.storage.getArtifactBudget()).toEqual({ ok: true, data: budget })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:artifact-budget')
+  await api.storage.updateArtifactBudget({ limitMiB: 32, expectedRevision: 1 })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('storage:artifact-budget-update', {
+    limitMiB: 32,
+    expectedRevision: 1,
+  })
+  const invalid = { limitMiB: 32, expectedRevision: 1, releaseId: 'foreign' }
+  await expect(api.storage.updateArtifactBudget(invalid)).rejects.toThrow()
+  await expect(
+    api.storage.updateArtifactBudget({ limitMiB: 1, expectedRevision: 1 }),
+  ).rejects.toThrow()
+  for (const value of [
+    { ...budget, path: '/private' },
+    { ...budget, availableBytes: 1 },
+    { ...budget, reserved: { count: 1, bytes: 0 } },
+  ]) {
+    bridge.invoke.mockResolvedValue({ ok: true, data: value })
+    await expect(api.storage.getArtifactBudget()).rejects.toThrow()
+  }
+})

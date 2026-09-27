@@ -33,6 +33,10 @@ export async function verifyArtifactRestart(entry, directory, expected) {
   try {
     const page = await app.firstWindow()
     await page.waitForFunction(() => typeof window.contextweave?.storage?.pageArtifacts === 'function', undefined, { timeout: 10000 })
+    const budget = await page.evaluate(() => window.contextweave.storage.getArtifactBudget())
+    assert(budget.ok && budget.data.limitMiB === 1024 && budget.data.revision === (expected.length ? 3 : 1))
+    assert.deepEqual(budget.data.reserved, { count: 0, bytes: 0 })
+    assert.equal(budget.data.registered.bytes, expected.reduce((sum, item) => sum + item.bytes, 0))
     const actual = await page.evaluate(() => window.contextweave.storage.pageArtifacts())
     assert(actual.ok)
     assert.deepEqual(actual.data.items.map((i) => i.artifactId).sort(), expected.map((i) => i.artifactId).sort())
@@ -50,6 +54,9 @@ export async function verifyArtifactRestart(entry, directory, expected) {
     }
     await page.getByRole('link', { name: '系统设置', exact: true }).click()
     await page.getByRole('link', { name: '本地存储', exact: true }).click()
+    const policy = page.getByRole('region', { name: '截图容量预算', exact: true })
+    await policy.getByRole('spinbutton', { name: '容量上限（MiB）', exact: true }).waitFor()
+    assert.equal(await policy.getByRole('spinbutton').inputValue(), '1024')
     const section = page.getByRole('region', { name: '已登记截图', exact: true })
     await section.getByRole('button', { name: '刷新', exact: true }).waitFor()
     for (const item of expected) await section.getByText(item.sha256, { exact: true }).first().waitFor()

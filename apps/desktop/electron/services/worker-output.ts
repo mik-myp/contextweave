@@ -1,3 +1,4 @@
+import { artifactAllocationSchema } from '@contextweave/contracts'
 import {
   closeSync,
   fstatSync,
@@ -34,7 +35,12 @@ const writeChunk: WorkerOutputWriter = (descriptor, data, offset) =>
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
 /** The descriptor never leaves Main. No caller ID or filename participates in allocation. */
-export function createWorkerOutput(root: string, writer: WorkerOutputWriter = writeChunk) {
+export function createWorkerOutput(
+  root: string,
+  writer: WorkerOutputWriter = writeChunk,
+  artifactId: string = randomUUID(),
+) {
+  artifactAllocationSchema.shape.artifactId.parse(artifactId)
   mkdirSync(root, { recursive: true, mode: 0o700 })
   const rootInfo = lstatSync(root, { bigint: true })
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink())
@@ -56,7 +62,6 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
     let failed = false
     let size = 0
     const writtenHash = createHash('sha256')
-    const artifactId = randomUUID()
     const close = async () => {
       closing = true
       // Never close/reuse a descriptor while libuv may still be writing to it.
@@ -147,6 +152,24 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
     }
     return {
       artifactId,
+      allocation() {
+        if (closing || descriptor === undefined || pending || size !== 0)
+          throw new Error('WORKER_OUTPUT_INVALID')
+        const current = fstatSync(descriptor, { bigint: true })
+        if (
+          current.size !== 0n ||
+          current.nlink !== 1n ||
+          current.dev !== fileIdentity.dev ||
+          current.ino !== fileIdentity.ino ||
+          current.birthtimeNs !== fileIdentity.birthtimeNs
+        )
+          throw new Error('WORKER_OUTPUT_INVALID')
+        return artifactAllocationSchema.parse({
+          artifactId,
+          allocationName: basename(directory),
+          ownership: { version: 1, ...ownership.snapshot(), file: outputIdentity(current) },
+        })
+      },
       directory,
       screenshotPath,
       append(data: Uint8Array): Promise<void> {

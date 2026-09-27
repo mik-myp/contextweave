@@ -361,4 +361,35 @@ export const lifecycleMessages = {
     'The artifact record could not be read safely. The query stopped; preserve the data and inspect diagnostics.',
   'error.ARTIFACT_STORAGE_UNAVAILABLE':
     'The screenshot registration connection was safely closed; environment management remains available. Restart to reconcile persisted artifacts.',
+  'artifactBudget.title': 'Screenshot storage budget',
+  'artifactBudget.help':
+    'Each new screenshot durably reserves up to 32 MiB, then charges its registered bytes on completion. Lowering the budget does not delete files or cancel admitted work; only new screenshots are blocked when capacity is insufficient.',
+  'artifactBudget.scope':
+    'Counts registered screenshots and outstanding reservations, not total disk usage. Excludes old unregistered output, browser profiles, kernels, backups and directory metadata.',
+  'artifactBudget.registered': 'Registered bytes',
+  'artifactBudget.reserved': 'Reserved bytes · items (including uncertain)',
+  'artifactBudget.available': 'Available budget bytes',
+  'artifactBudget.limit': 'Budget limit (MiB)',
+  'artifactBudget.range':
+    'Default: 1024 MiB. Enter an integer from 32 to 102400 MiB; 1 MiB = 1048576 bytes.',
+  'artifactBudget.invalid': 'Enter an integer from 32 to 102400 MiB.',
+  'artifactBudget.saving': 'Saving screenshot budget…',
+  'artifactBudget.save': 'Save screenshot budget',
+  'artifactBudget.reset': 'Use current settings',
+  'artifactBudget.conflict':
+    'The policy changed during another operation. Use the current settings before editing again to avoid overwriting newer configuration.',
+  'artifactBudget.saved':
+    'Screenshot budget saved. Existing files were not deleted and admitted tasks continue.',
+  'artifactBudget.uncertain':
+    'Interrupted or uncertain reservations stay charged after restart. No automatic reruns, file deletion or release of unknown allocations occur. Explicit file cleanup is not available in this release.',
+  'error.ARTIFACT_BUDGET_EXCEEDED':
+    'Insufficient screenshot budget to reserve up to 32 MiB. The task was not started. Review usage or adjust the budget in local storage settings.',
+  'error.WORKER_OUTPUT_RESERVATION_UNCONFIRMED':
+    'The screenshot task was not started. Its reservation or empty allocation is unconfirmed and may remain charged. Restart to reconcile; no automatic retry occurs.',
+  'error.ARTIFACT_BUDGET_CONFLICT':
+    'The screenshot budget policy changed. Refresh and review it before editing again.',
+  'error.ARTIFACT_BUDGET_UPDATE_UNCONFIRMED':
+    'The budget save result is unconfirmed. Refresh or restart to reconcile; this error does not prove that the change was rolled back.',
+  'error.ARTIFACT_BUDGET_REVISION_LIMIT':
+    'The screenshot policy revision reached its safe limit. Preserve the data and contact the maintainer.',
 } as const

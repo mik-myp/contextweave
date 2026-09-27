@@ -1,4 +1,4 @@
-import type { RegisterWorkerOutput } from './artifacts'
+import type { WorkerOutputStore } from './artifacts'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { BrowserControlLease } from './browser-control-access'
 import {
@@ -8,7 +8,7 @@ import {
   type WorkerResult,
 } from '@contextweave/worker-protocol'
 import { ok, fail } from './result'
-import { createWorkerOutput } from './worker-output'
+import type { createWorkerOutput } from './worker-output'
 import { createWorkerTransfer } from './worker-transfer'
 import type { ForkWorker, WorkerProcess } from './worker-process'
 
@@ -18,10 +18,8 @@ export const workerStopGraceMs = 5000
 export function createWorkerService(
   runtime: { session(id: string): unknown; leaseControl(id: string): BrowserControlLease },
   workerPath: string,
-  outputRoot: string,
   forkWorker: ForkWorker,
-  registerOutput: RegisterWorkerOutput,
-  allocateOutput: typeof createWorkerOutput = createWorkerOutput,
+  outputs: WorkerOutputStore,
 ) {
   const workers = new Map<
     string,
@@ -38,7 +36,16 @@ export function createWorkerService(
         return fail('WORKER_BUSY')
       let output: ReturnType<typeof createWorkerOutput>
       try {
-        output = allocateOutput(outputRoot)
+        const allocated = outputs.allocate(task)
+        if (!allocated.ok) {
+          try {
+            await allocated.output?.close()
+          } catch {
+            /* The reservation remains charged. */
+          }
+          return fail(allocated.code)
+        }
+        output = allocated.output
       } catch {
         return fail('WORKER_OUTPUT_UNAVAILABLE')
       }
@@ -54,7 +61,7 @@ export function createWorkerService(
       } catch {
         lease?.revoke()
         try {
-          await output.discard()
+          await outputs.discard(output)
         } catch {
           return fail('WORKER_OUTPUT_CLEANUP_FAILED')
         }
@@ -138,7 +145,7 @@ export function createWorkerService(
               if (result.ok) {
                 // Unexpected registrar exceptions must preserve any possibly committed output.
                 preserveOutput = true
-                const registered = registerOutput(task, output)
+                const registered = outputs.register(task, output)
                 if (registered.ok)
                   outcome = ok({
                     ...result,
@@ -158,7 +165,7 @@ export function createWorkerService(
           }
           if (!preserveOutput && (!outcome.ok || !outcome.data.ok)) {
             try {
-              await output.discard()
+              await outputs.discard(output)
             } catch {
               outcome = fail('WORKER_OUTPUT_CLEANUP_FAILED')
             }

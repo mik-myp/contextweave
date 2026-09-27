@@ -1,3 +1,4 @@
+import { ArtifactBudget } from '../components/artifact-budget'
 import { ArtifactInventory } from '../components/artifact-inventory'
 import { HistoryCleanup } from '../components/history-cleanup'
 import { OrphanDirectories } from '../components/orphan-directories'
@@ -82,6 +83,8 @@ export function SettingsStoragePage() {
               </div>
             ))}
           </dl>
+          <Separator />
+          <ArtifactBudget />
           <Separator />
           <ArtifactInventory />
           <Separator />

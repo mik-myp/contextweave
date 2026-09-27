@@ -63,6 +63,33 @@ function fileFixture() {
   const file = join(root, 'db.sqlite')
   return { root, file, ...fixture(file) }
 }
+// Inputs are established before any injected completion fault. Every production
+// completion now requires a committed, bound reservation rather than free insertion.
+const prepared = new WeakMap<ArtifactRepository, Set<string>>()
+function prepare(repo: ArtifactRepository, input: ArtifactRecord) {
+  let ids = prepared.get(repo)
+  if (!ids) {
+    ids = new Set()
+    prepared.set(repo, ids)
+  }
+  if (ids.has(input.artifactId)) return
+  repo.reserve({
+    artifactId: input.artifactId,
+    environmentId: input.environmentId,
+    taskId: input.taskId,
+    reservedAt: at,
+  })
+  repo.bindAllocation({
+    artifactId: input.artifactId,
+    allocationName: input.allocationName,
+    ownership: input.ownership,
+  })
+  ids.add(input.artifactId)
+}
+function register(repo: ArtifactRepository, input: ArtifactRecord) {
+  prepare(repo, input)
+  repo.registerArtifact(input)
+}
 describe('registered screenshot repository', () => {
   it('keeps an empty bounded page and only public metadata, never ownership/path fields', () => {
     const { repo } = fixture()
@@ -73,7 +100,7 @@ describe('registered screenshot repository', () => {
       totals: { count: 0, bytes: 0 },
     })
     const input = record()
-    repo.registerArtifact(input)
+    register(repo, input)
     const page = repo.pageArtifacts({})
     expect(page.totals).toEqual({ count: 1, bytes: 8 })
     expect(page.items[0]).toMatchObject({
@@ -86,11 +113,11 @@ describe('registered screenshot repository', () => {
   it('reopens persisted records, permits task-ID reuse and idempotent exact registration, but never overwrites', () => {
     const { repo, db, file } = fileFixture()
     const first = record()
-    repo.registerArtifact(first)
-    repo.registerArtifact(first)
-    repo.registerArtifact(record())
-    expect(() => repo.registerArtifact({ ...first, bytes: 9 })).toThrow('ARTIFACT_ID_CONFLICT')
-    expect(() => repo.registerArtifact(record({ allocationName: first.allocationName }))).toThrow()
+    register(repo, first)
+    register(repo, first)
+    register(repo, record())
+    expect(() => register(repo, { ...first, bytes: 9 })).toThrow('ARTIFACT_ID_CONFLICT')
+    expect(() => register(repo, record({ allocationName: first.allocationName }))).toThrow()
     db.close()
     const reopened = fixture(file)
     expect(reopened.repo.pageArtifacts({}).totals).toEqual({
@@ -105,14 +132,15 @@ describe('registered screenshot repository', () => {
   it('uses keyset ordering without duplicates on timestamp ties or later insertions, and returns previous pages', () => {
     const { repo } = fixture()
     for (let i = 1; i <= 65; i++)
-      repo.registerArtifact(
+      register(
+        repo,
         record({
           artifactId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
           allocationName: `run-${String(i).padStart(6, '0')}`,
         }),
       )
     const first = repo.pageArtifacts({ limit: 20 })
-    repo.registerArtifact(record({ completedAt: '2026-09-27T01:00:00.000Z' }))
+    register(repo, record({ completedAt: '2026-09-27T01:00:00.000Z' }))
     const second = repo.pageArtifacts({ limit: 20, cursor: first.nextCursor })
     const third = repo.pageArtifacts({ limit: 20, cursor: second.nextCursor })
     const last = repo.pageArtifacts({ limit: 20, cursor: third.nextCursor })
@@ -131,13 +159,13 @@ describe('registered screenshot repository', () => {
   })
   it('survives history removal and environment trash, with RESTRICT physical foreign keys', () => {
     const { repo, db } = fixture()
-    repo.registerArtifact(record())
+    register(repo, record())
     db.sqlite.exec(
       "DELETE FROM operations; DELETE FROM runtime_sessions; UPDATE environments SET lifecycle='trashed', trashed_at='2026-09-27' WHERE environment_id='env'",
     )
     expect(repo.pageArtifacts({}).totals.count).toBe(1)
     expect(() => db.sqlite.exec("DELETE FROM environments WHERE environment_id='env'")).toThrow()
-    expect(() => repo.registerArtifact(record({ environmentId: 'missing' }))).toThrow()
+    expect(() => register(repo, record({ environmentId: 'missing' }))).toThrow()
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([])
   })
   it.each([
@@ -150,35 +178,38 @@ describe('registered screenshot repository', () => {
     "completed_at='yesterday'",
   ])('constrains direct SQL mutation: %s', (mutation) => {
     const { repo, db } = fixture()
-    repo.registerArtifact(record())
+    register(repo, record())
     expect(() => db.sqlite.exec(`UPDATE screenshot_artifacts SET ${mutation}`)).toThrow()
     expect(repo.pageArtifacts({}).totals.count).toBe(1)
   })
   it('fails closed for corrupt persisted ownership metadata rather than returning false proof', () => {
     const { repo, db } = fixture()
-    repo.registerArtifact(record())
+    register(repo, record())
     db.sqlite.exec("UPDATE screenshot_artifacts SET ownership_json='{}'")
     expect(() => repo.pageArtifacts({})).toThrow()
   })
   it('never reports success inside a caller transaction', () => {
     const { repo, db } = fixture()
+    const input = record()
+    prepare(repo, input)
     db.sqlite.exec('BEGIN')
-    expect(() => repo.registerArtifact(record())).toThrow()
+    expect(() => register(repo, input)).toThrow()
     db.sqlite.exec('ROLLBACK')
     expect(repo.pageArtifacts({}).totals.count).toBe(0)
   })
   it('rolls back failed COMMIT and permits an explicit later attempt', () => {
     const { repo, db } = fixture()
     const input = record()
+    prepare(repo, input)
     const exec = db.sqlite.exec.bind(db.sqlite)
     vi.spyOn(db.sqlite, 'exec').mockImplementation((sql) => {
       if (sql === 'COMMIT') throw new Error('disk full')
       return exec(sql)
     })
-    expect(() => repo.registerArtifact(input)).toThrow('disk full')
+    expect(() => register(repo, input)).toThrow('disk full')
     vi.restoreAllMocks()
     expect(repo.pageArtifacts({}).totals.count).toBe(0)
-    repo.registerArtifact(input)
+    register(repo, input)
     expect(repo.pageArtifacts({}).totals.count).toBe(1)
   })
   it.each([false, true])(
@@ -186,6 +217,7 @@ describe('registered screenshot repository', () => {
     (committed) => {
       const { repo, db, file } = fileFixture()
       const input = record()
+      prepare(repo, input)
       const exec = db.sqlite.exec.bind(db.sqlite)
       vi.spyOn(db.sqlite, 'exec').mockImplementation((sql) => {
         if (sql === 'COMMIT') {
@@ -195,7 +227,7 @@ describe('registered screenshot repository', () => {
         if (sql === 'ROLLBACK') throw new Error('rollback unavailable')
         return exec(sql)
       })
-      expect(() => repo.registerArtifact(input)).toThrow('lost completion')
+      expect(() => register(repo, input)).toThrow('lost completion')
       expect(db.sqlite.isOpen).toBe(false)
       vi.restoreAllMocks()
       expect(fixture(file).repo.pageArtifacts({}).totals.count).toBe(committed ? 1 : 0)
@@ -203,10 +235,12 @@ describe('registered screenshot repository', () => {
   )
   it('does not insert while a separate connection owns the write lock', () => {
     const { repo, file } = fileFixture()
+    const input = record()
+    prepare(repo, input)
     const writer = new DatabaseSync(file)
     try {
       writer.exec('BEGIN IMMEDIATE')
-      expect(() => repo.registerArtifact(record())).toThrow()
+      expect(() => register(repo, input)).toThrow()
       writer.exec('ROLLBACK')
       expect(repo.pageArtifacts({}).totals.count).toBe(0)
     } finally {
@@ -218,7 +252,7 @@ describe('schema v7 migration', () => {
   function v6() {
     const f = fileFixture()
     f.db.sqlite.exec(
-      "DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
+      "DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
     )
     return f
   }
@@ -228,11 +262,11 @@ describe('schema v7 migration', () => {
       .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name")
       .all()
     migrateDatabase(f.db.sqlite, f.file)
-    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(7)
+    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(8)
     expect(
       f.db.sqlite
         .prepare(
-          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name != 'screenshot_artifacts' ORDER BY name",
+          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
         )
         .all(),
     ).toEqual(before)
@@ -281,12 +315,12 @@ describe('schema v7 migration', () => {
   )
   it('rejects a future schema without downgrading or overwriting it', () => {
     const f = fileFixture()
-    f.db.sqlite.exec('PRAGMA user_version=8')
+    f.db.sqlite.exec('PRAGMA user_version=9')
     f.db.close()
     expect(() => openLocalDatabase(f.file)).toThrow('requires a newer')
     const raw = new DatabaseSync(f.file)
     try {
-      expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(8)
+      expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(9)
     } finally {
       raw.close()
     }
@@ -297,12 +331,14 @@ it('isolates a failed artifact connection from the environment connection on the
   const f = fileFixture()
   const artifactDb = openLocalDatabase(f.file)
   const artifacts = new ArtifactRepository(artifactDb.sqlite)
+  const input = record()
+  prepare(artifacts, input)
   const exec = artifactDb.sqlite.exec.bind(artifactDb.sqlite)
   vi.spyOn(artifactDb.sqlite, 'exec').mockImplementation((sql) => {
     if (sql === 'COMMIT' || sql === 'ROLLBACK') throw new Error('uncertain registration')
     return exec(sql)
   })
-  expect(() => artifacts.registerArtifact(record())).toThrow('uncertain registration')
+  expect(() => artifacts.registerArtifact(input)).toThrow('uncertain registration')
   expect(artifactDb.sqlite.isOpen).toBe(false)
   expect(f.db.sqlite.isOpen).toBe(true)
   f.environments.updateStatus('env', 'stopped')

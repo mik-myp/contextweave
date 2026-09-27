@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ArtifactRecord } from '@contextweave/contracts'
 import type { WorkerTask } from '@contextweave/worker-protocol'
-import { createWorkerOutput } from './worker-output'
 import { createArtifactService } from './artifacts'
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])
 const roots: string[] = []
@@ -30,11 +29,46 @@ async function setup() {
     nextCursor: null,
   }))
   const changed = vi.fn()
-  const service = createArtifactService({ registerArtifact, pageArtifacts }, changed)
-  const output = createWorkerOutput(join(root, 'results'))
+  const budget = {
+    limitMiB: 1024,
+    revision: 1,
+    registered: { count: 0, bytes: 0 },
+    reserved: { count: 0, bytes: 0 },
+    availableBytes: 1024 * 1024 * 1024,
+  }
+  const reserve = vi.fn(),
+    bindAllocation = vi.fn(),
+    releaseReservation = vi.fn()
+  const service = createArtifactService(
+    {
+      registerArtifact,
+      pageArtifacts,
+      reserve,
+      bindAllocation,
+      releaseReservation,
+      budget: () => budget,
+      updateBudget: () => budget,
+    },
+    changed,
+    join(root, 'results'),
+  )
+  const allocated = service.allocate(task)
+  if (!allocated.ok) throw new Error(allocated.code)
+  const output = allocated.output
+  changed.mockClear()
   await output.append(png)
   await output.close()
-  return { root, registerArtifact, pageArtifacts, changed, service, output }
+  return {
+    root,
+    registerArtifact,
+    pageArtifacts,
+    changed,
+    service,
+    output,
+    reserve,
+    bindAllocation,
+    releaseReservation,
+  }
 }
 it('registers only Main-owned IDs, bounded names, full content digest and original identities', async () => {
   const f = await setup()

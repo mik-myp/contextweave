@@ -141,7 +141,7 @@ try {
   desktop = undefined
   const check = new DatabaseSync(file)
   try {
-    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 7)
+    assert.equal(check.prepare('PRAGMA user_version').get().user_version, 8)
     assert.equal(check.prepare('SELECT count(*) AS n FROM runtime_sessions').get().n, 241)
     assert.equal(
       check.prepare("SELECT count(*) AS n FROM runtime_sessions WHERE status='crashed'").get().n,

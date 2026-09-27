@@ -316,7 +316,7 @@ describe("bounded bidirectional history", () => {
   });
 });
 
-it("migrates genuine v5 by adding only indexes, preserves constraints/data and rolls failed v6 DDL back", () => {
+it("preserves genuine v5 tables/data across bounded indexes and later additive tables, and rolls failed v6 DDL back", () => {
   const root = mkdtempSync(join(tmpdir(), "cw-history-v6-"));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const file = join(root, "v5.sqlite");
@@ -336,7 +336,7 @@ it("migrates genuine v5 by adding only indexes, preserves constraints/data and r
   const original = legacy.sqlite.prepare("SELECT * FROM operations").all();
   const tables = legacy.sqlite
     .prepare(
-      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name != 'screenshot_artifacts' ORDER BY name",
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
     )
     .all();
   const exec = legacy.sqlite.exec.bind(legacy.sqlite);
@@ -367,14 +367,14 @@ it("migrates genuine v5 by adding only indexes, preserves constraints/data and r
   cleanup.push(migrated.close);
   expect(
     migrated.sqlite.prepare("PRAGMA user_version").get()?.user_version,
-  ).toBe(7);
+  ).toBe(8);
   expect(migrated.sqlite.prepare("SELECT * FROM operations").all()).toEqual(
     original,
   );
   expect(
     migrated.sqlite
       .prepare(
-        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name != 'screenshot_artifacts' ORDER BY name",
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
       )
       .all(),
   ).toEqual(tables);

@@ -89,14 +89,33 @@ function setup(options: { allocate?: typeof createWorkerOutput; autoSpawn?: bool
     return child
   })
   const registration = vi.fn<(record: ArtifactRecord) => void>()
+  const reserve = vi.fn(),
+    bindAllocation = vi.fn(),
+    releaseReservation = vi.fn()
   const service = createWorkerService(
     { session: (id) => (id === 'env-test' ? {} : undefined), leaseControl: acquire },
     'private-worker.js',
-    outputRoot,
     fork,
     createArtifactService(
       {
         registerArtifact: registration,
+        reserve,
+        bindAllocation,
+        releaseReservation,
+        budget: () => ({
+          limitMiB: 1024,
+          revision: 1,
+          registered: { count: 0, bytes: 0 },
+          reserved: { count: 0, bytes: 0 },
+          availableBytes: 1073741824,
+        }),
+        updateBudget: () => ({
+          limitMiB: 1024,
+          revision: 1,
+          registered: { count: 0, bytes: 0 },
+          reserved: { count: 0, bytes: 0 },
+          availableBytes: 1073741824,
+        }),
         pageArtifacts: () => ({
           items: [],
           totals: { count: 0, bytes: 0 },
@@ -105,8 +124,9 @@ function setup(options: { allocate?: typeof createWorkerOutput; autoSpawn?: bool
         }),
       },
       () => {},
-    ).register,
-    options.allocate,
+      outputRoot,
+      options.allocate,
+    ),
   )
   services.push(service)
   const start = async () => {
@@ -115,7 +135,20 @@ function setup(options: { allocate?: typeof createWorkerOutput; autoSpawn?: bool
     await vi.waitFor(() => expect(child.sent[0]?.type).toBe('request'))
     return { running, child }
   }
-  return { root, outputRoot, acquire, leases, created, fork, service, start, registration }
+  return {
+    root,
+    outputRoot,
+    acquire,
+    leases,
+    created,
+    fork,
+    service,
+    start,
+    registration,
+    reserve,
+    bindAllocation,
+    releaseReservation,
+  }
 }
 async function screenshot(child: FixtureWorker, data = png) {
   child.send({ type: 'screenshot-start', bytes: data.byteLength })
@@ -428,7 +461,7 @@ describe('utility worker service lifecycle', () => {
   })
   it('reports an unconfirmed OS exit without releasing the environment slot', async () => {
     vi.useFakeTimers()
-    const { service, created, outputRoot } = setup({ autoSpawn: false })
+    const { service, created, outputRoot, releaseReservation } = setup({ autoSpawn: false })
     const running = service.run(task())
     const child = created[0]!
     child.start()
@@ -447,10 +480,12 @@ describe('utility worker service lifecycle', () => {
       message: 'WORKER_BUSY',
     })
     expect(readdirSync(outputRoot)).toHaveLength(1)
+    expect(releaseReservation).not.toHaveBeenCalled()
     child.reaped = true
     await vi.advanceTimersByTimeAsync(250)
     await vi.waitFor(() => expect(service.cancel('task-test')).toEqual({ ok: true, data: false }))
     expect(readdirSync(outputRoot)).toEqual([])
+    expect(releaseReservation).toHaveBeenCalledTimes(1)
   })
   it('times out without extending the task budget', async () => {
     vi.useFakeTimers()
@@ -465,13 +500,14 @@ describe('utility worker service lifecycle', () => {
   it('drains an in-flight write after cancellation/exit before deleting files or releasing occupancy', async () => {
     let complete!: () => void
     const { start, service, outputRoot } = setup({
-      allocate: (root) =>
+      allocate: (root, _writer, artifactId) =>
         createWorkerOutput(
           root,
           (fd, bytes, offset) =>
             new Promise((resolve) => {
               complete = () => resolve(writeSync(fd, bytes, offset, bytes.byteLength - offset))
             }),
+          artifactId,
         ),
     })
     const { child, running } = await start()
@@ -494,13 +530,14 @@ describe('utility worker service lifecycle', () => {
   it('rejects a second chunk while the first write is still pending', async () => {
     let complete!: () => void
     const { start } = setup({
-      allocate: (root) =>
+      allocate: (root, _writer, artifactId) =>
         createWorkerOutput(
           root,
           (fd, bytes, offset) =>
             new Promise((resolve) => {
               complete = () => resolve(writeSync(fd, bytes, offset, bytes.byteLength - offset))
             }),
+          artifactId,
         ),
     })
     const { child, running } = await start()
@@ -513,10 +550,14 @@ describe('utility worker service lifecycle', () => {
   })
   it('reports a sanitized write failure and does not ACK or retain partial output', async () => {
     const { start, outputRoot } = setup({
-      allocate: (root) =>
-        createWorkerOutput(root, async () => {
-          throw new Error('ENOSPC private-path')
-        }),
+      allocate: (root, _writer, artifactId) =>
+        createWorkerOutput(
+          root,
+          async () => {
+            throw new Error('ENOSPC private-path')
+          },
+          artifactId,
+        ),
     })
     const { child, running } = await start()
     child.send({ type: 'screenshot-start', bytes: 11 })
@@ -560,4 +601,37 @@ it('preserves a fully written output after unconfirmed registration and releases
   expect(await nextRunning).toMatchObject({ ok: false, code: 'CANCELLED' })
   expect(next.hasExited()).toBe(true)
   expect(readdirSync(outputRoot)).toHaveLength(1)
+})
+
+it('refuses over-budget and unconfirmed reservations before acquiring a control lease, allocating output or forking', async () => {
+  for (const code of ['ARTIFACT_BUDGET_EXCEEDED', 'private database detail']) {
+    const f = setup()
+    f.reserve.mockImplementation(() => {
+      throw new Error(code)
+    })
+    const result = await f.service.run(task())
+    expect(result).toEqual({
+      ok: false,
+      code: code === 'ARTIFACT_BUDGET_EXCEEDED' ? code : 'WORKER_OUTPUT_RESERVATION_UNCONFIRMED',
+      message: code === 'ARTIFACT_BUDGET_EXCEEDED' ? code : 'WORKER_OUTPUT_RESERVATION_UNCONFIRMED',
+    })
+    expect(f.acquire).not.toHaveBeenCalled()
+    expect(f.fork).not.toHaveBeenCalled()
+    expect(existsSync(f.outputRoot)).toBe(false)
+    expect(f.releaseReservation).not.toHaveBeenCalled()
+  }
+})
+it('does not fork or release a durable reservation when allocation binding is unconfirmed', async () => {
+  const f = setup()
+  f.bindAllocation.mockImplementation(() => {
+    throw new Error('private bind failure')
+  })
+  expect(await f.service.run(task())).toMatchObject({
+    ok: false,
+    code: 'WORKER_OUTPUT_RESERVATION_UNCONFIRMED',
+  })
+  expect(f.fork).not.toHaveBeenCalled()
+  expect(f.acquire).not.toHaveBeenCalled()
+  expect(f.releaseReservation).not.toHaveBeenCalled()
+  expect(readdirSync(f.outputRoot)).toHaveLength(1)
 })

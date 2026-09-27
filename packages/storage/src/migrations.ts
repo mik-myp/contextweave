@@ -61,7 +61,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 7
+export const databaseVersion = 8
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -135,7 +135,8 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
         `ALTER TABLE runtime_sessions ADD COLUMN process_identity TEXT; PRAGMA user_version = 4;`,
       )
     if (version < 5) migrateIntegritySchema(sqlite)
-    if (version < 6) sqlite.exec(`
+    if (version < 6)
+      sqlite.exec(`
       CREATE INDEX idx_sessions_timeline ON runtime_sessions(started_at DESC, session_id DESC);
       CREATE INDEX idx_operations_timeline ON operations(started_at DESC, operation_id DESC);
       CREATE INDEX idx_sessions_active ON runtime_sessions(environment_id, started_at DESC, session_id DESC)
@@ -144,7 +145,8 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
         WHERE executable_version IS NOT NULL AND executable_version != '';
       PRAGMA user_version = 6;
     `)
-    if (version < 7) sqlite.exec(`
+    if (version < 7)
+      sqlite.exec(`
       CREATE TABLE screenshot_artifacts (
         artifact_id TEXT PRIMARY KEY NOT NULL CHECK(length(artifact_id) = 36),
         environment_id TEXT NOT NULL REFERENCES environments(environment_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
@@ -158,6 +160,26 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       CREATE INDEX idx_artifacts_timeline ON screenshot_artifacts(completed_at DESC, artifact_id DESC);
       CREATE INDEX idx_artifacts_environment ON screenshot_artifacts(environment_id);
       PRAGMA user_version = 7;
+    `)
+    if (version < 8)
+      sqlite.exec(`
+      CREATE TABLE screenshot_budget (
+        id INTEGER PRIMARY KEY CHECK(id=1),
+        limit_mib INTEGER NOT NULL CHECK(limit_mib BETWEEN 32 AND 102400),
+        revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991)
+      ) STRICT;
+      INSERT INTO screenshot_budget VALUES (1,1024,1);
+      CREATE TABLE screenshot_reservations (
+        artifact_id TEXT PRIMARY KEY NOT NULL CHECK(length(artifact_id)=36),
+        environment_id TEXT NOT NULL REFERENCES environments(environment_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+        task_id TEXT NOT NULL CHECK(length(task_id) BETWEEN 1 AND 128 AND substr(task_id,1,1) GLOB '[a-zA-Z0-9]' AND task_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
+        reserved_at TEXT NOT NULL CHECK(length(reserved_at)=24 AND reserved_at GLOB '????-??-??T??:??:??.???Z'),
+        allocation_name TEXT UNIQUE CHECK(allocation_name IS NULL OR (length(allocation_name)=10 AND substr(allocation_name,1,4)='run-' AND substr(allocation_name,5) NOT GLOB '*[^a-zA-Z0-9]*')),
+        ownership_json TEXT CHECK(ownership_json IS NULL OR (length(ownership_json)<=1024 AND CASE WHEN json_valid(ownership_json) THEN json_type(ownership_json)='object' ELSE 0 END)),
+        CHECK((allocation_name IS NULL AND ownership_json IS NULL) OR (allocation_name IS NOT NULL AND ownership_json IS NOT NULL))
+      ) STRICT;
+      CREATE INDEX idx_screenshot_reservations_environment ON screenshot_reservations(environment_id);
+      PRAGMA user_version=8;
     `)
     sqlite.exec('COMMIT')
     transactionOpen = false

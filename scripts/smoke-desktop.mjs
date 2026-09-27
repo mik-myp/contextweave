@@ -1,3 +1,4 @@
+import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot, verifyArtifactRestart } from './smoke-artifacts.mjs'
 import { verifyManagerReopen } from './smoke-window-lifecycle.mjs'
 import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
@@ -321,6 +322,7 @@ try {
           }),
         )
       }
+      if (run === 1) await verifyScreenshotBudget((fn, arg) => page.evaluate(fn, arg), directory, id, fixtureUrl)
       const screenshot = await runWorkerWithHostileEnvironment(desktop, page, {
         protocolVersion: 1,
         taskId: `task-smoke-${run}`,

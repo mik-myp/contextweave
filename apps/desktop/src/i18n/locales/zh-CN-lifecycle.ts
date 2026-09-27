@@ -303,4 +303,30 @@ export const lifecycleMessages = {
   'error.ARTIFACT_RECORD_INVALID': '产物记录无法安全读取，已停止查询。请保留数据并检查诊断信息。',
   'error.ARTIFACT_STORAGE_UNAVAILABLE':
     '截图登记连接已安全关闭，环境管理仍可使用。请重启应用后核对已提交的产物记录。',
+  'artifactBudget.title': '截图容量预算',
+  'artifactBudget.help':
+    '每项新截图先持久预留最多 32 MiB，完成后按登记字节计费。降低预算不删除文件，也不会取消已准入任务；额度不足只阻断新的截图。',
+  'artifactBudget.scope':
+    '仅统计已登记截图与未解除预留，不是全盘磁盘配额；不包含旧的未登记输出、浏览器目录、内核、备份或目录元数据。',
+  'artifactBudget.registered': '已登记字节',
+  'artifactBudget.reserved': '预留字节 · 项数（含待核对）',
+  'artifactBudget.available': '可用预算字节',
+  'artifactBudget.limit': '容量上限（MiB）',
+  'artifactBudget.range': '默认 1024 MiB。可设置 32～102400 MiB 的整数；1 MiB = 1048576 字节。',
+  'artifactBudget.invalid': '请输入 32～102400 之间的整数 MiB。',
+  'artifactBudget.saving': '正在保存截图预算…',
+  'artifactBudget.save': '保存截图预算',
+  'artifactBudget.reset': '采用当前设置',
+  'artifactBudget.conflict': '设置已在其他操作中更新。请采用当前设置后重新编辑，避免覆盖新的配置。',
+  'artifactBudget.saved': '截图预算已保存。现存文件未被删除，已准入任务继续运行。',
+  'artifactBudget.uncertain':
+    '中断或结果未确认的预留会在重启后继续计费；不会自动重新运行、删除文件或解除未知占用。本版尚未提供显式文件清理。',
+  'error.ARTIFACT_BUDGET_EXCEEDED':
+    '截图预算不足以预留本次最多 32 MiB，任务未启动。请在本地存储设置中检查占用或调整预算。',
+  'error.WORKER_OUTPUT_RESERVATION_UNCONFIRMED':
+    '截图任务未启动；容量预留或空分配结果未确认，可能的占用将保守保留。请重启后核对，不会自动重试。',
+  'error.ARTIFACT_BUDGET_CONFLICT': '截图预算设置已变化，请刷新核对后重新编辑。',
+  'error.ARTIFACT_BUDGET_UPDATE_UNCONFIRMED':
+    '截图预算保存结果未确认。请刷新或重启核对，不要将本次错误视为一定没有保存。',
+  'error.ARTIFACT_BUDGET_REVISION_LIMIT': '截图预算修订已达到安全上限，请保留数据并联系维护者。',
 } as const

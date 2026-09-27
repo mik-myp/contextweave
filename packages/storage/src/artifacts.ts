@@ -1,3 +1,12 @@
+import {
+  artifactWrite,
+  readArtifactBudget,
+  updateArtifactBudget,
+  reserveArtifact,
+  bindArtifactAllocation,
+  requireArtifactReservation,
+  releaseArtifactReservation,
+} from './artifact-budget'
 import type { DatabaseSync } from 'node:sqlite'
 import {
   artifactRecordSchema,
@@ -5,6 +14,9 @@ import {
   artifactPageSchema,
   type ArtifactRecord,
   type ArtifactPage,
+  type ArtifactBudgetUpdate,
+  type ArtifactReservation,
+  type ArtifactAllocation,
 } from '@contextweave/contracts'
 
 function mapRecord(row: Record<string, unknown>): ArtifactRecord {
@@ -29,15 +41,21 @@ function mapRecord(row: Record<string, unknown>): ArtifactRecord {
 export function registerArtifact(sqlite: DatabaseSync, input: ArtifactRecord): void {
   const record = artifactRecordSchema.parse(input)
   // Never join a caller's transaction: a successful return must mean an actual COMMIT.
-  sqlite.exec('BEGIN IMMEDIATE')
-  try {
+  artifactWrite(sqlite, () => {
     const existing = sqlite
       .prepare('SELECT * FROM screenshot_artifacts WHERE artifact_id = ?')
       .get(record.artifactId)
     if (existing) {
+      if (
+        sqlite
+          .prepare('SELECT 1 FROM screenshot_reservations WHERE artifact_id=?')
+          .get(record.artifactId)
+      )
+        throw new Error('ARTIFACT_RESERVATION_CONFLICT')
       if (JSON.stringify(mapRecord(existing)) !== JSON.stringify(record))
         throw new Error('ARTIFACT_ID_CONFLICT')
     } else {
+      requireArtifactReservation(sqlite, record)
       sqlite
         .prepare(
           `INSERT INTO screenshot_artifacts
@@ -55,17 +73,8 @@ export function registerArtifact(sqlite: DatabaseSync, input: ArtifactRecord): v
           JSON.stringify(record.ownership),
         )
     }
-    sqlite.exec('COMMIT')
-  } catch (error) {
-    try {
-      sqlite.exec('ROLLBACK')
-    } catch {
-      // COMMIT may have succeeded, or a transaction may still be open. No further writes
-      // may accidentally join it. Restart reopens the database and exposes persisted rows.
-      sqlite.close()
-    }
-    throw error
-  }
+    sqlite.prepare('DELETE FROM screenshot_reservations WHERE artifact_id=?').run(record.artifactId)
+  })
 }
 
 export function readArtifactPage(sqlite: DatabaseSync, input: unknown): ArtifactPage {
@@ -133,6 +142,21 @@ export function readArtifactPage(sqlite: DatabaseSync, input: unknown): Artifact
 /** A separate connection to the same file keeps uncertain artifact transactions out of runtime state. */
 export class ArtifactRepository {
   constructor(private readonly sqlite: DatabaseSync) {}
+  budget() {
+    return readArtifactBudget(this.sqlite)
+  }
+  updateBudget(input: ArtifactBudgetUpdate) {
+    return updateArtifactBudget(this.sqlite, input)
+  }
+  reserve(input: ArtifactReservation) {
+    reserveArtifact(this.sqlite, input)
+  }
+  bindAllocation(input: ArtifactAllocation) {
+    bindArtifactAllocation(this.sqlite, input)
+  }
+  releaseReservation(artifactId: string) {
+    releaseArtifactReservation(this.sqlite, artifactId)
+  }
   registerArtifact(record: ArtifactRecord): void {
     registerArtifact(this.sqlite, record)
   }

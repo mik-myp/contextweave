@@ -902,3 +902,10 @@ Mac 管理窗口 smoke 使用 Playwright 的 `browserWindow(page)` 获取准确�
 - 严格 `discard()` 成功才允许释放失败产物的预留；写入/OS 退出尚未确认时仍占额度。SQLite COMMIT 回执不明不能推断未提交；回滚失效仅关闭同库独立 artifact 连接，浏览器环境连接继续可用。
 - 重启保留未解除预留，不以进程内 map 为空宣布没有占用；只读状态明确包含待核对项。本包没有危险的“直接释放任意 ID”IPC，没有自动删除/自动补登未知文件。显式文件清理与待核对意图恢复在后续独立工作包冻结。
 - 预算修改不删除既存文件，不中止已准入任务；额度不足仅阻断新的截图型 Worker，不阻断环境启停。UI 使用已有 Field/Input/Button/Alert 与独立 feature hook；数据域通知、服务端状态、未保存草稿和提交状态分开，Preload 双向 schema 与 Main 请求验证不能省略。
+
+
+### 29.1 v0.1.19 实施与升级边界
+
+以上预算已落入既有 contracts / storage / ArtifactService / WorkerService 和设置 feature；未新增第三方依赖、公开任意路径/预留释放 IPC 或内核参数。`screenshot_budget` / `screenshot_reservations` 为 schema v8 的增量 STRICT 表，旧 v7 登记不改写。单连接 `BEGIN IMMEDIATE` 覆盖额度检查、预留插入，完成记录与预留删除共享同一提交；只在 Main 原有严格文件清理成功后解除失败任务预留。策略 CAS revision 与 Renderer 草稿基线分离，故障保守保留额度，重启不自动认领或删除。
+
+本机已通过 107 个 Vitest 文件 / 995 项测试与 49 项工具测试，以及真实标准/指纹浏览器、预算拒绝和恢复准入、隔离 ASAR、原生打包程序与 Fuses 门禁；远端结果以版本台账为准。升级后旧版本应拒绝 schema v8；回退依赖升级前完整快照而不是手工降 `user_version`。恢复未知预留和显式删除文件仍须独立的持久意图/归属复验协议，不得通过直接删账抵消占用。

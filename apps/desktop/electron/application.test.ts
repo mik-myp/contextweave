@@ -194,3 +194,30 @@ it('exposes a read-only bounded artifact page, not registration or deletion comm
   ])
     expect(await app.invoke(channel, {})).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
 })
+
+it('keeps screenshot policy and mutation behind strict Main-side request validation', async () => {
+  const { app } = fixture()
+  expect(await app.invoke('storage:artifact-budget')).toMatchObject({
+    ok: true,
+    data: { limitMiB: 1024, revision: 1, reserved: { count: 0, bytes: 0 } },
+  })
+  expect(await app.invoke('storage:artifact-budget', {})).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  for (const value of [
+    { limitMiB: 31, expectedRevision: 1 },
+    { limitMiB: 64, expectedRevision: 1, releaseIds: ['foreign'] },
+    { limitMiB: 64 },
+  ])
+    expect(await app.invoke('storage:artifact-budget-update', value)).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+    })
+  expect(
+    await app.invoke('storage:artifact-budget-update', { limitMiB: 64, expectedRevision: 1 }),
+  ).toMatchObject({ ok: true, data: { limitMiB: 64, revision: 2 } })
+  expect(
+    await app.invoke('storage:artifact-budget-update', { limitMiB: 32, expectedRevision: 1 }),
+  ).toMatchObject({ ok: false, code: 'ARTIFACT_BUDGET_CONFLICT' })
+})

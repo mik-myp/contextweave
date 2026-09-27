@@ -103,14 +103,12 @@ export function createApplication(options: {
     preflight,
     changed: () => changed(['environments', 'activity', 'kernels']),
   })
-  const artifacts = createArtifactService(options.artifactRepository, changed)
-  const workers = createWorkerService(
-    runtime,
-    options.workerPath,
+  const artifacts = createArtifactService(
+    options.artifactRepository,
+    changed,
     join(dataRoot, 'worker-results'),
-    options.forkWorker,
-    artifacts.register,
   )
+  const workers = createWorkerService(runtime, options.workerPath, options.forkWorker, artifacts)
   const commands = createCommandCoordinator(repository, () =>
     changed(['environments', 'operations', 'activity', 'storage']),
   )
@@ -180,6 +178,8 @@ export function createApplication(options: {
       ok(repository.pageActivity(activityHistoryQuerySchema.parse(input))),
     'operation:page': (input) =>
       ok(repository.pageOperations(operationHistoryQuerySchema.parse(input))),
+    'storage:artifact-budget': () => ok(artifacts.budget()),
+    'storage:artifact-budget-update': (input) => ok(artifacts.updateBudget(input)),
     'storage:artifacts-page': (input) => ok(artifacts.page(input)),
     'storage:orphans': () => ok(environments.orphans()),
     'storage:history-preview': (input) => ok(historyCleanup.preview(input)),
@@ -246,6 +246,7 @@ export function createApplication(options: {
     'activity:list',
     'operation:list',
     'storage:orphans',
+    'storage:artifact-budget',
     'storage:history-receipt',
     'proxy:list',
     'settings:get-theme',

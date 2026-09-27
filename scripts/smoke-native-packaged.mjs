@@ -1,3 +1,4 @@
+import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot } from './smoke-artifacts.mjs'
 // Tests the actual hardened executable, not stock Electron loading app.asar.
 import assert from 'node:assert/strict'
@@ -85,6 +86,7 @@ try {
   for (let run = 0; run < 2; run++) {
     const started = await call((id) => window.contextweave.environment.start(id), id)
     assert(started.ok, 'NATIVE_ENVIRONMENT_START_FAILED')
+    if (run === 1) await verifyScreenshotBudget(call, directory, id, url)
     const screenshot = await call(
       ({ environmentId, url, run }) =>
         window.contextweave.worker.runSmoke({

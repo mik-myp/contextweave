@@ -1,4 +1,14 @@
 import {
+  batchPreviewInputSchema,
+  batchPreviewSchema,
+  batchIdSchema,
+  batchPageInputSchema,
+  batchPageSchema,
+  batchTaskSchema,
+  type BatchAction,
+  type BatchPageInput,
+} from '@contextweave/contracts'
+import {
   organizationSnapshotSchema,
   createGroupSchema,
   updateGroupSchema,
@@ -97,6 +107,8 @@ async function invokeWorkspace(context: WorkspaceContext, channel: string, paylo
   )
   if (result.ok) {
     const data = result.data
+    if (data !== null && typeof data === 'object' && 'workspaceId' in data)
+      assertWorkspaceContext(owner, { workspaceId: data.workspaceId })
     const records = Array.isArray(data)
       ? data
       : data !== null && typeof data === 'object' && 'items' in data && Array.isArray(data.items)
@@ -111,6 +123,35 @@ async function invokeWorkspace(context: WorkspaceContext, channel: string, paylo
 }
 
 const api = {
+  batch: {
+    preview: async (
+      context: WorkspaceContext,
+      input: { action: BatchAction; environmentIds: string[] },
+    ) =>
+      ipcResultSchema(batchPreviewSchema).parse(
+        await invokeWorkspace(context, 'batch:preview', batchPreviewInputSchema.parse(input)),
+      ),
+    confirm: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(batchTaskSchema).parse(
+        await invokeWorkspace(context, 'batch:confirm', batchIdSchema.parse(id)),
+      ),
+    page: async (context: WorkspaceContext, input: BatchPageInput) =>
+      ipcResultSchema(batchPageSchema).parse(
+        await invokeWorkspace(context, 'batch:page', batchPageInputSchema.parse(input)),
+      ),
+    get: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(batchTaskSchema).parse(
+        await invokeWorkspace(context, 'batch:get', batchIdSchema.parse(id)),
+      ),
+    cancel: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(batchTaskSchema).parse(
+        await invokeWorkspace(context, 'batch:cancel', batchIdSchema.parse(id)),
+      ),
+    retryPreview: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(batchPreviewSchema).parse(
+        await invokeWorkspace(context, 'batch:retry-preview', batchIdSchema.parse(id)),
+      ),
+  },
   organization: {
     list: async (context: WorkspaceContext) =>
       ipcResultSchema(organizationSnapshotSchema).parse(

@@ -1,3 +1,4 @@
+import { migrateBatches } from './batch-schema'
 import { migrateOrganization } from './organization-schema'
 import type { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
@@ -64,7 +65,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 11
+export const databaseVersion = 12
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -195,6 +196,10 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
     if (version < 11) {
       migrateOrganization(sqlite)
       sqlite.exec('PRAGMA user_version = 11')
+    }
+    if (version < 12) {
+      migrateBatches(sqlite)
+      sqlite.exec('PRAGMA user_version = 12')
     }
     sqlite.exec('COMMIT')
     transactionOpen = false

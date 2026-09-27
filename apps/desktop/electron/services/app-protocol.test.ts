@@ -11,12 +11,38 @@ describe('restricted application asset protocol', () => {
     )
   })
   it.each([
+    '#/proxies',
+    '#/environments',
+    '#/environments/env-abc',
+    '#/environments?search=%E6%B5%8B%E8%AF%95',
+    '#/../../private-file',
+  ])('reloads a hash route using only the fixed entry asset: %s', (hash) => {
+    expect(resolveAppAsset(`${APP_ENTRY_URL}${hash}`, 'GET', root)).toBe(
+      resolve(root, 'index.html'),
+    )
+  })
+  it('never passes route fragments or route query values to the native file loader', async () => {
+    const fetchFile = vi.fn(async () => new Response('fixture'))
+    const response = await createAppProtocolHandler(
+      root,
+      fetchFile,
+    )(new Request(`${APP_ENTRY_URL}#/proxies?filter=%2Fprivate%2Ffile`))
+    expect(response.status).toBe(200)
+    expect(fetchFile).toHaveBeenCalledExactlyOnceWith(
+      pathToFileURL(resolve(root, 'index.html')).href,
+      'GET',
+    )
+  })
+  it.each([
     'contextweave://app/',
     'contextweave://other/index.html',
     'contextweave://app:123/index.html',
     'contextweave://user:pass@app/index.html',
     'contextweave://app/index.html?file=other',
     'contextweave://app/index.html#fragment',
+    'contextweave://app/assets/index.js#/proxies',
+    'contextweave://app/%69ndex.html#/proxies',
+    'contextweave://app/index.html?file=other#/proxies',
     'file:///index.html',
     'https://app/index.html',
     'contextweave://app/assets/%2e%2e/%2e%2e/package.json',

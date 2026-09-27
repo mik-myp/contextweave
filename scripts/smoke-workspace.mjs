@@ -1,4 +1,4 @@
-// Real migration/organization checks use isolated published v8/v9/v10 fixtures, never user data.
+// Real migration/organization checks use isolated published v8/v9/v10/v11 fixtures, never user data.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
@@ -20,7 +20,7 @@ export async function assertWorkspaceIdentity(call) {
 }
 
 export async function verifyWorkspaceUpgrade(entry) {
-  for (const previousVersion of [8, 9, 10]) await verifyUpgradeFrom(entry, previousVersion)
+  for (const previousVersion of [8, 9, 10, 11]) await verifyUpgradeFrom(entry, previousVersion)
 }
 
 async function verifyUpgradeFrom(entry, previousVersion) {
@@ -80,22 +80,35 @@ async function verifyUpgradeFrom(entry, previousVersion) {
         assert.equal(organization.data.environments[0].note,'Retained note')
         assert.deepEqual(organization.data.environments[0].tags,['Review','中文'])
         assert.equal(organization.data.views[0].name,'Retained view')
+        const batch = await page.evaluate(async (run) => {
+          const context = {workspaceId:(await window.contextweave.workspace.current()).data.workspaceId}
+          if(run===0) {
+            const preview=await window.contextweave.batch.preview(context,{action:'start',environmentIds:['missing-target']})
+            if(!preview.ok)return preview
+            const confirmed=await window.contextweave.batch.confirm(context,preview.data.id)
+            if(!confirmed.ok)return confirmed
+          }
+          return window.contextweave.batch.page(context,{beforeId:null,limit:20})
+        },run)
+        assert(batch.ok && batch.data.items.length===1,'BATCH_REAL_IPC_RECEIPT_LOST')
+        assert.equal(batch.data.items[0].status,'completed')
+        assert.equal(batch.data.items[0].counts.skipped,1)
 
       } finally { await app.close() }
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
-    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v11-'))
+    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v12-'))
     assert.equal(backups.length, 1, 'WORKSPACE_MIGRATION_REPEATED')
     const before = new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
     const after = new DatabaseSync(file, { readOnly: true })
     try {
       assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
-      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 11)
+      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 12)
       assert.equal(after.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id, identity.workspaceId)
       assert.equal(after.prepare('SELECT data_dir FROM environments').get().data_dir, profile)
       assert.deepEqual(after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all(), before.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all())
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
     } finally { before.close(); after.close() }
-    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v11-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart' }))
+    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: 'single-consistent-v12-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
   } finally { await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }
 }

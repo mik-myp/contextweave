@@ -1,3 +1,4 @@
+import { batchTables } from './batch-schema'
 import { organizationTables } from './organization-schema'
 import { workspaceTables } from './workspace-scope'
 // A genuine published v4 schema, not a new schema with its version lowered.
@@ -29,7 +30,11 @@ export function openVersion10Fixture(filePath: string) {
   return openPublishedFixture(filePath, 10)
 }
 
-function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10) {
+export function openVersion11Fixture(filePath: string) {
+  return openPublishedFixture(filePath, 11)
+}
+
+function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11) {
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
   try {
@@ -196,6 +201,7 @@ export function legacyRows(sqlite: DatabaseSync, table: string, order = 'rowid')
 export function removeWorkspaceScopeForLegacyFixture(sqlite: DatabaseSync) {
   sqlite.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE')
   try {
+    for (const table of batchTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
     for (const table of organizationTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
     for (const table of workspaceTables)
       sqlite.exec(`ALTER TABLE ${table} DROP COLUMN workspace_id`)

@@ -1,3 +1,6 @@
+import { BatchPreviewDialog } from '../batches/batch-preview-dialog'
+import { BatchTasks } from '../batches/batch-tasks'
+import type { BatchAction } from '@contextweave/contracts'
 import {
   organizeEnvironments,
   useOrganization,
@@ -10,10 +13,6 @@ import { organizationNameKey } from '@contextweave/contracts'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { EnvironmentTrash } from '../components/environment-trash'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog'
-import { BatchResult } from '@/components/batch-result'
-import { useBatchMutation } from '@/shared/hooks/use-batch-mutation'
-import { useEnvironmentService, isEnvironmentReadOnly } from '../environment-service'
 import { useMemo, useState, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
 import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
@@ -34,23 +33,36 @@ const getRowId = (row: EnvironmentSummary) => row.id
 
 export function EnvironmentsPage() {
   const { t } = useI18n()
+  const [tab, setTab] = useState('active'),
+    [selectedTask, setSelectedTask] = useState<string>()
+  const onCreated = useCallback((id: string) => {
+    setSelectedTask(id)
+    setTab('batches')
+  }, [])
   return (
-    <Tabs defaultValue="active" className="min-h-0 flex-1 gap-4">
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(String(value))}
+      className="min-h-0 flex-1 gap-4"
+    >
       <TabsList className="shrink-0">
         <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
         <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
+        <TabsTrigger value="batches">{t('batch.tasks')}</TabsTrigger>
       </TabsList>
       <TabsContent value="active" className="flex min-h-0 flex-col gap-4">
-        <ActiveEnvironmentsPage />
+        <ActiveEnvironmentsPage onCreated={onCreated} />
       </TabsContent>
       <TabsContent value="trash" className="flex min-h-0 flex-col gap-4">
-        <EnvironmentTrash />
+        <EnvironmentTrash onCreated={onCreated} />
+      </TabsContent>
+      <TabsContent value="batches" className="flex min-h-0 flex-col gap-4">
+        <BatchTasks selectedId={selectedTask} onSelect={setSelectedTask} />
       </TabsContent>
     </Tabs>
   )
 }
-function ActiveEnvironmentsPage() {
-  const environmentService = useEnvironmentService()
+function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void }) {
   const { t, locale } = useI18n()
   const { environments, kernels, proxies, loading, error, refresh } = useAppData([
     'environments',
@@ -66,13 +78,12 @@ function ActiveEnvironmentsPage() {
   const [groupsOpen, setGroupsOpen] = useState(false)
   const [viewsOpen, setViewsOpen] = useState(false)
   const actions = useEnvironmentActions()
-  const batch = useBatchMutation(['environments'])
   const [target, setTarget] = useState<{
-    action: 'start' | 'stop' | 'delete'
+    action: BatchAction
     items: EnvironmentSummary[]
   }>()
   const onDelete = useCallback(
-    (item: EnvironmentSummary) => setTarget({ action: 'delete', items: [item] }),
+    (item: EnvironmentSummary) => setTarget({ action: 'trash', items: [item] }),
     [],
   )
   const { savedId, setSavedId } = useEnvironmentDrafts()
@@ -102,27 +113,6 @@ function ActiveEnvironmentsPage() {
     initialState: { sorting: [{ id: 'updatedAt', desc: true }], columnVisibility: { note: false } },
   })
   const selected = table.getFilteredSelectedRowModel().rows.map((row) => row.original)
-  const eligible = {
-    start: selected.filter((row) => ['created', 'ready', 'stopped', 'error'].includes(row.status)),
-    stop: selected.filter((row) => row.status === 'running'),
-    delete: selected.filter((row) => !isEnvironmentReadOnly(row.status)),
-  }
-  const confirmBatch = async () => {
-    if (!target) return
-    const result = await batch.run({
-      items: target.items,
-      getId: (row) => row.id,
-      getLabel: (row) => row.name,
-      action: (row) => environmentService[target.action](row.id),
-    })
-    if (result)
-      table.setRowSelection((current) =>
-        Object.fromEntries(
-          Object.entries(current).filter(([id]) => !result.succeeded.includes(id)),
-        ),
-      )
-    setTarget(undefined)
-  }
   const filtered = Boolean(table.state.globalFilter) || table.state.columnFilters.length > 0
   const reset = () => {
     table.setGlobalFilter('')
@@ -178,7 +168,6 @@ function ActiveEnvironmentsPage() {
       )}
       {groupsOpen && <GroupManagerDialog onClose={() => setGroupsOpen(false)} />}
       {viewsOpen && <SavedViewsDialog table={table} onClose={() => setViewsOpen(false)} />}
-      <BatchResult failures={batch.failures} />
       <DataTable
         table={table}
         label={t('env.list')}
@@ -215,15 +204,13 @@ function ActiveEnvironmentsPage() {
         bulkActions={
           <DataTableBulkActions
             table={table}
-            disabled={batch.pending}
-            actions={(['start', 'stop', 'delete'] as const).map((action) => ({
+            actions={(['start', 'stop', 'trash'] as const).map((action) => ({
               id: action,
-              label: `${t(action === 'delete' ? 'life.op.trash' : `env.${action}`)} (${eligible[action].length})`,
-              icon: { start: PlayIcon, stop: SquareIcon, delete: Trash2Icon }[action],
-              destructive: action === 'delete',
-              disabled: !eligible[action].length,
-              pending: batch.pending && target?.action === action,
-              onClick: () => setTarget({ action, items: eligible[action] }),
+              label: `${t(`batch.action.${action}`)} (${selected.length})`,
+              icon: { start: PlayIcon, stop: SquareIcon, trash: Trash2Icon }[action],
+              destructive: action === 'trash',
+              disabled: !selected.length,
+              onClick: () => setTarget({ action, items: selected }),
             }))}
           />
         }
@@ -289,44 +276,16 @@ function ActiveEnvironmentsPage() {
         }
         countLabel={(count) => t('env.total').replace('{count}', String(count))}
       />
-      <ConfirmActionDialog
-        open={!!target}
-        onOpenChange={(open) => {
-          if (!open) setTarget(undefined)
-        }}
-        title={t('admin.confirmCount')
-          .replace(
-            '{action}',
-            t(
-              target?.action === 'delete'
-                ? 'life.op.trash'
-                : target?.action === 'stop'
-                  ? 'env.stop'
-                  : 'env.start',
-            ),
-          )
-          .replace('{count}', String(target?.items.length ?? 0))}
-        description={t(
-          target?.action === 'delete' ? 'env.deleteDescription' : 'env.batchDescription',
-        )}
-        actionLabel={t(target?.action === 'delete' ? 'life.op.trash' : 'common.confirm')}
-        destructive={target?.action === 'delete'}
-        pending={batch.pending}
-        onConfirm={() => void confirmBatch()}
-      >
-        <ul className="max-h-32 overflow-auto text-sm text-muted-foreground">
-          {target?.items.map((item) => (
-            <li key={item.id} className="truncate">
-              {item.name}
-            </li>
-          ))}
-        </ul>
-        {batch.pending && (
-          <p role="status" className="text-sm">
-            {batch.progress.completed} / {batch.progress.total}
-          </p>
-        )}
-      </ConfirmActionDialog>
+      {target && (
+        <BatchPreviewDialog
+          request={{ action: target.action, environmentIds: target.items.map((item) => item.id) }}
+          onClose={() => setTarget(undefined)}
+          onCreated={(id) => {
+            table.resetRowSelection()
+            onCreated(id)
+          }}
+        />
+      )}
       <EnvironmentConfirmDialog
         kind="stop"
         open={!!actions.stopTarget}

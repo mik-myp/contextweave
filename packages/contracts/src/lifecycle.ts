@@ -109,6 +109,7 @@ export type OperationSummary = z.infer<typeof operationSummarySchema>
 export const dataDomainSchema = z.enum([
   'environments',
   'organization',
+  'batches',
   'proxies',
   'kernels',
   'activity',

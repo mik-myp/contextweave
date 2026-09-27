@@ -13,6 +13,14 @@ export function createWorkspaceApi(input: WorkspaceContext) {
     return (...args: Args) => method()(context, ...args)
   }
   return {
+    batch: {
+      preview: bindWorkspace(() => window.contextweave.batch.preview),
+      confirm: bindWorkspace(() => window.contextweave.batch.confirm),
+      page: bindWorkspace(() => window.contextweave.batch.page),
+      get: bindWorkspace(() => window.contextweave.batch.get),
+      cancel: bindWorkspace(() => window.contextweave.batch.cancel),
+      retryPreview: bindWorkspace(() => window.contextweave.batch.retryPreview),
+    },
     organization: {
       list: bindWorkspace(() => window.contextweave.organization.list),
       createGroup: bindWorkspace(() => window.contextweave.organization.createGroup),

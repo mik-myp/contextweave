@@ -268,7 +268,7 @@ describe('schema v7 migration', () => {
     expect(
       withoutWorkspaceColumn(f.db.sqlite
         .prepare(
-          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views') ORDER BY name",
+          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views','batch_tasks','batch_items') ORDER BY name",
         )
         .all()),
     ).toEqual(before)

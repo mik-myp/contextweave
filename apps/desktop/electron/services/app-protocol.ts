@@ -7,7 +7,14 @@ const assetPath = /^\/assets\/[A-Za-z0-9][A-Za-z0-9_.-]*\.(?:js|css|woff2?|png|j
 
 /** Only immutable build output, never profiles, Preload, Main, arbitrary paths or URLs. */
 export function resolveAppAsset(url: string, method: string, distRoot: string): string | undefined {
-  if ((method !== 'GET' && method !== 'HEAD') || url.includes('%') || url.includes('\\'))
+  // Hash-router state never participates in choosing a file. Electron retains
+  // that fragment on protocol requests made by native reload.
+  const resourceUrl = url.split('#', 1)[0]
+  if (
+    (method !== 'GET' && method !== 'HEAD') ||
+    resourceUrl.includes('%') ||
+    resourceUrl.includes('\\')
+  )
     return undefined
   try {
     const request = new URL(url)
@@ -18,7 +25,7 @@ export function resolveAppAsset(url: string, method: string, distRoot: string): 
       request.username ||
       request.password ||
       request.search ||
-      request.hash ||
+      (request.hash && (request.pathname !== '/index.html' || !request.hash.startsWith('#/'))) ||
       request.pathname.length > 512 ||
       request.pathname.includes('%') ||
       request.pathname.includes('..')

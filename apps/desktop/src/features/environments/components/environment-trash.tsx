@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { BatchPreviewDialog } from '../batches/batch-preview-dialog'
 import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
 import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { ArchiveRestoreIcon } from 'lucide-react'
@@ -8,37 +10,21 @@ import type { ColumnDef } from '@tanstack/react-table'
 import type { EnvironmentSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
-import { useBatchMutation } from '@/shared/hooks/use-batch-mutation'
 import { DataTable } from '@/components/data-table/data-table'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
 import type { DataTableFeatures } from '@/components/data-table/data-table-features'
 import { useDataTable } from '@/components/data-table/use-data-table'
-import { BatchResult } from '@/components/batch-result'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 const getRowId = (row: EnvironmentSummary) => row.id
-export function EnvironmentTrash() {
+export function EnvironmentTrash({ onCreated }: { onCreated: (id: string) => void }) {
   const workspaceContext = useWorkspaceContext()
   const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
-  const batch = useBatchMutation(['environments'])
+  const [targets, setTargets] = useState<EnvironmentSummary[]>()
   const query = useQuery({
     queryKey: workspaceKey(workspaceContext, 'environments', 'trash'),
     queryFn: () => unwrapIpc(workspaceApi.environment.trash()),
   })
-  const restore = async (items: EnvironmentSummary[]) => {
-    const result = await batch.run({
-      items,
-      getId: (row) => row.id,
-      getLabel: (row) => row.name,
-      action: (row) => unwrapIpc(workspaceApi.environment.restore(row.id)),
-    })
-    if (result)
-      table.setRowSelection((current) =>
-        Object.fromEntries(
-          Object.entries(current).filter(([id]) => !result.succeeded.includes(id)),
-        ),
-      )
-  }
   const columns: ColumnDef<DataTableFeatures, EnvironmentSummary, unknown>[] = [
     selectionColumn<EnvironmentSummary>(t),
     {
@@ -69,8 +55,7 @@ export function EnvironmentTrash() {
               id: 'restore',
               label: t('life.restore'),
               icon: ArchiveRestoreIcon,
-              disabled: batch.pending,
-              onClick: () => void restore([row.original]),
+              onClick: () => setTargets([row.original]),
             },
           ]}
         />
@@ -92,7 +77,16 @@ export function EnvironmentTrash() {
       <Alert>
         <AlertDescription>{t('life.trashHelp')}</AlertDescription>
       </Alert>
-      <BatchResult failures={batch.failures} />
+      {targets && (
+        <BatchPreviewDialog
+          request={{ action: 'restore', environmentIds: targets.map((item) => item.id) }}
+          onClose={() => setTargets(undefined)}
+          onCreated={(id) => {
+            table.resetRowSelection()
+            onCreated(id)
+          }}
+        />
+      )}
       <DataTable
         table={table}
         label={t('life.trash')}
@@ -104,15 +98,13 @@ export function EnvironmentTrash() {
         bulkActions={
           <DataTableBulkActions
             table={table}
-            disabled={batch.pending}
             actions={[
               {
                 id: 'restore',
                 label: `${t('life.restore')} (${selected.length})`,
                 icon: ArchiveRestoreIcon,
                 disabled: !selected.length,
-                pending: batch.pending,
-                onClick: () => void restore(selected),
+                onClick: () => setTargets(selected),
               },
             ]}
           />

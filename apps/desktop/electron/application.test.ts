@@ -394,3 +394,47 @@ it('keeps organization CRUD behind the fixed workspace boundary and emits source
   ).toMatchObject({ ok: false, code: 'ORGANIZATION_CONFLICT' })
   expect(f.repository.organization.snapshot()).toEqual(snapshot)
 })
+
+it('owns backend batch previews, confirmations, facts and events at the application boundary', async () => {
+  const { app, rawApp, repository, events } = fixture()
+  const foreign = '00000000-0000-4000-8000-000000000009'
+  for (const channel of [
+    'batch:preview',
+    'batch:confirm',
+    'batch:page',
+    'batch:get',
+    'batch:cancel',
+    'batch:retry-preview',
+  ]) {
+    expect(await rawApp.invoke(channel)).toMatchObject({
+      ok: false,
+      code: 'WORKSPACE_CONTEXT_INVALID',
+    })
+    expect(await rawApp.invoke(channel, { workspaceId: foreign, payload: {} })).toMatchObject({
+      ok: false,
+      code: 'WORKSPACE_MISMATCH',
+    })
+  }
+  const result = await app.invoke('batch:preview', { action: 'start', environmentIds: ['missing'] })
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error('Expected preview')
+  const parsed = (await import('@contextweave/contracts')).batchPreviewSchema.parse(result.data)
+  expect(parsed.workspaceId).toBe(repository.workspaceId)
+  const confirmed = await app.invoke('batch:confirm', parsed.id)
+  expect(confirmed).toMatchObject({
+    ok: true,
+    data: { status: 'completed', counts: { skipped: 1 } },
+  })
+  expect(await app.invoke('batch:confirm', parsed.id)).toEqual(confirmed)
+  expect(await app.invoke('batch:get', parsed.id)).toEqual(confirmed)
+  expect(await app.invoke('batch:page', {})).toMatchObject({
+    ok: true,
+    data: { workspaceId: repository.workspaceId, items: [{ id: parsed.id }] },
+  })
+  expect(await app.invoke('batch:retry-preview', parsed.id)).toMatchObject({
+    ok: false,
+    code: 'BATCH_NO_FAILED_ITEMS',
+  })
+  expect(events.some((event) => event.domains.includes('batches'))).toBe(true)
+  expect(events.every((event) => event.workspaceId === repository.workspaceId)).toBe(true)
+})

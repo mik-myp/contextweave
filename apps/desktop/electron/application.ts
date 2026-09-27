@@ -1,3 +1,5 @@
+import { createBatchService } from './services/batch-service'
+import { type BatchAction } from '@contextweave/contracts'
 import { dataChangedSchema, type DataChanged } from '@contextweave/contracts'
 import { realpathSync } from 'node:fs'
 import { WorkspacePaths } from '@contextweave/storage'
@@ -137,10 +139,55 @@ export function createApplication(options: {
   let closing = false
   let updating = false
   const id = (input: unknown) => environmentIdSchema.parse(input)
+  const runEnvironmentAction = (
+    action: BatchAction,
+    environmentId: string,
+    expectedRevision?: number,
+  ): Promise<IpcResult<unknown>> => {
+    const execute = () =>
+      commands.run<unknown>(action, environmentId, (phase) => {
+        if (expectedRevision !== undefined) {
+          const record = repository.get(environmentId)
+          if (!record) return fail('NOT_FOUND')
+          assertWorkspaceContext(workspace, { workspaceId: record.workspaceId })
+          if (record.revision !== expectedRevision) return fail('CONFIG_CONFLICT')
+        }
+        if (action === 'start') return runtime.start(environmentId, phase)
+        if (action === 'stop') {
+          workers.cancelEnvironment(environmentId)
+          return runtime.stop(environmentId)
+        }
+        if (action === 'restore') return ok(toSummary(environments.restore(environmentId)))
+        removeEnvironment(repository, environmentId)
+        return ok(true)
+      })
+    if (action === 'stop' && expectedRevision === undefined) {
+      runtime.cancelStart(environmentId)
+      return Promise.resolve(commands.settled(environmentId)).then(execute)
+    }
+    return execute()
+  }
+  const batches = createBatchService({
+    repository,
+    busy: commands.busy,
+    execute: (action, environmentId, revision) => {
+      if (closing) return Promise.resolve(fail('APP_CLOSING'))
+      if (updating) return Promise.resolve(fail('APP_UPDATING'))
+      paths.assertRoots()
+      return runEnvironmentAction(action, environmentId, revision)
+    },
+    changed: () => changed(['batches']),
+  })
   const handlers: Record<
     string,
     (input?: unknown) => IpcResult<unknown> | Promise<IpcResult<unknown>>
   > = {
+    'batch:preview': (input) => ok(batches.preview(input)),
+    'batch:confirm': (input) => ok(batches.confirm(input)),
+    'batch:page': (input) => ok(batches.page(input)),
+    'batch:get': (input) => ok(batches.get(input)),
+    'batch:cancel': (input) => ok(batches.cancel(input)),
+    'batch:retry-preview': (input) => ok(batches.retryPreview(input)),
     'organization:list': () => ok(repository.organization.snapshot()),
     'organization:group-create': (input) => {
       const result = repository.organization.createGroup(input)
@@ -211,22 +258,10 @@ export function createApplication(options: {
         ok(toSummary(updateEnvironment(repository, parsed))),
       )
     },
-    'environment:delete': (input) =>
-      commands.run('trash', id(input), () => {
-        removeEnvironment(repository, input)
-        return ok(true)
-      }),
-    'environment:restore': (input) =>
-      commands.run('restore', id(input), () => ok(toSummary(environments.restore(id(input))))),
-    'environment:start': (input) =>
-      commands.run('start', id(input), (phase) => runtime.start(id(input), phase)),
-    'environment:stop': async (input) => {
-      const environmentId = id(input)
-      runtime.cancelStart(environmentId)
-      await commands.settled(environmentId)
-      workers.cancelEnvironment(environmentId)
-      return commands.run('stop', environmentId, () => runtime.stop(environmentId))
-    },
+    'environment:delete': (input) => runEnvironmentAction('trash', id(input)),
+    'environment:restore': (input) => runEnvironmentAction('restore', id(input)),
+    'environment:start': (input) => runEnvironmentAction('start', id(input)),
+    'environment:stop': (input) => runEnvironmentAction('stop', id(input)),
     'environment:recover': (input) =>
       commands.run('recover', id(input), () => runtime.recover(id(input))),
     'activity:list': () => ok(repository.pageActivity({ limit: 100 }).items),
@@ -321,6 +356,7 @@ export function createApplication(options: {
       updating = value
     },
     hasActiveEnvironments: () =>
+      batches.hasActive() ||
       repository
         .listAll()
         .some(
@@ -351,15 +387,26 @@ export function createApplication(options: {
         )
       }
     },
-    recover: () => runtime.recoverOnStartup(),
+    recover: () => {
+      batches.recover()
+      runtime.recoverOnStartup()
+    },
     async shutdown() {
       closing = true
+      const batchDrain = batches.shutdown()
       const workerDrain = workers.shutdown()
       kernels.cancelAll()
       runtime.cancelStarts()
-      await Promise.all([workerDrain, localePreview.shutdown(), locale.shutdown()])
+      const drains = await Promise.allSettled([
+        batchDrain,
+        workerDrain,
+        localePreview.shutdown(),
+        locale.shutdown(),
+      ])
       await commands.drain()
       await runtime.shutdown()
+      const failed = drains.find((result) => result.status === 'rejected')
+      if (failed?.status === 'rejected') throw failed.reason
     },
   }
 }

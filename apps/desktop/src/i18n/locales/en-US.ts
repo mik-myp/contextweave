@@ -1,3 +1,4 @@
+import { batchMessages } from './en-US-batches'
 import { organizationMessages } from './en-US-organization'
 import { enLogMessages } from './en-US-logs'
 import { lifecycleMessages } from './en-US-lifecycle'
@@ -10,6 +11,7 @@ export const enUSMessages: Record<TranslationKey, string> = {
   ...lifecycleMessages,
   ...workspaceMessages,
   ...organizationMessages,
+  ...batchMessages,
   ...adminMessages,
   'common.retry': 'Retry',
   'theme.saveErrorTitle': 'Theme not saved',

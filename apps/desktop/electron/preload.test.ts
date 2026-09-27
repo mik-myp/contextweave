@@ -50,6 +50,7 @@ describe('sandboxed preload contract', () => {
     expect(Object.keys(api).sort()).toEqual([
       'activity',
       'app',
+      'batch',
       'environment',
       'events',
       'kernel',
@@ -399,4 +400,23 @@ it('validates named organization methods and rejects mixed-owner snapshots befor
     },
   })
   await expect(api.organization.list(workspace)).rejects.toThrow()
+})
+
+it('validates batch requests and refuses a foreign task container even with ownerless child snapshots', async () => {
+  await expect(
+    api.batch.preview(workspace, { action: 'start', environmentIds: ['same', 'same'] }),
+  ).rejects.toThrow()
+  await expect(api.batch.confirm(workspace, '../../outside')).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: { workspaceId: '00000000-0000-4000-8000-000000000009', items: [] },
+  })
+  await expect(api.batch.get(workspace, '00000000-0000-4000-8000-000000000004')).rejects.toThrow(
+    'WORKSPACE_MISMATCH',
+  )
+  expect(bridge.invoke).toHaveBeenLastCalledWith('batch:get', {
+    ...workspace,
+    payload: '00000000-0000-4000-8000-000000000004',
+  })
 })

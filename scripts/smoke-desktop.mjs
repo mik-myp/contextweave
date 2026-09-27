@@ -1,3 +1,4 @@
+import { verifyBackendBatches } from './smoke-batches.mjs'
 import { assertWorkspaceIdentity, verifyWorkspaceUpgrade } from './smoke-workspace.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot, verifyArtifactRestart } from './smoke-artifacts.mjs'
@@ -466,6 +467,7 @@ try {
       const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
+    await verifyBackendBatches(page)
     console.log(
       JSON.stringify({
         bridge: 'passed',

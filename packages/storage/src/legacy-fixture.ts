@@ -3,11 +3,19 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 export function openVersion4Fixture(filePath: string) {
+  return openPublishedFixture(filePath, 4)
+}
+
+export function openVersion8Fixture(filePath: string) {
+  return openPublishedFixture(filePath, 8)
+}
+
+function openPublishedFixture(filePath: string, version: 4 | 8) {
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
   try {
     sqlite.exec('BEGIN IMMEDIATE')
-    sqlite.exec(readFileSync(new URL('../test-fixtures/schema-v4.sql', import.meta.url), 'utf8'))
+    sqlite.exec(readFileSync(new URL(`../test-fixtures/schema-v${version}.sql`, import.meta.url), 'utf8'))
     sqlite.exec('COMMIT')
   } catch (error) {
     sqlite.close()

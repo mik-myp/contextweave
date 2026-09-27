@@ -1,4 +1,5 @@
 export type StartupErrorCode =
+  | 'DATABASE_WORKSPACE_INVALID'
   | 'DATABASE_CORRUPT'
   | 'DATABASE_INTEGRITY_FAILED'
   | 'DATABASE_SCHEMA_UNSUPPORTED'
@@ -18,6 +19,7 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
   const sqlite = 'errcode' in error && typeof error.errcode === 'number' ? error.errcode & 255 : 0
   const message = error instanceof Error ? error.message : ''
   if (
+    message === 'DATABASE_WORKSPACE_INVALID' ||
     message === 'DATABASE_INTEGRITY_FAILED' ||
     message === 'DATABASE_SCHEMA_UNSUPPORTED' ||
     message === 'DATABASE_FOREIGN_KEYS_UNAVAILABLE'
@@ -36,6 +38,10 @@ export function classifyStartupError(error: unknown): StartupErrorCode {
 }
 
 const descriptions: Record<StartupErrorCode, [string, string]> = {
+  DATABASE_WORKSPACE_INVALID: [
+    '本地工作空间身份缺失或不合法，已停止打开数据。请保留完整数据目录并反馈此错误代码；不会自动生成新身份或清空数据。',
+    'The local workspace identity is missing or invalid. Opening has stopped. Preserve the full data directory and report this code; no replacement identity or empty database will be created.',
+  ],
   DATABASE_INTEGRITY_FAILED: [
     '数据库存在不一致的关联或不合法的历史值，升级或打开已停止。请先保留完整数据目录并反馈此错误代码；不会自动删除或改写异常记录。',
     'The database contains inconsistent relations or invalid stored values. Opening or upgrading has stopped. Preserve the full data directory and report this code; invalid records will not be deleted or rewritten automatically.',

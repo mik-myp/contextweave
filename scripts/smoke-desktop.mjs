@@ -1,3 +1,4 @@
+import { assertWorkspaceIdentity, verifyWorkspaceUpgrade } from './smoke-workspace.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot, verifyArtifactRestart } from './smoke-artifacts.mjs'
 import { verifyManagerReopen } from './smoke-window-lifecycle.mjs'
@@ -40,7 +41,7 @@ const desktop = await _electron.launch({
   env: { ...process.env, CONTEXTWEAVE_USER_DATA: directory },
   timeout: 20000,
 })
-let id, fixtureServer, localeProxy
+let id, fixtureServer, localeProxy, workspaceIdentity
 let preserveSmokeDirectory = false
 let completed = false
 const registeredArtifacts = []
@@ -52,6 +53,7 @@ try {
     undefined,
     { timeout: 10000 },
   )
+  workspaceIdentity = await assertWorkspaceIdentity((...args) => page.evaluate(...args))
   assert.equal(await page.evaluate(() => typeof window.contextweave.acquireControlLease), 'undefined')
   assert.equal(
     await page.evaluate(() => typeof window.__electronLog),
@@ -525,11 +527,18 @@ try {
     /* Preserve the original test error; application shutdown also stops owned children. */
   }
   await desktop.close()
-  if (completed) await verifyArtifactRestart(entry, directory, registeredArtifacts)
-  if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
-  if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
-  if (!preserveSmokeDirectory)
-    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  try {
+    if (completed) {
+      await verifyArtifactRestart(entry, directory, registeredArtifacts, workspaceIdentity)
+      // The isolated ASAR lives inside directory and must still exist for this second fixture.
+      await verifyWorkspaceUpgrade(entry)
+    }
+  } finally {
+    if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
+    if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
+    if (!preserveSmokeDirectory)
+      await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
 }
 
 // The startup harness separately exercises the development bundle with injected native dialogs.

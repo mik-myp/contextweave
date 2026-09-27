@@ -1,4 +1,6 @@
 export const lifecycleMessages = {
+  'error.DATABASE_WORKSPACE_INVALID':
+    'The local workspace identity cannot be read. Preserve the data directory and retry; no replacement identity will be created.',
   'history.loading': 'Loading history…',
   'history.pageCount': '{count} on this page (total not counted)',
   'history.latest': 'Back to first page',

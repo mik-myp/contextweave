@@ -1,7 +1,7 @@
 'use client'
 
-import * as React from 'react'
-import { ChevronsUpDownIcon, PaletteIcon, PlusIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, HardDriveIcon, RefreshCwIcon } from 'lucide-react'
+import type { LocalWorkspace } from '@contextweave/contracts'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,101 +21,97 @@ import {
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/i18n'
 
-type Team = {
-  name: string
-  logo: React.ReactNode
-  plan: string
-}
-
 type TeamSwitcherProps = {
-  teams: Team[]
-  onTeamChange?: (team: Team) => void
-  onAddTeam?: () => void
+  workspace: LocalWorkspace | undefined
+  isPending: boolean
+  isFetching: boolean
+  hasError: boolean
+  onRetry: () => void
 }
 
-export function TeamSwitcher({ teams, onTeamChange, onAddTeam }: TeamSwitcherProps) {
+// Preserve the planned switcher entry without inventing teams, remote connections or a second space.
+export function TeamSwitcher({
+  workspace,
+  isPending,
+  isFetching,
+  hasError,
+  onRetry,
+}: TeamSwitcherProps) {
   const { t } = useI18n()
   const { isMobile } = useSidebar()
-  const [activeTeamName, setActiveTeamName] = React.useState<string | undefined>(teams[0]?.name)
-  const activeTeam = teams.find((team) => team.name === activeTeamName) ?? teams[0]
-  const hasMenu = teams.length > 0 || Boolean(onAddTeam)
+  const content = (
+    <>
+      <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+        <HardDriveIcon className="size-4" aria-hidden="true" />
+      </div>
+      <div className="grid min-w-0 flex-1 text-start text-sm leading-tight">
+        <span className="truncate font-medium">
+          {workspace
+            ? t('header.localWorkspace')
+            : t(isPending ? 'workspace.loading' : 'workspace.unavailable')}
+        </span>
+        <span className="truncate text-xs">
+          {workspace
+            ? t('workspace.localStorage')
+            : t(hasError ? 'workspace.retry' : 'workspace.readingIdentity')}
+        </span>
+      </div>
+    </>
+  )
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            disabled={!hasMenu}
-            render={
-              <SidebarMenuButton
-                size="lg"
-                className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground disabled:opacity-100"
-              />
-            }
+        {!workspace ? (
+          <SidebarMenuButton
+            size="lg"
+            disabled={isFetching}
+            onClick={onRetry}
+            aria-label={t(hasError ? 'workspace.retry' : 'workspace.loading')}
+            aria-busy={isFetching}
           >
-            <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              {activeTeam?.logo ?? <PaletteIcon className="size-4" aria-hidden="true" />}
-            </div>
-            <div className="grid min-w-0 flex-1 text-start text-sm leading-tight">
-              <span className="truncate font-medium">{activeTeam?.name ?? 'ContextWeave'}</span>
-              <span className="truncate text-xs">
-                {activeTeam?.plan ?? t('header.localWorkspace')}
-              </span>
-            </div>
-            {hasMenu && <ChevronsUpDownIcon className="ms-auto" aria-hidden="true" />}
-          </DropdownMenuTrigger>
-          {hasMenu && (
+            {content}
+          </SidebarMenuButton>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<SidebarMenuButton size="lg" aria-label={t('workspace.details')} />}
+            >
+              {content}
+              <ChevronsUpDownIcon className="ms-auto" aria-hidden="true" />
+            </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="min-w-56"
+              className="min-w-64"
               align="start"
               side={isMobile ? 'bottom' : 'inline-end'}
               sideOffset={4}
             >
-              {teams.length > 0 && (
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>{t('teamSwitcher.teams')}</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={activeTeam?.name}
-                    onValueChange={(name) => {
-                      const team = teams.find((item) => item.name === name)
-                      if (team) {
-                        setActiveTeamName(team.name)
-                        onTeamChange?.(team)
-                      }
-                    }}
-                  >
-                    {teams.map((team) => (
-                      <DropdownMenuRadioItem
-                        key={team.name}
-                        value={team.name}
-                        closeOnClick
-                        className="gap-2 py-2 ps-2"
-                      >
-                        <div className="flex size-6 shrink-0 items-center justify-center rounded-md border">
-                          {team.logo}
-                        </div>
-                        <span className="truncate">{team.name}</span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-              )}
-              {onAddTeam && (
-                <>
-                  {teams.length > 0 && <DropdownMenuSeparator />}
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={onAddTeam} className="gap-2 p-2">
-                      <div className="flex size-6 items-center justify-center rounded-md border">
-                        <PlusIcon aria-hidden="true" />
-                      </div>
-                      {t('teamSwitcher.addTeam')}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </>
-              )}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{t('header.workspace')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={workspace.workspaceId}>
+                  <DropdownMenuRadioItem value={workspace.workspaceId} closeOnClick>
+                    <HardDriveIcon aria-hidden="true" />
+                    {t('header.localWorkspace')}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{t('workspace.identity')}</DropdownMenuLabel>
+                <div className="flex max-w-80 flex-col gap-2 px-2 pb-2 text-xs">
+                  <code data-workspace-id={workspace.workspaceId} className="select-text break-all">
+                    {workspace.workspaceId}
+                  </code>
+                  <p className="text-muted-foreground">{t('workspace.scope')}</p>
+                </div>
+                <DropdownMenuItem disabled={isFetching} onClick={onRetry}>
+                  <RefreshCwIcon aria-hidden="true" />
+                  {t('common.refresh')}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
-          )}
-        </DropdownMenu>
+          </DropdownMenu>
+        )}
       </SidebarMenuItem>
     </SidebarMenu>
   )

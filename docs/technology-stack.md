@@ -901,7 +901,7 @@ v0.1.17 的代码已实施，但标签 Windows 工具测试失败而未公开；
 Mac 管理窗口 smoke 使用 Playwright 的 `browserWindow(page)` 获取准确原生窗口句柄，由 Main 测试宿主调用 `BrowserWindow.close()`（正常原生 `close` / `closed` 流程），而不将 CDP 关闭网页 target 当作用户关闭窗口。关闭前订阅原生 `closed`，确认目标已销毁且总窗口数为零，之后才订阅重开、触发第二实例或 activate；共享原 15 秒预算，拒绝未关闭/挂起/额外窗口。句柄仅属于隔离 stock-Electron 测试进程，不添加产品 IPC、Renderer 权限或实际 hardened executable 的调试旁路。
 
 
-## 29. 受管截图预算与持久预留（v0.1.19 开工范围）
+## 29. 受管截图预算与持久预留（v0.1.19 已发布）
 
 预算使用现有 contracts、storage、Main 的 ArtifactService 与 WorkerService，不新增包、数据库驱动、网络服务或第三方依赖。schema v8 以严格单行策略和独立 reservation 表计费；默认 1024 MiB，可调 32～102400 MiB。与 32 MiB 单图上限共同限制新任务准入，不宣称这是操作系统级全盘配额或按当前真实磁盘扫描的统计。
 

@@ -336,7 +336,7 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   const original = legacy.sqlite.prepare("SELECT * FROM operations").all();
   const tables = legacy.sqlite
     .prepare(
-      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace') ORDER BY name",
     )
     .all();
   const exec = legacy.sqlite.exec.bind(legacy.sqlite);
@@ -367,14 +367,14 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   cleanup.push(migrated.close);
   expect(
     migrated.sqlite.prepare("PRAGMA user_version").get()?.user_version,
-  ).toBe(8);
+  ).toBe(9);
   expect(migrated.sqlite.prepare("SELECT * FROM operations").all()).toEqual(
     original,
   );
   expect(
     migrated.sqlite
       .prepare(
-        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace') ORDER BY name",
       )
       .all(),
   ).toEqual(tables);

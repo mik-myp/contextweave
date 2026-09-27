@@ -1,3 +1,4 @@
+import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +17,7 @@ function fixture() {
   const db = openLocalDatabase(join(root, 'data.sqlite'))
   const repository = new EnvironmentRepository(db.sqlite)
   const app = createApplication({
+    workspaceRepository: new WorkspaceRepository(db.sqlite),
     artifactRepository: new ArtifactRepository(db.sqlite),
     repository,
     dataRoot: root,
@@ -56,6 +58,7 @@ describe('application command boundary', () => {
   })
 
   it.each([
+    'workspace:current',
     'kernel:providers',
     'kernel:list',
     'environment:list',
@@ -220,4 +223,26 @@ it('keeps screenshot policy and mutation behind strict Main-side request validat
   expect(
     await app.invoke('storage:artifact-budget-update', { limitMiB: 32, expectedRevision: 1 }),
   ).toMatchObject({ ok: false, code: 'ARTIFACT_BUDGET_CONFLICT' })
+})
+
+it('serves the actual database owner without accepting a selected workspace or returning local resources', async () => {
+  const { app, db, root } = fixture()
+  const current = new WorkspaceRepository(db.sqlite).current()
+  expect(await app.invoke('workspace:current')).toEqual({ ok: true, data: current })
+  expect(await app.invoke('workspace:current', { workspaceId: 'forged' })).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  expect(await app.invoke('workspace:switch', current.workspaceId)).toMatchObject({
+    ok: false,
+    code: 'UNKNOWN_COMMAND',
+  })
+  expect(await app.invoke('workspace:create')).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
+  expect(JSON.stringify(await app.invoke('workspace:current'))).not.toContain(root)
+  db.sqlite.exec('DROP TRIGGER local_workspace_no_delete; DELETE FROM local_workspace')
+  expect(await app.invoke('workspace:current')).toMatchObject({
+    ok: false,
+    code: 'DATABASE_WORKSPACE_INVALID',
+  })
+  expect(db.sqlite.prepare('SELECT * FROM local_workspace').all()).toEqual([])
 })

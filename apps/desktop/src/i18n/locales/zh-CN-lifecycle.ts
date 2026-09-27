@@ -1,4 +1,6 @@
 export const lifecycleMessages = {
+  'error.DATABASE_WORKSPACE_INVALID':
+    '本地工作空间身份无法读取。请保留数据目录并重试；不会自动创建新身份。',
   'history.loading': '正在读取历史…',
   'history.pageCount': '本页 {count} 条（未统计全部历史）',
   'history.latest': '返回首段',

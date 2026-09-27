@@ -1,3 +1,4 @@
+import { assertWorkspaceIdentity } from './smoke-workspace.mjs'
 // Real screenshot registration and restart through the public sandboxed bridge. No path IPC.
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -23,7 +24,7 @@ export async function assertRegisteredScreenshot(call, outcome, bytes, expectedC
   return item
 }
 
-export async function verifyArtifactRestart(entry, directory, expected) {
+export async function verifyArtifactRestart(entry, directory, expected, workspaceIdentity) {
   const { _electron } = require('playwright-core')
   const legacy = join(directory, 'contextweave', 'worker-results', 'run-legacy')
   await mkdir(legacy, { recursive: true })
@@ -33,6 +34,7 @@ export async function verifyArtifactRestart(entry, directory, expected) {
   try {
     const page = await app.firstWindow()
     await page.waitForFunction(() => typeof window.contextweave?.storage?.pageArtifacts === 'function', undefined, { timeout: 10000 })
+    assert.deepEqual(await assertWorkspaceIdentity((...args) => page.evaluate(...args)), workspaceIdentity)
     const budget = await page.evaluate(() => window.contextweave.storage.getArtifactBudget())
     assert(budget.ok && budget.data.limitMiB === 1024 && budget.data.revision === (expected.length ? 3 : 1))
     assert.deepEqual(budget.data.reserved, { count: 0, bytes: 0 })

@@ -1,3 +1,4 @@
+import { localWorkspaceSchema } from '@contextweave/contracts'
 import {
   artifactBudgetSchema,
   artifactBudgetUpdateSchema,
@@ -73,6 +74,14 @@ import {
 } from '@contextweave/worker-protocol'
 
 const api = {
+  workspace: {
+    current: async (...args: []) => {
+      z.tuple([]).parse(args)
+      return ipcResultSchema(localWorkspaceSchema).parse(
+        await ipcRenderer.invoke('workspace:current'),
+      )
+    },
+  },
   app: {
     quit: async () => ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('app:quit')),
     getInfo: async () =>

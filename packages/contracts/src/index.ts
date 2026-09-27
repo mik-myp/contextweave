@@ -448,3 +448,5 @@ export * from './history-cleanup'
 export * from './artifacts'
 
 export * from './artifact-budget'
+
+export * from './workspaces'

@@ -59,6 +59,7 @@ describe('sandboxed preload contract', () => {
       'storage',
       'update',
       'worker',
+      'workspace',
     ])
     for (const group of Object.values(api))
       for (const forbidden of ['invoke', 'send', 'on', 'require', 'exec', 'fs', 'ipcRenderer'])
@@ -236,4 +237,30 @@ it('validates screenshot policies and accounting both ways without accepting arb
     bridge.invoke.mockResolvedValue({ ok: true, data: value })
     await expect(api.storage.getArtifactBudget()).rejects.toThrow()
   }
+})
+
+it('reads only the local workspace identity and rejects payloads or private response fields', async () => {
+  const identity = {
+    workspaceId: 'd326147b-89da-40fa-8cc0-7b9ad0dfacb6',
+    kind: 'personal',
+    storageMode: 'local',
+    createdAt: '2026-09-27T00:00:00.000Z',
+  }
+  bridge.invoke.mockResolvedValue({ ok: true, data: identity })
+  expect(await api.workspace.current()).toEqual({ ok: true, data: identity })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('workspace:current')
+  bridge.invoke.mockClear()
+  await expect(
+    Reflect.apply(api.workspace.current, undefined, [{ workspaceId: 'other' }]),
+  ).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  for (const data of [
+    { ...identity, kind: 'team' },
+    { ...identity, workspaceId: '../outside' },
+    { ...identity, dataRoot: '/private' },
+  ]) {
+    bridge.invoke.mockResolvedValue({ ok: true, data })
+    await expect(api.workspace.current()).rejects.toThrow()
+  }
+  expect(Object.keys(api.workspace)).toEqual(['current'])
 })

@@ -1,3 +1,4 @@
+import { assertWorkspaceIdentity } from './smoke-workspace.mjs'
 import { recordWorkerFailure } from './smoke-worker-diagnostics.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot } from './smoke-artifacts.mjs'
@@ -42,6 +43,7 @@ try {
   // getInfo also probes the real OS credential store, which is NOT isolated by --user-data-dir.
   // The packaged manifest is audited separately; this smoke must not prompt for the user's keychain.
   const call = (...args) => withDeadline(page.evaluate(...args), 35000, 'NATIVE_TYPED_API_TIMEOUT')
+  await assertWorkspaceIdentity(call)
   const environments = await call(() => window.contextweave.environment.list())
   assert(environments.ok && environments.data.length === 0, 'NATIVE_PROFILE_NOT_FRESH')
   const cleanupReceipt = await call(() => window.contextweave.storage.getHistoryCleanupReceipt())

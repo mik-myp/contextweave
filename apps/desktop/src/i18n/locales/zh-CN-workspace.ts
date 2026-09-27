@@ -1,4 +1,13 @@
 export const workspaceMessages = {
+  'workspace.loading': '加载工作空间…',
+  'workspace.readingIdentity': '读取本地数据身份',
+  'workspace.unavailable': '工作空间暂不可用',
+  'workspace.retry': '重试读取工作空间',
+  'workspace.localStorage': '本地 · SQLite',
+  'workspace.details': '工作空间详情',
+  'workspace.identity': '工作空间 ID',
+  'workspace.scope': '现有环境、代理和记录归属此本地个人空间。未启用团队或远程存储。',
+
   'table.columnMenu': '列选项：{column}',
   'table.sortAscending': '升序',
   'table.sortDescending': '降序',

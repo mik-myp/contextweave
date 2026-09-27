@@ -22,7 +22,11 @@ import {
   type TargetPlatform,
   type TargetArchitecture,
 } from '@contextweave/contracts'
-import type { ArtifactRepository, EnvironmentRepository } from '@contextweave/storage'
+import type {
+  ArtifactRepository,
+  EnvironmentRepository,
+  WorkspaceRepository,
+} from '@contextweave/storage'
 import { workerTaskIdSchema } from '@contextweave/worker-protocol'
 import {
   getEnvironmentDetails,
@@ -51,6 +55,7 @@ import { ok, fail, toSummary } from './services/result'
 
 export function createApplication(options: {
   repository: EnvironmentRepository
+  workspaceRepository: WorkspaceRepository
   artifactRepository: ArtifactRepository
   dataRoot: string
   platform: TargetPlatform
@@ -178,6 +183,7 @@ export function createApplication(options: {
       ok(repository.pageActivity(activityHistoryQuerySchema.parse(input))),
     'operation:page': (input) =>
       ok(repository.pageOperations(operationHistoryQuerySchema.parse(input))),
+    'workspace:current': () => ok(options.workspaceRepository.current()),
     'storage:artifact-budget': () => ok(artifacts.budget()),
     'storage:artifact-budget-update': (input) => ok(artifacts.updateBudget(input)),
     'storage:artifacts-page': (input) => ok(artifacts.page(input)),
@@ -239,6 +245,7 @@ export function createApplication(options: {
     'worker:cancel': (input) => workers.cancel(workerTaskIdSchema.parse(input)),
   }
   const noInput = new Set([
+    'workspace:current',
     'kernel:providers',
     'kernel:list',
     'environment:list',

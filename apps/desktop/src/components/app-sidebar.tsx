@@ -12,7 +12,7 @@ import type { ThemeLayout, ThemeSidebar } from '@contextweave/contracts'
 import { NavMain } from '@/components/nav-main'
 import { appRoutes } from '@/shared/config/navigation'
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@/components/ui/sidebar'
-import { TeamSwitcher } from './team-switcher'
+import { WorkspaceSwitcher } from '@/features/workspaces/components/workspace-switcher'
 import { useI18n } from '@/i18n'
 
 export function AppSidebar({
@@ -56,7 +56,7 @@ export function AppSidebar({
       {...props}
     >
       <SidebarHeader className="h-16 justify-center">
-        <TeamSwitcher teams={[]} />
+        <WorkspaceSwitcher />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} groupLabel={t('nav.workspace')} />

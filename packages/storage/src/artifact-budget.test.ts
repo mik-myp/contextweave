@@ -272,7 +272,7 @@ describe('additive v7 to v8 migration', () => {
     reserve(f.repo, record)
     f.repo.registerArtifact(record)
     f.db.sqlite.exec(
-      'BEGIN IMMEDIATE; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; PRAGMA user_version=7; COMMIT',
+      'BEGIN IMMEDIATE; DROP TABLE local_workspace; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; PRAGMA user_version=7; COMMIT',
     )
     return { ...f, record }
   }
@@ -285,7 +285,7 @@ describe('additive v7 to v8 migration', () => {
       registered: { count: 1, bytes: 8 },
       reserved: { count: 0, bytes: 0 },
     })
-    const names = readdirSync(f.root!).filter((name) => name.includes('.before-v8-'))
+    const names = readdirSync(f.root!).filter((name) => name.includes('.before-v9-'))
     expect(names).toHaveLength(1)
     const before = new DatabaseSync(join(f.root!, names[0]!))
     try {

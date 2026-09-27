@@ -1,3 +1,4 @@
+import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,6 +25,7 @@ async function fixture() {
     decryptString: (value: Buffer) => value.toString(),
   }
   const app = createApplication({
+    workspaceRepository: new WorkspaceRepository(db.sqlite),
     artifactRepository: new ArtifactRepository(db.sqlite),
     repository,
     dataRoot: root,

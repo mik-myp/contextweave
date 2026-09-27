@@ -1,3 +1,4 @@
+import { WorkspaceRepository } from '@contextweave/storage'
 import { createUtilityWorkerLauncher } from './services/worker-process'
 import {
   app,
@@ -192,6 +193,7 @@ if (hasInstanceLock)
       })
       application = createApplication({
         repository,
+        workspaceRepository: new WorkspaceRepository(database.sqlite),
         artifactRepository: new ArtifactRepository(artifactDatabase.sqlite),
         dataRoot,
         platform: targetPlatform,

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { migrateIntegritySchema } from './integrity'
+import { migrateLocalWorkspace } from './workspaces'
 
 const initialSchema = `
 CREATE TABLE IF NOT EXISTS environments (
@@ -61,7 +62,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 8
+export const databaseVersion = 9
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -181,6 +182,10 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       CREATE INDEX idx_screenshot_reservations_environment ON screenshot_reservations(environment_id);
       PRAGMA user_version=8;
     `)
+    if (version < 9) {
+      migrateLocalWorkspace(sqlite)
+      sqlite.exec('PRAGMA user_version = 9')
+    }
     sqlite.exec('COMMIT')
     transactionOpen = false
   } catch (error) {

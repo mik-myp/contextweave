@@ -1,4 +1,14 @@
 export const workspaceMessages = {
+  'workspace.loading': 'Loading workspace…',
+  'workspace.readingIdentity': 'Reading local data identity',
+  'workspace.unavailable': 'Workspace unavailable',
+  'workspace.retry': 'Retry workspace loading',
+  'workspace.localStorage': 'Local · SQLite',
+  'workspace.details': 'Workspace details',
+  'workspace.identity': 'Workspace ID',
+  'workspace.scope':
+    'Existing environments, proxies and records belong to this local personal space. Teams and remote storage are not enabled.',
+
   'table.columnMenu': 'Column options: {column}',
   'table.sortAscending': 'Ascending',
   'table.sortDescending': 'Descending',

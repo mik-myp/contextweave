@@ -27,6 +27,7 @@ import {
 } from './history-cleanup'
 import { migrateDatabase, databaseVersion } from './migrations'
 import { verifyDatabaseRelations } from './integrity'
+import { WorkspaceRepository } from './workspaces'
 
 type Row = Record<string, unknown>
 
@@ -49,6 +50,7 @@ export function openLocalDatabase(filePath: string): LocalDatabase {
       throw new Error('DATABASE_FOREIGN_KEYS_UNAVAILABLE')
     sqlite.exec('BEGIN')
     verifyDatabaseRelations(sqlite)
+    new WorkspaceRepository(sqlite).current()
     sqlite.exec('COMMIT')
     return { sqlite, close: () => sqlite.close() }
   } catch (error) {
@@ -738,3 +740,5 @@ export {
 export { readProcessIdentityAsync } from './process-identity-async'
 
 export { ArtifactRepository } from './artifacts'
+
+export { WorkspaceRepository } from './workspaces'

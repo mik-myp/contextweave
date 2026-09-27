@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { environmentConfigSchema, type ArtifactRecord } from '@contextweave/contracts'
 import { EnvironmentRepository, ArtifactRepository, openLocalDatabase } from './index'
-import { migrateDatabase } from './migrations'
+import { databaseVersion, migrateDatabase } from './migrations'
 const cleanup: (() => void)[] = []
 afterEach(() => {
   vi.restoreAllMocks()
@@ -252,7 +252,7 @@ describe('schema v7 migration', () => {
   function v6() {
     const f = fileFixture()
     f.db.sqlite.exec(
-      "DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
+      "DROP TABLE local_workspace; DROP TABLE screenshot_reservations; DROP TABLE screenshot_budget; DROP TABLE screenshot_artifacts; PRAGMA user_version=6; INSERT INTO app_settings VALUES ('artifact-fixture', '{\"retained\":true}', '2026-09-27')",
     )
     return f
   }
@@ -262,11 +262,11 @@ describe('schema v7 migration', () => {
       .prepare("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name")
       .all()
     migrateDatabase(f.db.sqlite, f.file)
-    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(8)
+    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion)
     expect(
       f.db.sqlite
         .prepare(
-          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations') ORDER BY name",
+          "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace') ORDER BY name",
         )
         .all(),
     ).toEqual(before)
@@ -315,12 +315,12 @@ describe('schema v7 migration', () => {
   )
   it('rejects a future schema without downgrading or overwriting it', () => {
     const f = fileFixture()
-    f.db.sqlite.exec('PRAGMA user_version=9')
+    f.db.sqlite.exec(`PRAGMA user_version=${databaseVersion + 1}`)
     f.db.close()
     expect(() => openLocalDatabase(f.file)).toThrow('requires a newer')
     const raw = new DatabaseSync(f.file)
     try {
-      expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(9)
+      expect(raw.prepare('PRAGMA user_version').get()?.user_version).toBe(databaseVersion + 1)
     } finally {
       raw.close()
     }

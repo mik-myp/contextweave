@@ -1,3 +1,4 @@
+import { WorkspaceRepository } from '@contextweave/storage'
 import { ArtifactRepository } from '@contextweave/storage'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -53,6 +54,7 @@ function fixture() {
       database = openLocalDatabase(file)
       repository = new EnvironmentRepository(database.sqlite)
       const app = createApplication({
+        workspaceRepository: new WorkspaceRepository(database.sqlite),
         artifactRepository: new ArtifactRepository(database.sqlite),
         repository,
         dataRoot: root,

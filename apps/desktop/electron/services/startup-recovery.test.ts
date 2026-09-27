@@ -53,3 +53,15 @@ describe('safe startup recovery', () => {
     expect(openDataFolder).not.toHaveBeenCalled()
   })
 })
+
+it('reports invalid workspace ownership without suggesting replacement or exposing the data path', () => {
+  expect(classifyStartupError(new Error('DATABASE_WORKSPACE_INVALID'))).toBe(
+    'DATABASE_WORKSPACE_INVALID',
+  )
+  expect(JSON.stringify(startupFailureMessage('DATABASE_WORKSPACE_INVALID', 'zh-CN'))).toContain(
+    '不会自动生成新身份',
+  )
+  expect(JSON.stringify(startupFailureMessage('DATABASE_WORKSPACE_INVALID', 'en-US'))).toContain(
+    'no replacement identity',
+  )
+})

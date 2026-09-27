@@ -7,10 +7,11 @@ import {
   openSync,
   readSync,
   realpathSync,
-  rmSync,
   write,
+  type BigIntStats,
 } from 'node:fs'
 import { join } from 'node:path'
+import { ownWorkerOutputDirectory } from './worker-output-ownership'
 import {
   maxWorkerScreenshotBytes,
   maxWorkerScreenshotChunkBytes,
@@ -33,16 +34,21 @@ const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 /** The descriptor never leaves Main. No caller ID or filename participates in allocation. */
 export function createWorkerOutput(root: string, writer: WorkerOutputWriter = writeChunk) {
   mkdirSync(root, { recursive: true, mode: 0o700 })
-  const rootInfo = lstatSync(root)
+  const rootInfo = lstatSync(root, { bigint: true })
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink())
     throw new Error('WORKER_OUTPUT_UNAVAILABLE')
   const canonicalRoot = realpathSync(root)
   const directory = mkdtempSync(join(canonicalRoot, 'run-'))
+  const ownership = ownWorkerOutputDirectory(canonicalRoot, rootInfo, directory)
   const screenshotPath = join(directory, 'screenshot.png')
+  let identity: BigIntStats | undefined
   let descriptor: number | undefined
   try {
+    ownership.verifyParents()
     descriptor = openSync(screenshotPath, 'wx', 0o600)
-    const identity = fstatSync(descriptor, { bigint: true })
+    identity = fstatSync(descriptor, { bigint: true })
+    const fileIdentity = identity
+    ownership.verifyParents()
     let pending: Promise<void> | undefined
     let closing = false
     let failed = false
@@ -97,6 +103,7 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
       validate() {
         if (!closing || descriptor !== undefined || pending || failed)
           throw new Error('WORKER_OUTPUT_INVALID')
+        ownership.verifyParents()
         const parent = lstatSync(directory)
         const file = lstatSync(screenshotPath)
         if (
@@ -115,8 +122,8 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
           if (
             !current.isFile() ||
             current.nlink !== 1n ||
-            current.dev !== identity.dev ||
-            current.ino !== identity.ino ||
+            current.dev !== fileIdentity.dev ||
+            current.ino !== fileIdentity.ino ||
             current.size !== BigInt(size) ||
             current.size < BigInt(header.length) ||
             current.size > BigInt(maxWorkerScreenshotBytes) ||
@@ -131,12 +138,12 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
       },
       async discard() {
         await close()
-        rmSync(directory, { recursive: true, force: true })
+        ownership.discard(fileIdentity)
       },
     }
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor)
-    rmSync(directory, { recursive: true, force: true })
+    ownership.discard(identity)
     throw error
   }
 }

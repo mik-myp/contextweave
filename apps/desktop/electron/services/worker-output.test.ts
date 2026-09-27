@@ -3,6 +3,7 @@ import {
   fstatSync,
   linkSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
   readdirSync,
@@ -14,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   maxWorkerScreenshotBytes,
@@ -88,7 +89,9 @@ describe('Main-owned worker output', () => {
     if (replacement === 'hard link') linkSync(outside, output.screenshotPath)
     else writeFileSync(output.screenshotPath, png)
     expect(() => output.validate()).toThrow('WORKER_OUTPUT_INVALID')
-    await output.discard()
+    await expect(output.discard()).rejects.toThrow('WORKER_OUTPUT_CLEANUP_FAILED')
+    expect(existsSync(join(output.directory, 'original.png'))).toBe(true)
+    expect(existsSync(output.screenshotPath)).toBe(true)
     expect(readFileSync(outside, 'utf8')).toBe('unchanged')
   })
   it('retains the descriptor during a pending write and rejects a second write before await', async () => {
@@ -159,4 +162,97 @@ describe('Main-owned worker output', () => {
     expect(readFileSync(output.screenshotPath)).toHaveLength(0)
     await output.discard()
   })
+})
+
+it.each(['symlink', 'directory'] as const)(
+  'preserves unrelated files when the output root is replaced by a %s',
+  async (replacement) => {
+    const base = setup(),
+      root = join(base, 'results'),
+      outside = join(base, 'outside')
+    const output = createWorkerOutput(root)
+    await output.append(png)
+    await output.close()
+    const moved = join(base, 'original-results')
+    renameSync(root, moved)
+    if (replacement === 'symlink') {
+      mkdirSync(outside)
+      symlinkSync(outside, root, process.platform === 'win32' ? 'junction' : 'dir')
+    } else mkdirSync(root)
+    const target = join(root, basename(output.directory))
+    mkdirSync(target)
+    writeFileSync(join(target, 'unrelated.txt'), 'keep unrelated data')
+    writeFileSync(join(target, 'screenshot.png'), png)
+    expect(() => output.validate()).toThrow('WORKER_OUTPUT_INVALID')
+    await expect(output.discard()).rejects.toThrow('WORKER_OUTPUT_CLEANUP_FAILED')
+    expect(readFileSync(join(target, 'unrelated.txt'), 'utf8')).toBe('keep unrelated data')
+    expect(readFileSync(join(target, 'screenshot.png'))).toEqual(Buffer.from(png))
+    expect(readFileSync(join(moved, basename(output.directory), 'screenshot.png'))).toEqual(
+      Buffer.from(png),
+    )
+  },
+)
+it.each(['symlink', 'directory'] as const)(
+  'preserves a replacement %s at the allocated directory path',
+  async (replacement) => {
+    const root = setup(),
+      outside = setup()
+    const output = createWorkerOutput(root)
+    await output.append(png)
+    await output.close()
+    const moved = join(root, 'original-run')
+    renameSync(output.directory, moved)
+    if (replacement === 'symlink')
+      symlinkSync(outside, output.directory, process.platform === 'win32' ? 'junction' : 'dir')
+    else mkdirSync(output.directory)
+    writeFileSync(join(output.directory, 'unrelated.txt'), 'unrelated')
+    writeFileSync(output.screenshotPath, png)
+    expect(() => output.validate()).toThrow('WORKER_OUTPUT_INVALID')
+    await expect(output.discard()).rejects.toThrow('WORKER_OUTPUT_CLEANUP_FAILED')
+    expect(readFileSync(join(output.directory, 'unrelated.txt'), 'utf8')).toBe('unrelated')
+    expect(existsSync(join(moved, 'screenshot.png'))).toBe(true)
+  },
+)
+it.each(['regular file', 'hard link', 'directory'] as const)(
+  'never unlinks a replacement screenshot %s even without extra directory entries',
+  async (replacement) => {
+    const root = setup(),
+      outside = setup(),
+      protectedFile = join(outside, 'protected.png')
+    writeFileSync(protectedFile, png)
+    const output = createWorkerOutput(root)
+    await output.append(png)
+    await output.close()
+    renameSync(output.screenshotPath, join(outside, 'original.png'))
+    if (replacement === 'regular file') writeFileSync(output.screenshotPath, png)
+    else if (replacement === 'hard link') linkSync(protectedFile, output.screenshotPath)
+    else mkdirSync(output.screenshotPath)
+    await expect(output.discard()).rejects.toThrow('WORKER_OUTPUT_CLEANUP_FAILED')
+    expect(existsSync(output.screenshotPath)).toBe(true)
+    expect(readFileSync(protectedFile)).toEqual(Buffer.from(png))
+    expect(readFileSync(join(outside, 'original.png'))).toEqual(Buffer.from(png))
+  },
+)
+it('preserves extra entries and the owned file rather than recursively deleting or partially clearing them', async () => {
+  const output = createWorkerOutput(setup())
+  await output.append(png)
+  await output.close()
+  const extra = join(output.directory, 'not-owned')
+  mkdirSync(extra)
+  writeFileSync(join(extra, 'keep.txt'), 'keep')
+  await expect(output.discard()).rejects.toThrow('WORKER_OUTPUT_CLEANUP_FAILED')
+  expect(readFileSync(output.screenshotPath)).toEqual(Buffer.from(png))
+  expect(readFileSync(join(extra, 'keep.txt'), 'utf8')).toBe('keep')
+  rmSync(extra, { recursive: true })
+  await output.discard()
+  expect(existsSync(output.directory)).toBe(false)
+})
+it('does not delete a directory recreated after an already completed discard', async () => {
+  const output = createWorkerOutput(setup())
+  await output.close()
+  await output.discard()
+  mkdirSync(output.directory)
+  writeFileSync(output.screenshotPath, png)
+  await output.discard()
+  expect(readFileSync(output.screenshotPath)).toEqual(Buffer.from(png))
 })

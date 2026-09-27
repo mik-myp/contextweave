@@ -156,6 +156,14 @@ Renderer / GUI
 
 会话草稿 v2 校验 UUID、字段白名单和条数，旧草稿仅由原默认空间一次认领；表格快照/恢复状态按空间实例隔离。schema v11 的 `environment_groups`、`environment_organization` 和 `environment_views` 由独立 OrganizationRepository 维护，但复用 EnvironmentRepository 的同一 SQLite 与固定所有者约束。组织修订独立于浏览器配置；删除分组在事务中解除归属并增加组织修订，不删除环境。保存视图是严格的版本化表格偏好，不含行选择或数据内容。UI 继续使用现有 Base UI 与 TanStack Table，不另造列表，不新增依赖或远程服务。
 
+### 3.8 v0.2.3 本地后台批次设计
+
+- 在既有 contracts / storage / Main service / Preload / 环境 feature 分层内实现，不新增 package、依赖或远程服务。父任务和逐项事实随 schema v12 落在同一 SQLite 连接，工作空间 NOT NULL/default/CHECK/FK 约束延续；原配置修订、浏览器资料和凭据格式不变。
+- Main 保存限时目标预览（最多 20 个、有效 5 分钟、每批 100 项）；确认使用固定 ID/修订和 owner，预览 ID 是持久父任务的幂等确认键。Renderer 只使用具名的 preview/confirm/page/get/cancel/retryPreview API，不持有队列或权限结论。
+- 批次执行器每空间串行，逐项重新校验后调用现有命令协调器；将排队/运行/终态先落库再发布带原 owner 的数据事件。确认后改变列表筛选不会改变目标。取消不会回滚成功项或强行终止已开始的操作，重试只生成明确失败项的新预览并重新确认。
+- 页面查询和详情按空间 key 隔离。任务状态及结果跨页面/窗口保留；重启时遗留在途结果记为未知、批次记为中断，不自动重放。数据库状态写入失败禁止继续新副作用。退出与现有 runtime/worker drain 配合；本版不代替 v0.2.4 的通用幂等、互斥和恢复策略。
+- 使用真实已发布 v11 DDL fixture 验证升级、原数据保留与部分 DDL 回滚；继续执行 v8/v9/v10 升级路径、公开 IPC、真实 UI 及三平台打包门禁。没有持久定时器或退出后继续运行的服务。
+
 ## 4. 本地 SQLite、文件与凭据
 
 ### 4.1 SQLite 与 repository

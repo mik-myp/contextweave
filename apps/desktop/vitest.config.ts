@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
-  // Real SQLite and credential fsync fixtures share the runner's disk. Bound file-level
-  // contention without relaxing timeouts or changing concurrency within a test.
-  test: { maxWorkers: 2 },
+  // Serialize Windows disk fixtures: two file workers still overlapped slow real
+  // SQLite/fsync tests. Keep original timeouts and concurrency within each test.
+  test: { maxWorkers: process.platform === 'win32' ? 1 : 2 },
 })

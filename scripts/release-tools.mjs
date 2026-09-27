@@ -81,9 +81,75 @@ export function findPackagedArchive(directory) {
 export function releaseTagFromEnvironment(env) {
   return env.GITHUB_REF_TYPE === 'tag' ? env.GITHUB_REF_NAME : undefined
 }
+export async function verifyPackedPayload(archive) {
+  // A parseable header/manifest does not prove the asynchronous writer finished the payload.
+  asar.uncache(archive)
+  const before = lstatSync(archive, { bigint: true })
+  if (!before.isFile()) throw new Error('INVALID_ASAR_FILE')
+  const { headerSize } = asar.getRawHeader(archive)
+  const start = 8 + headerSize
+  const entries = []
+  for (const entry of asar.listPackage(archive)) {
+    const internal = entry.replace(/^[\\/]+/, '')
+    const info = asar.statFile(archive, internal, false)
+    if (typeof info.size !== 'number' || info.unpacked === true) continue
+    if (
+      !Number.isSafeInteger(info.size) ||
+      info.size < 0 ||
+      typeof info.offset !== 'string' ||
+      !/^(0|[1-9][0-9]*)$/.test(info.offset) ||
+      !Number.isSafeInteger(Number(info.offset)) ||
+      info.integrity?.algorithm !== 'SHA256' ||
+      !/^[a-f0-9]{64}$/.test(info.integrity?.hash ?? '')
+    )
+      throw new Error('PACKAGED_PAYLOAD_METADATA_INVALID')
+    entries.push({ offset: Number(info.offset), size: info.size, hash: info.integrity.hash })
+  }
+  entries.sort((a, b) => a.offset - b.offset || a.size - b.size)
+  let bytes = 0
+  for (const entry of entries) {
+    if (entry.offset !== bytes) throw new Error('PACKAGED_PAYLOAD_OFFSETS_INVALID')
+    bytes += entry.size
+    if (!Number.isSafeInteger(start + bytes)) throw new Error('PACKAGED_PAYLOAD_LENGTH_MISMATCH')
+  }
+  if (BigInt(start + bytes) !== before.size) throw new Error('PACKAGED_PAYLOAD_LENGTH_MISMATCH')
+  for (const entry of entries) {
+    const hash = createHash('sha256')
+    let count = 0
+    if (entry.size) {
+      for await (const chunk of createReadStream(archive, {
+        start: start + entry.offset,
+        end: start + entry.offset + entry.size - 1,
+        highWaterMark: 64 * 1024,
+      })) {
+        hash.update(chunk)
+        count += chunk.length
+      }
+    }
+    if (count !== entry.size || hash.digest('hex') !== entry.hash)
+      throw new Error('PACKAGED_PAYLOAD_DIGEST_MISMATCH')
+  }
+  const after = lstatSync(archive, { bigint: true })
+  if (
+    !after.isFile() ||
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeNs !== after.mtimeNs ||
+    before.ctimeNs !== after.ctimeNs
+  )
+    throw new Error('PACKAGED_ARCHIVE_CHANGED')
+  return {
+    packedFiles: entries.length,
+    packedBytes: bytes,
+    algorithm: 'SHA256',
+    scope: 'packed-regular-files-only',
+  }
+}
 export async function auditPackage(archive, target, expectedVersion) {
   const { platform, arch } = getTarget(target)
   if (!lstatSync(archive).isFile()) throw new Error('INVALID_ASAR_FILE')
+  const payloadVerification = await verifyPackedPayload(archive)
   const app = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'))
   if (app.version !== expectedVersion) throw new Error('PACKAGED_VERSION_MISMATCH')
   if (typeof app.name !== 'string') throw new Error('INVALID_PACKAGED_MANIFEST')
@@ -126,6 +192,7 @@ export async function auditPackage(archive, target, expectedVersion) {
     application: { name: app.name, version: app.version, platform, arch },
     sourceCommit: process.env.GITHUB_SHA ?? null,
     asar: { bytes: statSync(archive).size, sha256: await sha256File(archive) },
+    payloadVerification,
     contentBytes: files.reduce((sum, file) => sum + file.bytes, 0),
     fileCount: files.length,
     declaredRuntimeDependencies,

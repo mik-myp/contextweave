@@ -1,5 +1,14 @@
+import { finished } from 'node:stream/promises'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  rmSync,
+  WriteStream,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,6 +39,13 @@ function write(root, path, value) {
   mkdirSync(join(file, '..'), { recursive: true })
   writeFileSync(file, value)
 }
+async function createFixtureArchive(source, archive) {
+  // Qualified ASAR 3.4.1 returns out.end(), not a promise for writable completion.
+  // Waiting for the actual stream avoids reading a header whose payload is still pending.
+  const output = await asar.createPackage(source, archive)
+  assert(output instanceof WriteStream, 'ASAR fixture creator must expose its output stream')
+  await finished(output, { cleanup: true })
+}
 async function bundle(
   root,
   target = 'macos-arm64',
@@ -54,7 +70,7 @@ async function bundle(
   const versionRoot = join(root, 'release', version)
   const archive = join(versionRoot, 'unpacked', 'resources', 'app.asar')
   mkdirSync(join(archive, '..'), { recursive: true })
-  await asar.createPackage(source, archive)
+  await createFixtureArchive(source, archive)
   for (const name of expectedArtifacts(version, target))
     write(versionRoot, name, 'fixture installer; not an executable')
   return { archive, versionRoot }
@@ -100,6 +116,8 @@ for (const target of ['windows-x64', 'macos-x64', 'macos-arm64'])
       readFileSync(join(destination, `contextweave-packaged-${target}.json`), 'utf8'),
     )
     assert.equal(inventory.formatVersion, 2)
+    assert.equal(inventory.payloadVerification.packedFiles, 7)
+    assert.equal(inventory.payloadVerification.algorithm, 'SHA256')
     assert.deepEqual(inventory.electron, electronEvidence)
     assert.equal(inventory.application.arch, getTarget(target).arch)
     assert.equal(inventory.application.version, '0.1.6')
@@ -163,4 +181,111 @@ test('default artifact staging refuses fixture installers without a real hardene
     !readdirSync(root).includes('artifacts'),
     'No attachment should be staged after a binary audit failure',
   )
+})
+
+test('ASAR fixture waits for pending payload writes and actual output close, not merely creator resolution', async (t) => {
+  const root = temp()
+  const source = join(root, 'source'),
+    archive = join(root, 'app.asar')
+  const payload = Buffer.from(
+    JSON.stringify({ name: 'delayed-real-asar-fixture', version: '1.0.0' }),
+  )
+  write(source, 'package.json', payload)
+  const originalWrite = WriteStream.prototype._write
+  const originalCreate = asar.createPackage
+  let releaseWrite, output
+  let creatorResolved
+  const created = new Promise((resolve) => {
+    creatorResolved = resolve
+  })
+  t.mock.method(WriteStream.prototype, '_write', function (data, encoding, callback) {
+    if (String(this.path) === archive && data.equals(payload))
+      releaseWrite = () => originalWrite.call(this, data, encoding, callback)
+    else originalWrite.call(this, data, encoding, callback)
+  })
+  t.mock.method(asar, 'createPackage', async (...args) => {
+    output = await originalCreate(...args)
+    creatorResolved()
+    return output
+  })
+  let ready = false
+  const packed = createFixtureArchive(source, archive).then(() => {
+    ready = true
+  })
+  try {
+    await created
+    // Give the creator's promise chain a complete turn; without the finished wait,
+    // the helper would already report ready while our controlled payload is blocked.
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(typeof releaseWrite, 'function')
+    assert.equal(output.writableFinished, false)
+    assert.equal(output.closed, false)
+    assert.equal(ready, false, 'Fixture must not report readiness with pending output')
+    // Deterministically reproduces the tag failure before permitting the real OS write.
+    const premature = asar.extractFile(archive, 'package.json')
+    assert(premature.every((byte) => byte === 0))
+    assert.throws(() => JSON.parse(premature.toString('utf8')), SyntaxError)
+    releaseWrite()
+    releaseWrite = undefined
+    await packed
+    assert.equal(output.writableFinished, true)
+    assert.equal(output.closed, true)
+    assert.deepEqual(asar.extractFile(archive, 'package.json'), payload)
+  } finally {
+    releaseWrite?.()
+    if (output) await finished(output, { cleanup: true })
+    await packed
+  }
+})
+
+for (const corruption of ['truncated', 'trailing', 'payload', 'algorithm', 'offset'])
+  test(`rejects ${corruption} ASAR contents before staging any attachments`, async () => {
+    const root = temp()
+    const { archive, versionRoot } = await bundle(root)
+    const original = readFileSync(archive)
+    let damaged = Buffer.from(original)
+    if (corruption === 'truncated') damaged = damaged.subarray(0, damaged.length - 1)
+    if (corruption === 'trailing') damaged = Buffer.concat([damaged, Buffer.from([0])])
+    if (corruption === 'payload') {
+      const entry = asar.statFile(archive, 'dist-electron/worker.js')
+      damaged[8 + asar.getRawHeader(archive).headerSize + Number(entry.offset)] ^= 1
+    }
+    if (corruption === 'offset') {
+      const needle = Buffer.from('"offset":"0"')
+      const index = damaged.indexOf(needle)
+      assert(index >= 0)
+      damaged[index + needle.indexOf('0')] = '1'.charCodeAt(0)
+    }
+    if (corruption === 'algorithm') {
+      const index = damaged.indexOf(Buffer.from('SHA256'))
+      assert(index >= 0)
+      damaged[index + 5] = '5'.charCodeAt(0)
+    }
+    writeFileSync(archive, damaged)
+    const destination = join(root, 'attachments')
+    await assert.rejects(
+      stageArtifacts({ versionRoot, destination, target: 'macos-arm64', version: '0.1.6' }),
+      corruption === 'payload'
+        ? /PACKAGED_PAYLOAD_DIGEST_MISMATCH/
+        : corruption === 'algorithm'
+          ? /PACKAGED_PAYLOAD_METADATA_INVALID/
+          : corruption === 'offset'
+            ? /PACKAGED_PAYLOAD_OFFSETS_INVALID/
+            : /PACKAGED_PAYLOAD_LENGTH_MISMATCH/,
+    )
+    assert(!readdirSync(root).includes('attachments'))
+    writeFileSync(archive, original)
+    const audited = await auditPackage(archive, 'macos-arm64', '0.1.6')
+    assert.equal(audited.payloadVerification.packedFiles, 7)
+  })
+
+test('verifies empty packed files without reading adjacent payload bytes or rejecting shared zero-length offsets', async () => {
+  const root = temp()
+  const { archive } = await bundle(root)
+  const source = join(root, 'source')
+  write(source, 'a-empty', '')
+  write(source, 'z-empty', '')
+  await createFixtureArchive(source, archive)
+  const result = await auditPackage(archive, 'macos-arm64', '0.1.6')
+  assert.equal(result.payloadVerification.packedFiles, 9)
 })

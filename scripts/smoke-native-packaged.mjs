@@ -1,3 +1,4 @@
+import { recordWorkerFailure } from './smoke-worker-diagnostics.mjs'
 import { verifyScreenshotBudget } from './smoke-artifact-budget.mjs'
 import { assertRegisteredScreenshot } from './smoke-artifacts.mjs'
 // Tests the actual hardened executable, not stock Electron loading app.asar.
@@ -87,6 +88,7 @@ try {
     const started = await call((id) => window.contextweave.environment.start(id), id)
     assert(started.ok, 'NATIVE_ENVIRONMENT_START_FAILED')
     if (run === 1) await verifyScreenshotBudget(call, directory, id, url)
+    const screenshotStarted = performance.now()
     const screenshot = await call(
       ({ environmentId, url, run }) =>
         window.contextweave.worker.runSmoke({
@@ -97,6 +99,12 @@ try {
           input: { url, timeoutMs: 10000 },
         }),
       { environmentId: id, url, run },
+    )
+    await recordWorkerFailure(screenshot, run, performance.now() - screenshotStarted, () =>
+      withDeadline(page.evaluate(async (id) => ({
+        budget: await window.contextweave.storage.getArtifactBudget(),
+        environment: await window.contextweave.environment.get(id),
+      }), id), 2000, 'NATIVE_WORKER_EVIDENCE_TIMEOUT'),
     )
     assert(screenshot.ok && screenshot.data.ok, 'NATIVE_UTILITY_SCREENSHOT_FAILED')
     assert.equal(screenshot.data.title, 'Native packaged worker')

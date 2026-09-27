@@ -909,3 +909,8 @@ Mac 管理窗口 smoke 使用 Playwright 的 `browserWindow(page)` 获取准确�
 以上预算已落入既有 contracts / storage / ArtifactService / WorkerService 和设置 feature；未新增第三方依赖、公开任意路径/预留释放 IPC 或内核参数。`screenshot_budget` / `screenshot_reservations` 为 schema v8 的增量 STRICT 表，旧 v7 登记不改写。单连接 `BEGIN IMMEDIATE` 覆盖额度检查、预留插入，完成记录与预留删除共享同一提交；只在 Main 原有严格文件清理成功后解除失败任务预留。策略 CAS revision 与 Renderer 草稿基线分离，故障保守保留额度，重启不自动认领或删除。
 
 本机已通过 107 个 Vitest 文件 / 995 项测试与 49 项工具测试，以及真实标准/指纹浏览器、预算拒绝和恢复准入、隔离 ASAR、原生打包程序与 Fuses 门禁；远端结果以版本台账为准。升级后旧版本应拒绝 schema v8；回退依赖升级前完整快照而不是手工降 `user_version`。恢复未知预留和显式删除文件仍须独立的持久意图/归属复验协议，不得通过直接删账抵消占用。
+
+
+### 29.2 v0.1.19 native 截图失败诊断范围
+
+远端 Intel 原生包首次截图失败仅留下通用断言（版本台账 17.23），因此在已有独立 smoke 宿主中增加**仅失败时**的有界只读证据：固定白名单错误码、布尔结果、单次运行序号/耗时，以及既有 typed API 的环境状态和预算计数。不得输出 URL、路径、任务正文、截图、标题、token、原始错误/进程输出；证据读取超时或失败也不能覆盖最初断言。不向真实 hardened executable 注入 Main 代码、改 Fuses、扩大权限或新增诊断 IPC。诊断是定位手段，不等于已经解释或修复原故障。

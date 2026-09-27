@@ -181,11 +181,11 @@ Renderer / GUI
 - storage导出只读版本/迁移计划，供后续备份和接口适配消费；应用SemVer、数据库user_version、环境配置configVersion、Worker协议及传输版本独立。现有Main/Preload/Renderer随同一应用打包，类型化IPC不是公开跨版本网络协议；备份格式尚未实现，不能拿数据库版本充当归档版本。
 - T01～T04只在隔离临时资源中研究，不进入产品运行依赖、不持有用户生产连接串。不用模拟S3代替对象权限验收，不将租约超时等价为旧浏览器死亡；未通过结论继续阻塞团队线。测试脚本若新增，放现有scripts领域范围，不新建远程服务或package。
 
-#### 当前版本边界表（v0.2.5）
+#### 当前版本边界表（v0.2.5 / v0.2.6限定修订）
 
 | 边界 | 当前权威与值 | 不应混同的含义 |
 | --- | --- | --- |
-| 应用版本 | workspace各package.json：0.2.5 | 不因此改数据库或归档格式 |
+| 应用版本 | workspace各package.json：0.2.6 | 不因此改数据库或归档格式 |
 | SQLite | migration目录1～13、执行器、`PRAGMA user_version=13` | `describeDatabaseMigration`/`readDatabaseMigrationPlan`仅描述兼容性，不证明结构、数据或备份已经完整可恢复 |
 | 环境配置 | contracts：`configVersion=1` | `revision`是每次编辑递增的配置修订，不是格式版本 |
 | Worker业务/流传输 | contracts `protocolVersion=1` / worker-protocol `workerTransportVersion=1` | 两种协议独立校验；不是数据库版本 |
@@ -195,6 +195,8 @@ Renderer / GUI
 
 - 历史DDL由具名目录引用，不能通过修改共享枚举悄悄改变旧schema；真实已发布v13的独立结构夹具锁定当前DDL，新结构需要新迁移和新的兼容性说明。
 - v0.2.5回归已复现旧执行器会先COMMIT、后因旧分组规范键无效而拒绝启动，此时库却已升级至13。修复把同一组领域校验放入COMMIT之前；拒绝保留原schema12、原异常行与前置快照，不猜测修复值。负数user_version也不再按新库初始化。
+
+- v0.2.6仅修订目录/版本绑定单测的I/O职责划分并交付原v0.2.5范围：保留业务断言与5秒预算，真实内存SQLite覆盖绑定写入，真实磁盘一致性快照关闭重开补强持久化断言；生产路径、原WAL/迁移与原生磁盘门禁不改。v0.2.5标签失败不被隐瞒、移动或无依据重跑。
 
 ## 4. 本地 SQLite、文件与凭据
 

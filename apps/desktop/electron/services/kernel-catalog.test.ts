@@ -46,7 +46,10 @@ describe('versioned official kernel catalog', () => {
   })
   it('lists installed versions only and binds each environment to its chosen version and persistent seed', () => {
     const root = mkdtempSync(join(tmpdir(), 'cw-kernel-catalog-'))
-    const db = openLocalDatabase(join(root, 'data.sqlite'))
+    // Catalog binding does not exercise WAL/fsync per write; disk durability has
+    // dedicated storage/native gates. Keep real SQLite semantics here, then
+    // independently reopen a consistent on-disk snapshot below (no mocks).
+    const db = openLocalDatabase(':memory:')
     try {
       const repository = new EnvironmentRepository(db.sqlite)
       const raw = [release('148.0.7778.215'), release('144.0.7559.132')]
@@ -101,8 +104,32 @@ describe('versioned official kernel catalog', () => {
       expect(
         kernels.executableFor({ kernelId: a.kernelId, kernelVersion: 'unsupported-other-version' }),
       ).toBeUndefined()
-    } finally {
+      const savedInstallations = repository.listKernelInstallations()
+      const savedKernels = kernels.list().filter((kernel) => kernel.id.startsWith('fingerprint'))
+      expect(savedKernels.map((kernel) => kernel.referenceCount)).toEqual([1, 1])
+      const snapshot = join(root, 'pinned-versions.sqlite')
+      db.sqlite.prepare('VACUUM INTO ?').run(snapshot)
       db.close()
+      const reopened = openLocalDatabase(snapshot)
+      try {
+        const restored = new EnvironmentRepository(reopened.sqlite)
+        expect(restored.workspaceId).toBe(repository.workspaceId)
+        for (const record of [a, b]) {
+          expect(restored.get(record.environmentId)).toEqual(record)
+          expect(JSON.parse(restored.get(record.environmentId)!.configJson).kernelConfig).toEqual(
+            JSON.parse(record.configJson).kernelConfig,
+          )
+        }
+        expect(restored.listKernelInstallations()).toEqual(savedInstallations)
+        const restoredKernels = createKernelService(restored, 'win32', 'x64')
+        expect(
+          restoredKernels.list().filter((kernel) => kernel.id.startsWith('fingerprint')),
+        ).toEqual(savedKernels)
+      } finally {
+        reopened.close()
+      }
+    } finally {
+      if (db.sqlite.isOpen) db.close()
       rmSync(root, { recursive: true, force: true })
     }
   })

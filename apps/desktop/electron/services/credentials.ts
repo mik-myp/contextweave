@@ -23,6 +23,7 @@ export function createCredentialStore(filePath: string, secure: SecureStorage) {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
       // Corruption must never be mistaken for an empty store and overwritten.
+      // eslint-disable-next-line preserve-caught-error -- Never retain JSON/filesystem errors that can contain credential-file contents.
       throw new Error('CREDENTIAL_STORE_UNREADABLE')
     }
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type BaseSyntheticEvent } from 'react'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
 import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -49,15 +49,17 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     if (draft) form.reset(draft.values, { keepDefaultValues: true })
   }, [draft, form])
   useEffect(() => {
-    const subscription = form.watch((_values, event) => {
-      if (event.type !== 'change') return
-      drafts.set(key, {
-        values: form.getValues(),
-        defaults,
-        revision: draft?.revision ?? detail?.revision,
-      })
+    return form.subscribe({
+      formState: { values: true },
+      callback: (event) => {
+        if (event.type !== 'change') return
+        drafts.set(key, {
+          values: form.getValues(),
+          defaults,
+          revision: draft?.revision ?? detail?.revision,
+        })
+      },
     })
-    return () => subscription.unsubscribe()
   }, [form, drafts, key, defaults, draft?.revision, detail?.revision])
   const blocker = useBlocker({
     shouldBlockFn: () => !allowLeave.current && (form.formState.isDirty || busy.current),
@@ -83,45 +85,46 @@ export function useEnvironmentEditor(detail?: EnvironmentDetails) {
     drafts.delete(key)
     setResumeId(undefined)
   }
-  const submit = form.handleSubmit(async (values) => {
-    if (busy.current || readOnly || stopping || loading || configurationError) return
-    if (
-      !detail &&
-      !kernels.some((kernel) => kernel.id === values.kernelId && kernel.status === 'available')
-    ) {
-      form.setError('kernelId', { message: t('env.kernelRequired') }, { shouldFocus: true })
-      return
-    }
-    if (
-      values.connection === 'proxy' &&
-      !proxies.some((proxy) => proxy.proxyId === values.proxyId)
-    ) {
-      form.setError('proxyId', { message: t('env.proxyRequired') }, { shouldFocus: true })
-      return
-    }
-    busy.current = true
-    setError(undefined)
-    try {
-      const saved = await environmentService.save(
-        values,
-        detail?.id,
-        draft?.revision ?? detail?.revision,
-      )
-      upsertEnvironment(saved)
-      clearDraft()
-      setSavedId(saved.id)
-      form.reset(values)
-      allowLeave.current = true
-      await refresh()
-      setNotice({ kind: 'success', message: t(detail ? 'env.saved' : 'env.created') })
-      await navigate({ to: '/environments' })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('env.operationError'))
-    } finally {
-      busy.current = false
-      allowLeave.current = false
-    }
-  }, focusErrors)
+  const submit = (event?: BaseSyntheticEvent) =>
+    form.handleSubmit(async (values) => {
+      if (busy.current || readOnly || stopping || loading || configurationError) return
+      if (
+        !detail &&
+        !kernels.some((kernel) => kernel.id === values.kernelId && kernel.status === 'available')
+      ) {
+        form.setError('kernelId', { message: t('env.kernelRequired') }, { shouldFocus: true })
+        return
+      }
+      if (
+        values.connection === 'proxy' &&
+        !proxies.some((proxy) => proxy.proxyId === values.proxyId)
+      ) {
+        form.setError('proxyId', { message: t('env.proxyRequired') }, { shouldFocus: true })
+        return
+      }
+      busy.current = true
+      setError(undefined)
+      try {
+        const saved = await environmentService.save(
+          values,
+          detail?.id,
+          draft?.revision ?? detail?.revision,
+        )
+        upsertEnvironment(saved)
+        clearDraft()
+        setSavedId(saved.id)
+        form.reset(values)
+        allowLeave.current = true
+        await refresh()
+        setNotice({ kind: 'success', message: t(detail ? 'env.saved' : 'env.created') })
+        await navigate({ to: '/environments' })
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : t('env.operationError'))
+      } finally {
+        busy.current = false
+        allowLeave.current = false
+      }
+    }, focusErrors)(event)
   const stop = async () => {
     if (!detail || busy.current) return
     busy.current = true

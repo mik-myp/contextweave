@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { useEffect, useRef, useState, type BaseSyntheticEvent } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { proxyTypeSchema, type ProxyTestResult as TestResult } from '@contextweave/contracts'
 import type { ProxySummary } from '@/shared/types/app'
@@ -54,34 +54,39 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
       clearPassword: false,
     },
   })
+  const clearPassword = useWatch({ control: form.control, name: 'clearPassword' })
   useEffect(() => {
-    const subscription = form.watch(() => {
-      testRevision.current += 1
-      setTestResult(undefined)
+    const unsubscribe = form.subscribe({
+      formState: { values: true },
+      callback: () => {
+        testRevision.current += 1
+        setTestResult(undefined)
+      },
     })
     return () => {
-      subscription.unsubscribe()
+      unsubscribe()
       testRevision.current += 1
     }
   }, [form])
-  const test = form.handleSubmit(async (values) => {
-    if (testing) return
-    const revision = testRevision.current
-    setTesting(true)
-    setError(undefined)
-    setTestResult(undefined)
-    try {
-      const result = await unwrapIpc(
-        window.contextweave.proxy.test(toSaveProxyInput(values, proxy?.proxyId)),
-      )
-      if (revision === testRevision.current) setTestResult(result)
-    } catch (cause) {
-      if (revision === testRevision.current)
-        setError(cause instanceof Error ? cause.message : t('admin.operationError'))
-    } finally {
-      setTesting(false)
-    }
-  })
+  const test = (event?: BaseSyntheticEvent) =>
+    form.handleSubmit(async (values) => {
+      if (testing) return
+      const revision = testRevision.current
+      setTesting(true)
+      setError(undefined)
+      setTestResult(undefined)
+      try {
+        const result = await unwrapIpc(
+          window.contextweave.proxy.test(toSaveProxyInput(values, proxy?.proxyId)),
+        )
+        if (revision === testRevision.current) setTestResult(result)
+      } catch (cause) {
+        if (revision === testRevision.current)
+          setError(cause instanceof Error ? cause.message : t('admin.operationError'))
+      } finally {
+        setTesting(false)
+      }
+    })(event)
   const { errors, isDirty, isSubmitting } = form.formState
   const requestClose = () => {
     if (!isSubmitting) {
@@ -213,9 +218,7 @@ export function ProxyDialog({ proxy, onClose }: { proxy?: ProxySummary; onClose:
                   autoComplete="new-password"
                   placeholder={proxy?.hasPassword ? t('proxy.passwordKeep') : undefined}
                   disabled={
-                    isSubmitting ||
-                    form.watch('clearPassword') ||
-                    appInfo?.secureStorageAvailable === false
+                    isSubmitting || clearPassword || appInfo?.secureStorageAvailable === false
                   }
                   {...form.register('password')}
                 />

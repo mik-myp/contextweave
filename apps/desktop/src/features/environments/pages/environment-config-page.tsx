@@ -9,32 +9,47 @@ import { environmentService } from '../environment-service'
 import { EnvironmentEditor } from '../components/environment-editor'
 
 export function EnvironmentConfigPage({ environmentId }: { environmentId?: string }) {
+  return <EnvironmentConfigContent key={environmentId ?? 'new'} environmentId={environmentId} />
+}
+
+function EnvironmentConfigContent({ environmentId }: { environmentId?: string }) {
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const scroller = ref.current?.closest<HTMLElement>('[data-scroll-restoration]')
     if (scroller) scroller.scrollTop = 0
   }, [environmentId])
-  const [detail, setDetail] = useState<EnvironmentDetails>()
-  const [error, setError] = useState<{ message?: string }>()
+  const [loaded, setLoaded] = useState<{
+    environmentId: string
+    attempt: number
+    detail?: EnvironmentDetails
+    error?: { message?: string }
+  }>()
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let cancelled = false
-    setDetail(undefined)
-    setError(undefined)
     if (environmentId)
       void environmentService.get(environmentId).then(
         (value) => {
-          if (!cancelled) setDetail(value)
+          if (!cancelled) setLoaded({ environmentId, attempt, detail: value })
         },
         (cause: unknown) => {
-          if (!cancelled) setError({ message: cause instanceof Error ? cause.message : undefined })
+          if (!cancelled)
+            setLoaded({
+              environmentId,
+              attempt,
+              error: { message: cause instanceof Error ? cause.message : undefined },
+            })
         },
       )
     return () => {
       cancelled = true
     }
   }, [environmentId, attempt])
+  const current =
+    loaded?.environmentId === environmentId && loaded?.attempt === attempt ? loaded : undefined
+  const detail = current?.detail
+  const error = current?.error
   let content
   if (error)
     content = (

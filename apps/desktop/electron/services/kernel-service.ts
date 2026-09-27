@@ -202,6 +202,7 @@ export function createKernelService(
         assertEnvironmentEditable(repository, record)
       } catch (error) {
         if (error instanceof Error && error.message === 'ENVIRONMENT_BUSY')
+          // eslint-disable-next-line preserve-caught-error -- This public operation remaps a fixed busy code without retaining process/path context.
           throw new Error('KERNEL_IN_USE')
         throw error
       }
@@ -485,6 +486,7 @@ export function createKernelService(
           errorCode: code,
         })
         changed()
+        // eslint-disable-next-line preserve-caught-error -- Download and extraction exceptions may contain credentials/URLs/paths; keep only the validated code.
         throw new Error(code)
       } finally {
         jobs.delete(id)

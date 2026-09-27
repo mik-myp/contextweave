@@ -797,4 +797,39 @@ schema v6 为增量 CREATE INDEX 迁移，继承既有 VACUUM INTO 快照、写�
 
 ## 26. 工具链与 Actions 支持范围收敛（v0.1.15 范围冻结）
 
-核验受维护的 ESLint / typescript-eslint 与 TypeScript 5.9、当前 Node 22 基线的官方兼容范围，记录具体选择后再更新依赖和配置。迁移配置不降低检查范围或发布门槛，不顺带升级已准入的 Electron/浏览器内核。Actions 的版本与 commit SHA 通过官方仓库核验，消除已发现的弃用运行时依赖，但不宣称一次升级等于长期维护或无漏洞保证。具体工作及尚未实施状态见版本台账 17.19。
+核验受维护的 ESLint / typescript-eslint 与 TypeScript 5.9、当前 Node 22 基线的官方兼容范围，记录具体选择后再更新依赖和配置。迁移配置不降低检查范围或发布门槛，不顺带升级已准入的 Electron/浏览器内核。Actions 的版本与 commit SHA 通过官方仓库核验，消除已发现的弃用运行时依赖，但不宣称一次升级等于长期维护或无漏洞保证。具体工作与分层验收状态见版本台账 17.19。
+
+### 26.1 已核验的候选组合（2026-09-27，实施前记录）
+
+通过 npm 版本元数据与上游文档核验后选用以下固定开发版本，不追随不相关包的最新版本：
+
+| 包                                                               | 候选版本  | 用途与兼容依据                                                                                      |
+| ---------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| `eslint`                                                         | `10.11.0` | 受维护的 flat config 引擎；Node 要求 `^20.19.0 \|\| ^22.13.0 \|\| >=24`，涵盖当前 CI Node 22.15.0   |
+| `@eslint/js`                                                     | `10.0.1`  | 显式引入 ESLint 基础 recommended 规则，peer 为 ESLint 10                                            |
+| `@typescript-eslint/parser` / `@typescript-eslint/eslint-plugin` | `8.70.1`  | peer 接受 ESLint 8.57/9/10 与 TypeScript `>=4.8.4 <6.1.0`，涵盖既有 TS 5.9.3；替换不支持该 TS 的 v7 |
+| `eslint-plugin-react-hooks`                                      | `7.1.1`   | 原 5.2.0 peer 不包含 ESLint 10；升级后保留 Hooks 规则并审查新 recommended 诊断                      |
+| `eslint-plugin-react-refresh`                                    | `0.5.7`   | peer 明确接受 ESLint 9/10；保留现有导出规则与 shadcn UI 局部例外                                    |
+| `globals`                                                        | `17.12.0` | flat config 显式声明浏览器/Node 全局变量，替代旧 env 配置                                           |
+
+这些包均为 MIT 开发依赖；新增直接项为 `@eslint/js` 和 `globals`，不引入原生模块、不随应用生产 ASAR 分发。网络行为限已知的 npm 安装解析，lint 配置不新增外部请求或遥测；这不是对全部依赖源码做过安全审计的承诺。替换成本主要是配置和规则迁移，没有数据库/内核迁移；以锁文件和升级后依赖审计、包体库存验证实际影响。
+
+参考：[ESLint 官方 flat config 迁移](https://eslint.org/docs/latest/use/configure/migration-guide)、[typescript-eslint 共享配置](https://typescript-eslint.io/users/configs/)、各固定版本 npm peer/engine 元数据。配置迁移维持整个 desktop TS/TSX（包括测试与构建入口）的原检查范围，不引入 FlatCompat 或第二套 lint 引擎。
+
+### 26.2 Actions 的精确选择
+
+官方 release、tag 对应 commit 和 `action.yml` 均已核验：
+
+- `pnpm/action-setup v6.1.0` → `ea17c68df8912ef543352723c149a84f56e3d413`，`runs.using: node24`。保留 pnpm 10.26.2、独立 setup-node 及 frozen-lockfile 安装；不迁移 pnpm/setup 或改变 Intel Mac 的包管理方式，不增加重复缓存。
+- `actions/upload-artifact v7.0.1` → `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`，`node24`。显式保持 archive 模式与原有命名/文件矩阵，不启用新 direct-upload 行为。
+- `actions/download-artifact v8.0.1` → `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`，`node24`。保留同一次 workflow 下载与目录布局，摘要不匹配必须失败；不设置 ignore/warn 绕过。
+
+只替换产生运行时弃用问题的这些 Actions；checkout/setup-node 已使用 Node 24，本包不无依据升级全部 Actions。它们在 GitHub runner 执行并访问 npm/GitHub 安装或工件服务，不进入桌面产品；权限、秘密范围、源码 SPDX 和附件复核后的公开发布流程保持不变。GitHub-hosted 三平台实际 gate 是兼容验收，不宣称验证了未使用的 GHES/自托管 runner。
+
+### 26.3 配置与行为迁移
+
+- flat config 显式组合 JS / TypeScript / Hooks recommended；保留 `--max-warnings 0`、未使用禁用注释检查、全 desktop TS/TSX（含测试与构建入口）和原 shadcn UI 导出例外。路由组合迁至 app/feature 组件，不新增 Route 全局豁免，也不启用 React Compiler 或更换 React 运行版本。
+- 表单订阅改为 React Hook Form 已安装版本的 `subscribe` / `useWatch`；创建提交回调延后至实际事件，避免渲染时传递 ref 读取。媒体查询与轮播使用外部 store 快照；主题只在已提交颜色变化时重置未完成输入。环境配置的加载状态隔离于每次路由生命周期与重试，旧响应不能填入新编辑器；IP 预览在提交新连接后取消旧请求。
+- 新的 `preserve-caught-error` 默认启用；七处已有凭据/更新校验/IP 查询/内核安装的脱敏边界保留带说明的逐行例外。不得为消除告警把原始网络、命令、路径或凭据异常挂到 `cause` 再传出；其他代码不能因此默认丢弃异常原因。
+- 配置契约测试调用真实 ESLint API 检查范围、生成物排除、Hooks/ref/状态诊断、显式 any、Fast Refresh 与错误规则。UI 回归验证真实表单订阅与解绑、重复提交、密码清除、迟到响应、主题草稿和事件监听清理，不以只检查源码字符串替代行为证据。
+- 锁文件比较确认所有 workspace 的生产 importer 及其 **18 个运行包的完整 snapshot 闭包**不变；仅开发工具依赖树增删。2026-09-27 的升级后 `pnpm audit --json` 返回 937 个依赖、各级已知告警 0；这不是源码审计或无漏洞保证。实际 ASAR 清单仍须与发布产物核对，不能由锁文件比较替代。

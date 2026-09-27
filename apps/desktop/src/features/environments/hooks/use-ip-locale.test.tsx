@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, StrictMode } from 'react'
+import { act, StrictMode, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpLocaleResult } from '@contextweave/contracts'
@@ -16,8 +16,11 @@ function Fixture({
   connection?: 'direct' | 'proxy'
   proxyId?: string
 }) {
-  hook = useIpLocale(connection, proxyId)
-  return <output>{hook.busy ? 'loading' : (hook.error ?? hook.result?.ip ?? 'empty')}</output>
+  const value = useIpLocale(connection, proxyId)
+  useLayoutEffect(() => {
+    hook = value
+  })
+  return <output>{value.busy ? 'loading' : (value.error ?? value.result?.ip ?? 'empty')}</output>
 }
 const result: IpLocaleResult = {
   ip: '203.0.113.42',
@@ -109,5 +112,24 @@ describe('IP region preview UI state', () => {
     await act(async () => root.render(null))
     expect(environmentService.cancelLocale).toHaveBeenCalledOnce()
     await act(async () => finish(result))
+  })
+  it('clears completed previews and errors when leaving and returning to the same connection', async () => {
+    vi.mocked(environmentService.detectLocale).mockResolvedValueOnce(result)
+    await act(async () => root.render(<Fixture />))
+    await act(async () => {
+      await hook.detect()
+    })
+    expect(container.textContent).toBe(result.ip)
+    await act(async () => root.render(<Fixture connection="proxy" proxyId="p1" />))
+    await act(async () => root.render(<Fixture />))
+    expect(container.textContent).toBe('empty')
+    vi.mocked(environmentService.detectLocale).mockRejectedValueOnce(new Error('failed direct'))
+    await act(async () => {
+      await hook.detect()
+    })
+    expect(container.textContent).toBe('failed direct')
+    await act(async () => root.render(<Fixture connection="proxy" proxyId="p1" />))
+    await act(async () => root.render(<Fixture />))
+    expect(container.textContent).toBe('empty')
   })
 })

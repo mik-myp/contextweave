@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.26.2
 
@@ -75,8 +75,9 @@ jobs:
         run: node scripts/release-tools.mjs stage ${{ matrix.name }}
 
       - name: Upload build result
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          archive: true
           name: release-${{ matrix.name }}
           path: release-artifacts/${{ matrix.name }}/**
           if-no-files-found: error
@@ -102,8 +103,9 @@ jobs:
           upload-release-assets: false
 
       - name: Upload source inventory
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          archive: true
           name: release-source-sbom
           path: contextweave.source.spdx.json
           if-no-files-found: error
@@ -117,8 +119,9 @@ jobs:
       contents: write
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          digest-mismatch: error
           pattern: release-*
           path: artifacts
           merge-multiple: false

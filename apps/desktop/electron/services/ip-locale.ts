@@ -127,9 +127,16 @@ export function createIpLocaleService(request = requestIpLocale) {
           signal.throwIfAborted()
           return ipLocaleResultSchema.parse(result)
         } catch (error) {
-          if (parentSignal?.aborted || closing.signal.aborted) throw new Error('CANCELLED')
-          if (timeout.aborted) throw new Error('IP_LOCALE_TIMEOUT')
+          if (parentSignal?.aborted || closing.signal.aborted) {
+            // eslint-disable-next-line preserve-caught-error -- The provider exception may include proxy credentials or request metadata.
+            throw new Error('CANCELLED')
+          }
+          if (timeout.aborted) {
+            // eslint-disable-next-line preserve-caught-error -- Do not attach provider/request details to a public timeout.
+            throw new Error('IP_LOCALE_TIMEOUT')
+          }
           const code = error instanceof Error ? error.message : ''
+          // eslint-disable-next-line preserve-caught-error -- Untrusted provider messages/URLs must not survive as an Error cause.
           throw new Error(
             ['IP_LOCALE_RATE_LIMITED', 'IP_LOCALE_INVALID_RESPONSE'].includes(code)
               ? code

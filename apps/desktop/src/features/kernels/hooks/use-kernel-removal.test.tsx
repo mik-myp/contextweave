@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { act, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { kernelSummarySchema, type IpcResult } from '@contextweave/contracts'
@@ -13,10 +13,13 @@ vi.mock('@/app/use-app-data', () => ({ useAppData: () => ({ refresh, setNotice }
 vi.mock('@/i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 let state: ReturnType<typeof useKernelRemoval>
 function Fixture() {
-  state = useKernelRemoval()
+  const value = useKernelRemoval()
+  useLayoutEffect(() => {
+    state = value
+  })
   return (
     <output>
-      {state.pending ? 'pending' : (state.error ?? state.selected?.label ?? 'closed')}
+      {value.pending ? 'pending' : (value.error ?? value.selected?.label ?? 'closed')}
     </output>
   )
 }

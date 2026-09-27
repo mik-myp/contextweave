@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { IpLocaleResult } from '@contextweave/contracts'
 import { environmentService } from '../environment-service'
 
 export function useIpLocale(connection: 'direct' | 'proxy', proxyId: string) {
   const route = connection === 'proxy' ? `proxy:${proxyId}` : 'direct'
   const currentRoute = useRef(route)
-  currentRoute.current = route
   const active = useRef<string | undefined>(undefined)
   const mounted = useRef(true)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ route: string; value: IpLocaleResult }>()
   const [error, setError] = useState<{ route: string; message: string }>()
+  const [displayRoute, setDisplayRoute] = useState(route)
+  if (displayRoute !== route) {
+    setDisplayRoute(route)
+    setResult(undefined)
+    setError(undefined)
+  }
   const cancel = () => {
     const id = active.current
     if (!id) return
@@ -24,10 +29,9 @@ export function useIpLocale(connection: 'direct' | 'proxy', proxyId: string) {
       cancel()
     }
   }, [])
-  useEffect(() => {
+  useLayoutEffect(() => {
+    currentRoute.current = route
     cancel()
-    setResult(undefined)
-    setError(undefined)
   }, [route])
   const detect = async () => {
     if (busy || active.current || (connection === 'proxy' && !proxyId)) return

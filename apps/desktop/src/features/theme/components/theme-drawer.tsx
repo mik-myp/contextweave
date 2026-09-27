@@ -61,7 +61,11 @@ export function ThemeDrawer() {
   const { theme, setTheme, resetTheme, saveStatus, retrySave } = useTheme()
   const { t } = useI18n()
   const [draftColor, setDraftColor] = React.useState(theme.color)
-  React.useEffect(() => setDraftColor(theme.color), [theme.color])
+  const [previousColor, setPreviousColor] = React.useState(theme.color)
+  if (previousColor !== theme.color) {
+    setPreviousColor(theme.color)
+    setDraftColor(theme.color)
+  }
 
   const setColor = (value: string) => {
     if (/^#[\da-f]{6}$/i.test(value)) setTheme({ color: value.toUpperCase() })

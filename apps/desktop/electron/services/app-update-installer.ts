@@ -120,6 +120,7 @@ async function signingTeam(bundle: string, signal: AbortSignal, execute: Execute
       error.stderr.includes('code object is not signed at all')
     )
       return undefined
+    // eslint-disable-next-line preserve-caught-error -- OS signature failures may contain private paths/command output; expose only this fixed code.
     throw new Error('UPDATE_SIGNATURE_INVALID')
   }
 }

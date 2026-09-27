@@ -61,7 +61,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_kernel_installations_identity
   ON kernel_installations(kernel_id, version, platform, arch);
 `
 
-export const databaseVersion = 6
+export const databaseVersion = 7
 export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
   let version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version ?? 0)
   if (version > databaseVersion)
@@ -143,6 +143,21 @@ export function migrateDatabase(sqlite: DatabaseSync, filePath: string): void {
       CREATE INDEX idx_sessions_executable ON runtime_sessions(environment_id, started_at DESC, session_id DESC)
         WHERE executable_version IS NOT NULL AND executable_version != '';
       PRAGMA user_version = 6;
+    `)
+    if (version < 7) sqlite.exec(`
+      CREATE TABLE screenshot_artifacts (
+        artifact_id TEXT PRIMARY KEY NOT NULL CHECK(length(artifact_id) = 36),
+        environment_id TEXT NOT NULL REFERENCES environments(environment_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+        task_id TEXT NOT NULL CHECK(length(task_id) BETWEEN 1 AND 128 AND substr(task_id, 1, 1) GLOB '[a-zA-Z0-9]' AND task_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
+        allocation_name TEXT NOT NULL UNIQUE CHECK(length(allocation_name) = 10 AND substr(allocation_name, 1, 4) = 'run-' AND substr(allocation_name, 5) NOT GLOB '*[^a-zA-Z0-9]*'),
+        bytes INTEGER NOT NULL CHECK(bytes BETWEEN 8 AND 33554432),
+        sha256 TEXT NOT NULL CHECK(length(sha256) = 64 AND sha256 NOT GLOB '*[^a-f0-9]*'),
+        completed_at TEXT NOT NULL CHECK(length(completed_at) = 24 AND completed_at GLOB '????-??-??T??:??:??.???Z'),
+        ownership_json TEXT NOT NULL CHECK(length(ownership_json) <= 1024) CHECK(CASE WHEN json_valid(ownership_json) THEN json_type(ownership_json) = 'object' ELSE 0 END)
+      ) STRICT;
+      CREATE INDEX idx_artifacts_timeline ON screenshot_artifacts(completed_at DESC, artifact_id DESC);
+      CREATE INDEX idx_artifacts_environment ON screenshot_artifacts(environment_id);
+      PRAGMA user_version = 7;
     `)
     sqlite.exec('COMMIT')
     transactionOpen = false

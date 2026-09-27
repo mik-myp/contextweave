@@ -1,3 +1,4 @@
+import { ArtifactRepository } from '@contextweave/storage'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +24,7 @@ async function fixture() {
     decryptString: (value: Buffer) => value.toString(),
   }
   const app = createApplication({
+    artifactRepository: new ArtifactRepository(db.sqlite),
     repository,
     dataRoot: root,
     platform: 'darwin',

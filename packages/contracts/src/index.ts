@@ -444,3 +444,5 @@ export * from './updates'
 export * from './logs'
 
 export * from './history-cleanup'
+
+export * from './artifacts'

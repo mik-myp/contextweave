@@ -177,3 +177,32 @@ it('whitelists history maintenance and validates the bounded request/response pr
   bridge.invoke.mockResolvedValue({ ok: true, data: { sessions: { count: 999 } } })
   await expect(api.storage.previewHistoryCleanup({ retentionDays: 90 })).rejects.toThrow()
 })
+
+it('validates artifact pagination both ways and rejects ownership/path leakage', async () => {
+  const empty = {
+    items: [],
+    totals: { count: 0, bytes: 0 },
+    previousCursor: null,
+    nextCursor: null,
+  }
+  bridge.invoke.mockResolvedValue({ ok: true, data: empty })
+  expect(await api.storage.pageArtifacts()).toEqual({ ok: true, data: empty })
+  expect(bridge.invoke).toHaveBeenCalledWith('storage:artifacts-page', { limit: 20, cursor: null })
+  await expect(api.storage.pageArtifacts({ limit: 51 })).rejects.toThrow()
+  const unsafe = { limit: 20, path: '/private' }
+  await expect(api.storage.pageArtifacts(unsafe)).rejects.toThrow()
+  bridge.invoke.mockResolvedValue({ ok: true, data: { ...empty, path: '/private' } })
+  await expect(api.storage.pageArtifacts()).rejects.toThrow()
+  const item = {
+    artifactId: '776c5484-731d-4d25-82d4-3a388986a125',
+    environmentId: 'env',
+    environmentName: 'Example',
+    taskId: 'task',
+    bytes: 8,
+    sha256: 'a'.repeat(64),
+    completedAt: '2026-09-27T00:00:00.000Z',
+    ownership: {},
+  }
+  bridge.invoke.mockResolvedValue({ ok: true, data: { ...empty, items: [item] } })
+  await expect(api.storage.pageArtifacts()).rejects.toThrow()
+})

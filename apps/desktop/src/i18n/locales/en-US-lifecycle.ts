@@ -335,4 +335,30 @@ export const lifecycleMessages = {
   'error.HISTORY_CLEANUP_EMPTY': 'This batch has no candidates; no cleanup was executed.',
   'error.HISTORY_CLEANUP_RECEIPT_INVALID':
     'The latest cleanup receipt cannot be read safely. Cleanup is disabled. Preserve the database and check diagnostics.',
+  'artifacts.title': 'Registered screenshots',
+  'artifacts.help':
+    'Read-only results registered from this version onward. Refresh or restart to reconcile completed tasks. Bytes reflect registration time, not whether a file still exists.',
+  'artifacts.limitations':
+    'Excludes older unregistered outputs, browser profiles and backups. Unknown files are never adopted or deleted. This is not full disk usage, backup or quota management.',
+  'artifacts.total': '{count} registered artifacts · {bytes} bytes total',
+  'artifacts.recorded':
+    'Verified at registration only; files have not been revalidated by this view.',
+  'artifacts.completedAt': 'Registered at',
+  'artifacts.environment': 'Environment',
+  'artifacts.identity': 'Artifact ID / task ID',
+  'artifacts.bytes': 'Registered size',
+  'artifacts.empty': 'No registered screenshots on this page',
+  'artifacts.emptyHelp':
+    'Successfully completed screenshot tasks appear here. Older outputs are not automatically adopted.',
+  'artifacts.pagination': 'Screenshot artifact pagination',
+  'artifacts.previous': 'Previous page',
+  'artifacts.next': 'Next page',
+  'error.WORKER_OUTPUT_INVALID':
+    'Screenshot ownership or content validation failed; no completed artifact was registered.',
+  'error.WORKER_OUTPUT_REGISTRATION_UNCONFIRMED':
+    'Screenshot registration is unconfirmed; the file was retained. Refresh or restart to reconcile. Rerunning creates another artifact; it does not adopt the old file.',
+  'error.ARTIFACT_RECORD_INVALID':
+    'The artifact record could not be read safely. The query stopped; preserve the data and inspect diagnostics.',
+  'error.ARTIFACT_STORAGE_UNAVAILABLE':
+    'The screenshot registration connection was safely closed; environment management remains available. Restart to reconcile persisted artifacts.',
 } as const

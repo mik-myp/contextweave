@@ -1,3 +1,5 @@
+import { createArtifactService } from './artifacts'
+import type { ArtifactRecord } from '@contextweave/contracts'
 import { EventEmitter, once } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -86,11 +88,24 @@ function setup(options: { allocate?: typeof createWorkerOutput; autoSpawn?: bool
       })
     return child
   })
+  const registration = vi.fn<(record: ArtifactRecord) => void>()
   const service = createWorkerService(
     { session: (id) => (id === 'env-test' ? {} : undefined), leaseControl: acquire },
     'private-worker.js',
     outputRoot,
     fork,
+    createArtifactService(
+      {
+        registerArtifact: registration,
+        pageArtifacts: () => ({
+          items: [],
+          totals: { count: 0, bytes: 0 },
+          previousCursor: null,
+          nextCursor: null,
+        }),
+      },
+      () => {},
+    ).register,
     options.allocate,
   )
   services.push(service)
@@ -100,7 +115,7 @@ function setup(options: { allocate?: typeof createWorkerOutput; autoSpawn?: bool
     await vi.waitFor(() => expect(child.sent[0]?.type).toBe('request'))
     return { running, child }
   }
-  return { root, outputRoot, acquire, leases, created, fork, service, start }
+  return { root, outputRoot, acquire, leases, created, fork, service, start, registration }
 }
 async function screenshot(child: FixtureWorker, data = png) {
   child.send({ type: 'screenshot-start', bytes: data.byteLength })
@@ -133,7 +148,7 @@ function result(child: FixtureWorker, extra: object = {}) {
 
 describe('utility worker service lifecycle', () => {
   it('requires a complete transfer AND actual successful exit, returning Main-owned paths', async () => {
-    const { service, start, outputRoot, leases } = setup()
+    const { service, start, outputRoot, leases, registration } = setup()
     const paths: string[] = []
     for (let index = 0; index < 2; index++) {
       const { child, running } = await start()
@@ -151,10 +166,12 @@ describe('utility worker service lifecycle', () => {
       })
       await Promise.resolve()
       expect(settled).toBe(false)
+      expect(registration).toHaveBeenCalledTimes(index)
       child.exit(0)
       const outcome = await running
       expect(outcome).toMatchObject({ ok: true, data: { ok: true, title: 'A中文B' } })
       if (!outcome.ok || !outcome.data.screenshotPath) throw new Error('Missing output')
+      expect(outcome.data.artifactId).toBe(registration.mock.calls[index]![0].artifactId)
       paths.push(outcome.data.screenshotPath)
       expect(readFileSync(outcome.data.screenshotPath)).toEqual(Buffer.from(png))
     }
@@ -163,7 +180,7 @@ describe('utility worker service lifecycle', () => {
     expect(leases.every((lease) => lease.revoke.mock.calls.length > 0)).toBe(true)
   })
   it('keeps output and environment ownership until OS exit is confirmed after the utility notification', async () => {
-    const { start, service, outputRoot } = setup()
+    const { start, service, outputRoot, registration } = setup()
     const { child, running } = await start()
     await screenshot(child)
     result(child)
@@ -181,6 +198,7 @@ describe('utility worker service lifecycle', () => {
       message: 'WORKER_BUSY',
     })
     expect(readdirSync(outputRoot)).toHaveLength(1)
+    expect(registration).not.toHaveBeenCalled()
     child.reaped = true
     expect(await running).toMatchObject({ ok: true, data: { ok: true } })
   })
@@ -259,6 +277,7 @@ describe('utility worker service lifecycle', () => {
     'wrong-end-count',
     'early-result',
     'result-path',
+    'result-artifact',
     'result-task',
     'result-environment',
     'raw-error',
@@ -309,6 +328,7 @@ describe('utility worker service lifecycle', () => {
     if (
       [
         'result-path',
+        'result-artifact',
         'result-task',
         'result-environment',
         'raw-error',
@@ -319,6 +339,8 @@ describe('utility worker service lifecycle', () => {
       ].includes(mode)
     ) {
       await screenshot(child)
+      if (mode === 'result-artifact')
+        result(child, { artifactId: '776c5484-731d-4d25-82d4-3a388986a125' })
       if (mode === 'result-path') result(child, { screenshotPath: '/outside' })
       if (mode === 'result-task') result(child, { taskId: 'other' })
       if (mode === 'result-environment') result(child, { environmentId: 'other' })
@@ -353,8 +375,8 @@ describe('utility worker service lifecycle', () => {
     child.exit(0)
     expect(await running).toEqual({
       ok: false,
-      code: 'WORKER_OUTPUT_FAILED',
-      message: 'WORKER_OUTPUT_FAILED',
+      code: 'WORKER_OUTPUT_INVALID',
+      message: 'WORKER_OUTPUT_INVALID',
     })
     expect(readdirSync(outputRoot)).toEqual([])
   })
@@ -515,4 +537,27 @@ describe('utility worker service lifecycle', () => {
     expect(await running).toEqual({ ok: false, code: 'CANCELLED', message: 'CANCELLED' })
     expect(readdirSync(outputRoot)).toEqual([])
   })
+})
+
+it('preserves a fully written output after unconfirmed registration and releases the worker slot', async () => {
+  const { start, outputRoot, registration, service } = setup()
+  registration.mockImplementation(() => {
+    throw new Error('uncertain private storage error')
+  })
+  const { child, running } = await start()
+  await screenshot(child)
+  result(child)
+  child.exit(0)
+  expect(await running).toEqual({
+    ok: false,
+    code: 'WORKER_OUTPUT_REGISTRATION_UNCONFIRMED',
+    message: 'WORKER_OUTPUT_REGISTRATION_UNCONFIRMED',
+  })
+  expect(registration).toHaveBeenCalledOnce()
+  expect(readdirSync(outputRoot)).toHaveLength(1)
+  const { child: next, running: nextRunning } = await start()
+  service.cancel('task-test')
+  expect(await nextRunning).toMatchObject({ ok: false, code: 'CANCELLED' })
+  expect(next.hasExited()).toBe(true)
+  expect(readdirSync(outputRoot)).toHaveLength(1)
 })

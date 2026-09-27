@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { protocolVersion, externalUrlSchema } from '@contextweave/contracts'
+import { protocolVersion, externalUrlSchema, maxArtifactBytes } from '@contextweave/contracts'
 
 export const workerTaskKindSchema = z.enum(['browser-smoke'])
 export type WorkerTaskKind = z.infer<typeof workerTaskKindSchema>
@@ -9,7 +9,7 @@ export const workerTaskIdSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9]
 // Main owns all output descriptors; the child only sends bounded private messages.
 export const maxWorkerScreenshotChunkBytes = 64 * 1024
 export const workerTransportVersion = 1
-export const maxWorkerScreenshotBytes = 32 * 1024 * 1024
+export const maxWorkerScreenshotBytes = maxArtifactBytes
 export const maxWorkerProtocolBytes = 1024 * 1024
 
 export const browserSmokeTaskInputSchema = z.object({
@@ -47,6 +47,7 @@ export const workerResultSchema = z.object({
   ok: z.boolean(),
   title: z.string().optional(),
   screenshotPath: z.string().optional(),
+  artifactId: z.string().uuid().optional(),
   errorCode: z.string().optional(),
   errorMessage: z.string().optional(),
 })

@@ -1,3 +1,4 @@
+import { createArtifactService } from './services/artifacts'
 import { createHistoryCleanupService } from './services/history-cleanup'
 import { createIpLocaleService } from './services/ip-locale'
 import { createIpLocalePreview } from './services/ip-locale-preview'
@@ -21,7 +22,7 @@ import {
   type TargetPlatform,
   type TargetArchitecture,
 } from '@contextweave/contracts'
-import type { EnvironmentRepository } from '@contextweave/storage'
+import type { ArtifactRepository, EnvironmentRepository } from '@contextweave/storage'
 import { workerTaskIdSchema } from '@contextweave/worker-protocol'
 import {
   getEnvironmentDetails,
@@ -50,6 +51,7 @@ import { ok, fail, toSummary } from './services/result'
 
 export function createApplication(options: {
   repository: EnvironmentRepository
+  artifactRepository: ArtifactRepository
   dataRoot: string
   platform: TargetPlatform
   arch: TargetArchitecture
@@ -101,11 +103,13 @@ export function createApplication(options: {
     preflight,
     changed: () => changed(['environments', 'activity', 'kernels']),
   })
+  const artifacts = createArtifactService(options.artifactRepository, changed)
   const workers = createWorkerService(
     runtime,
     options.workerPath,
     join(dataRoot, 'worker-results'),
     options.forkWorker,
+    artifacts.register,
   )
   const commands = createCommandCoordinator(repository, () =>
     changed(['environments', 'operations', 'activity', 'storage']),
@@ -176,6 +180,7 @@ export function createApplication(options: {
       ok(repository.pageActivity(activityHistoryQuerySchema.parse(input))),
     'operation:page': (input) =>
       ok(repository.pageOperations(operationHistoryQuerySchema.parse(input))),
+    'storage:artifacts-page': (input) => ok(artifacts.page(input)),
     'storage:orphans': () => ok(environments.orphans()),
     'storage:history-preview': (input) => ok(historyCleanup.preview(input)),
     'storage:history-confirm': (input) => ok(historyCleanup.confirm(input)),

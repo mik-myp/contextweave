@@ -281,4 +281,26 @@ export const lifecycleMessages = {
   'error.HISTORY_CLEANUP_EMPTY': '本批没有候选记录，未执行清理。',
   'error.HISTORY_CLEANUP_RECEIPT_INVALID':
     '最近清理回执无法安全读取，已停止清理。请保留数据库并检查诊断信息。',
+  'artifacts.title': '已登记截图',
+  'artifacts.help':
+    '只读查看本版起成功登记的截图，刷新或重启后可核对任务结果。容量为登记时的字节数，不代表当前文件仍然存在。',
+  'artifacts.limitations':
+    '不包含旧的未登记输出、浏览器目录和备份；不会扫描认领或删除未知文件。本视图不是全盘用量、备份或配额管理。',
+  'artifacts.total': '已登记 {count} 个产物 · 合计 {bytes} 字节',
+  'artifacts.recorded': '仅表示登记时已校验，不表示当前文件已重新校验。',
+  'artifacts.completedAt': '登记时间',
+  'artifacts.environment': '环境',
+  'artifacts.identity': '产物 ID / 任务 ID',
+  'artifacts.bytes': '登记大小',
+  'artifacts.empty': '本页没有已登记截图',
+  'artifacts.emptyHelp': '成功完成截图任务后将显示在这里；旧输出不会自动纳入。',
+  'artifacts.pagination': '截图产物分页',
+  'artifacts.previous': '上一页',
+  'artifacts.next': '下一页',
+  'error.WORKER_OUTPUT_INVALID': '截图归属或内容校验失败，未登记为完成产物。',
+  'error.WORKER_OUTPUT_REGISTRATION_UNCONFIRMED':
+    '截图登记结果未确认，文件已保留。请刷新列表或重启核对；重新运行会生成另一产物，不会自动补登旧文件。',
+  'error.ARTIFACT_RECORD_INVALID': '产物记录无法安全读取，已停止查询。请保留数据并检查诊断信息。',
+  'error.ARTIFACT_STORAGE_UNAVAILABLE':
+    '截图登记连接已安全关闭，环境管理仍可使用。请重启应用后核对已提交的产物记录。',
 } as const

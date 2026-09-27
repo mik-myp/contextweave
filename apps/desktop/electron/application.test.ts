@@ -1,3 +1,4 @@
+import { ArtifactRepository } from '@contextweave/storage'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,6 +16,7 @@ function fixture() {
   const db = openLocalDatabase(join(root, 'data.sqlite'))
   const repository = new EnvironmentRepository(db.sqlite)
   const app = createApplication({
+    artifactRepository: new ArtifactRepository(db.sqlite),
     repository,
     dataRoot: root,
     platform: 'darwin',
@@ -157,4 +159,28 @@ it('routes explicit history maintenance only through strict Main-side request va
     ok: false,
     code: 'APP_UPDATING',
   })
+})
+
+it('exposes a read-only bounded artifact page, not registration or deletion commands', async () => {
+  const { app } = fixture()
+  expect(await app.invoke('storage:artifacts-page', {})).toEqual({
+    ok: true,
+    data: { items: [], totals: { count: 0, bytes: 0 }, previousCursor: null, nextCursor: null },
+  })
+  for (const input of [
+    { limit: 51 },
+    { path: '/private' },
+    { artifactIds: ['a'] },
+    { cursor: { sql: 'SELECT' } },
+  ])
+    expect(await app.invoke('storage:artifacts-page', input)).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+    })
+  for (const channel of [
+    'storage:artifact-register',
+    'storage:artifact-delete',
+    'storage:artifact-open',
+  ])
+    expect(await app.invoke(channel, {})).toMatchObject({ ok: false, code: 'UNKNOWN_COMMAND' })
 })

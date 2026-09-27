@@ -93,7 +93,7 @@ describe('bounded history cleanup storage', () => {
     expect(f.repo.latestExecutableVersion('env')).toBe('148.0.0.2')
     expect(f.repo.get('env')?.revision).toBe(1)
     expect(f.repo.getRevision('env', 1)).toBeDefined()
-    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(6)
+    expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(7)
   })
 
   it.each(['starting', 'running', 'stopping', 'needs-recovery'] as const)(

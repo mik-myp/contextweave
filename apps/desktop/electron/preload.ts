@@ -1,3 +1,8 @@
+import {
+  artifactQuerySchema,
+  artifactPageSchema,
+  type ArtifactQuery,
+} from '@contextweave/contracts'
 import { z } from 'zod'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
@@ -166,6 +171,10 @@ const api = {
       ),
   },
   storage: {
+    pageArtifacts: async (input: Partial<ArtifactQuery> = {}) =>
+      ipcResultSchema(artifactPageSchema).parse(
+        await ipcRenderer.invoke('storage:artifacts-page', artifactQuerySchema.parse(input)),
+      ),
     previewHistoryCleanup: async (input: { retentionDays: HistoryCleanupRetentionDays }) =>
       ipcResultSchema(historyCleanupPreviewSchema).parse(
         await ipcRenderer.invoke(

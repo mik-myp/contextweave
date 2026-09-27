@@ -1,3 +1,4 @@
+import { ArtifactRepository } from '@contextweave/storage'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -52,6 +53,7 @@ function fixture() {
       database = openLocalDatabase(file)
       repository = new EnvironmentRepository(database.sqlite)
       const app = createApplication({
+        artifactRepository: new ArtifactRepository(database.sqlite),
         repository,
         dataRoot: root,
         platform: 'darwin',

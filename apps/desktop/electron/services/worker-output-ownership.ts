@@ -11,8 +11,9 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-type Identity = Pick<BigIntStats, 'dev' | 'ino'>
-const sameIdentity = (one: Identity, two: Identity) => one.dev === two.dev && one.ino === two.ino
+type Identity = Pick<BigIntStats, 'dev' | 'ino' | 'birthtimeNs'>
+const sameIdentity = (one: Identity, two: Identity) =>
+  one.dev === two.dev && one.ino === two.ino && one.birthtimeNs === two.birthtimeNs
 
 /** Path checks fail closed on replacement. These portable APIs are not atomic unlinkat. */
 export function ownWorkerOutputDirectory(root: string, rootIdentity: Identity, directory: string) {
@@ -41,6 +42,10 @@ export function ownWorkerOutputDirectory(root: string, rootIdentity: Identity, d
   verifyParents()
   return {
     verifyParents,
+    snapshot() {
+      verifyParents()
+      return { root: outputIdentity(rootIdentity), directory: outputIdentity(directoryIdentity) }
+    },
     discard(fileIdentity?: Identity) {
       if (removed) return
       try {
@@ -76,5 +81,13 @@ export function ownWorkerOutputDirectory(root: string, rootIdentity: Identity, d
         throw new Error('WORKER_OUTPUT_CLEANUP_FAILED')
       }
     },
+  }
+}
+
+export function outputIdentity(info: Identity) {
+  return {
+    dev: info.dev.toString(),
+    ino: info.ino.toString(),
+    birthtimeNs: info.birthtimeNs.toString(),
   }
 }

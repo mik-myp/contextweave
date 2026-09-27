@@ -1,3 +1,4 @@
+import { assertRegisteredScreenshot, verifyArtifactRestart } from './smoke-artifacts.mjs'
 import { verifyManagerReopen } from './smoke-window-lifecycle.mjs'
 import { runWorkerWithHostileEnvironment, finishCancelledNavigation, assertUtilityWorkersExited } from './smoke-worker-safety.mjs'
 import { installRuntimeDiagnostics, readRuntimeDiagnostics, readRuntimeFailureEvidence, restoreRuntimeDiagnostics } from './smoke-runtime-diagnostics.mjs'
@@ -40,6 +41,8 @@ const desktop = await _electron.launch({
 })
 let id, fixtureServer, localeProxy
 let preserveSmokeDirectory = false
+let completed = false
+const registeredArtifacts = []
 const controlClients = []
 try {
   const page = await desktop.firstWindow()
@@ -343,6 +346,7 @@ try {
       assert.equal(basename(screenshotPath), 'screenshot.png')
       const png = await readFile(screenshotPath)
       assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+      registeredArtifacts.push(await assertRegisteredScreenshot((fn, argument) => page.evaluate(fn, argument), screenshot, png, run + 1))
       screenshots.push(screenshotPath)
       if (run === 0) {
         const navigationSeen = new Promise((resolve) => { onWorkerWait = resolve })
@@ -488,6 +492,7 @@ try {
       executable: require('electron'), entry,
       env: { CONTEXTWEAVE_USER_DATA: directory },
     })
+  completed = true
 } catch (error) {
   preserveSmokeDirectory = error?.preserveSmokeDirectory === true
   // Capture before cleanup changes the process/transport state. No URL, payload,
@@ -518,6 +523,7 @@ try {
     /* Preserve the original test error; application shutdown also stops owned children. */
   }
   await desktop.close()
+  if (completed) await verifyArtifactRestart(entry, directory, registeredArtifacts)
   if (localeProxy) await new Promise((resolve) => localeProxy.close(resolve))
   if (fixtureServer) await new Promise((resolve) => fixtureServer.close(resolve))
   if (!preserveSmokeDirectory)

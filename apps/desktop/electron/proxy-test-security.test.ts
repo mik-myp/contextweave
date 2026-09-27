@@ -1,3 +1,4 @@
+import { ArtifactRepository } from '@contextweave/storage'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -33,6 +34,7 @@ async function setup() {
     decryptString: vi.fn((value: Buffer) => value.toString()),
   }
   const application = createApplication({
+    artifactRepository: new ArtifactRepository(database.sqlite),
     repository,
     dataRoot: directory,
     platform: 'linux',

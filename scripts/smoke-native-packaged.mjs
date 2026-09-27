@@ -1,3 +1,4 @@
+import { assertRegisteredScreenshot } from './smoke-artifacts.mjs'
 // Tests the actual hardened executable, not stock Electron loading app.asar.
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -101,7 +102,9 @@ try {
     const path = await realpath(screenshot.data.screenshotPath)
     assert.equal(dirname(dirname(path)), outputRoot, 'NATIVE_OUTPUT_ESCAPED')
     assert.equal(basename(path), 'screenshot.png')
-    assert.deepEqual([...(await readFile(path)).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+    const png = await readFile(path)
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+    await assertRegisteredScreenshot(call, screenshot, png, run + 1)
     if (run === 0) {
       const seen = new Promise((resolve) => {
         navigationSeen = resolve
@@ -188,6 +191,7 @@ try {
 console.log(
   JSON.stringify({
     nativePackagedExecutable: 'passed',
+    nativeArtifactInventory: 'two-real-registered-screenshots-sha256-bytes',
     nativeHistoryMaintenance: 'passed-empty-preview-receipt-confirm-guard',
     fuses: 'all-nine-policy-readback',
     utilityWorker: 'two-screenshots-and-real-navigation-cancel-passed',

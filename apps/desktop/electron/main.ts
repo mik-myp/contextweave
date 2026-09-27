@@ -16,7 +16,7 @@ import log from 'electron-log/node'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { dataChangedSchema, platformSchema, architectureSchema } from '@contextweave/contracts'
-import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
+import { ArtifactRepository, EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
 import { createAppUpdateService } from './services/app-update-service'
 import { prepareAppInstaller, readInstallerFailure } from './services/app-update-installer'
@@ -48,6 +48,7 @@ const RENDERER_ENTRY_URL = DEV_SERVER_URL ?? APP_ENTRY_URL
 const targetPlatform = platformSchema.parse(process.platform)
 const targetArch = architectureSchema.parse(process.arch)
 let database: ReturnType<typeof openLocalDatabase> | undefined
+let artifactDatabase: ReturnType<typeof openLocalDatabase> | undefined
 export let application: ReturnType<typeof createApplication> | undefined
 let updates: ReturnType<typeof createAppUpdateService> | undefined
 let isQuitting = false
@@ -77,6 +78,12 @@ async function handleStartupFailure(error: unknown) {
     /* The process exits; never replace unreadable data. */
   }
   database = undefined
+  try {
+    artifactDatabase?.close()
+  } catch {
+    /* It may already be closed after uncertain artifact rollback. */
+  }
+  artifactDatabase = undefined
   const outcome = await recoverStartup({
     error,
     locale: app.getLocale(),
@@ -144,6 +151,7 @@ if (hasInstanceLock)
       const environmentRoot = join(dataRoot, 'environments')
       mkdirSync(environmentRoot, { recursive: true })
       database = openLocalDatabase(join(dataRoot, 'contextweave.sqlite'))
+      artifactDatabase = openLocalDatabase(join(dataRoot, 'contextweave.sqlite'))
       const repository = new EnvironmentRepository(database.sqlite)
       const environmentStates = new Map(
         repository.listAll().map((record) => [record.environmentId, record.status]),
@@ -184,6 +192,7 @@ if (hasInstanceLock)
       })
       application = createApplication({
         repository,
+        artifactRepository: new ArtifactRepository(artifactDatabase.sqlite),
         dataRoot,
         platform: targetPlatform,
         arch: targetArch,

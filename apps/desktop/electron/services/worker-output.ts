@@ -7,11 +7,13 @@ import {
   openSync,
   readSync,
   realpathSync,
+  readdirSync,
   write,
   type BigIntStats,
 } from 'node:fs'
-import { join } from 'node:path'
-import { ownWorkerOutputDirectory } from './worker-output-ownership'
+import { basename, join } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { ownWorkerOutputDirectory, outputIdentity } from './worker-output-ownership'
 import {
   maxWorkerScreenshotBytes,
   maxWorkerScreenshotChunkBytes,
@@ -53,6 +55,8 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
     let closing = false
     let failed = false
     let size = 0
+    const writtenHash = createHash('sha256')
+    const artifactId = randomUUID()
     const close = async () => {
       closing = true
       // Never close/reuse a descriptor while libuv may still be writing to it.
@@ -62,7 +66,87 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
         descriptor = undefined
       }
     }
+    const inspect = () => {
+      if (!closing || descriptor !== undefined || pending || failed)
+        throw new Error('WORKER_OUTPUT_INVALID')
+      ownership.verifyParents()
+      const parent = lstatSync(directory)
+      const file = lstatSync(screenshotPath, { bigint: true })
+      if (
+        !parent.isDirectory() ||
+        parent.isSymbolicLink() ||
+        realpathSync(directory) !== directory ||
+        readdirSync(directory).some((name) => name !== 'screenshot.png') ||
+        !file.isFile() ||
+        file.isSymbolicLink()
+      )
+        throw new Error('WORKER_OUTPUT_INVALID')
+      const verificationDescriptor = openSync(screenshotPath, 'r')
+      try {
+        // Compare 64-bit handle identities on both sides (Windows path dev differs from fstat).
+        const current = fstatSync(verificationDescriptor, { bigint: true })
+        const header = Buffer.alloc(pngSignature.length)
+        if (
+          !current.isFile() ||
+          current.nlink !== 1n ||
+          current.dev !== fileIdentity.dev ||
+          current.ino !== fileIdentity.ino ||
+          current.birthtimeNs !== fileIdentity.birthtimeNs ||
+          current.size !== BigInt(size) ||
+          current.size < BigInt(header.length) ||
+          current.size > BigInt(maxWorkerScreenshotBytes) ||
+          readSync(verificationDescriptor, header, 0, header.length, 0) !== header.length ||
+          !header.equals(pngSignature)
+        )
+          throw new Error('WORKER_OUTPUT_INVALID')
+        const hash = createHash('sha256')
+        const block = Buffer.alloc(maxWorkerScreenshotChunkBytes)
+        for (let offset = 0; offset < size;) {
+          const bytes = readSync(
+            verificationDescriptor,
+            block,
+            0,
+            Math.min(block.length, size - offset),
+            offset,
+          )
+          if (bytes <= 0) throw new Error('WORKER_OUTPUT_INVALID')
+          hash.update(block.subarray(0, bytes))
+          offset += bytes
+        }
+        const sha256 = hash.digest('hex')
+        const after = fstatSync(verificationDescriptor, { bigint: true })
+        const pathAfter = lstatSync(screenshotPath, { bigint: true })
+        ownership.verifyParents()
+        if (
+          sha256 !== writtenHash.copy().digest('hex') ||
+          after.size !== current.size ||
+          after.mtimeNs !== current.mtimeNs ||
+          after.ctimeNs !== current.ctimeNs ||
+          after.nlink !== 1n ||
+          !pathAfter.isFile() ||
+          pathAfter.isSymbolicLink() ||
+          pathAfter.dev !== file.dev ||
+          pathAfter.ino !== file.ino ||
+          pathAfter.birthtimeNs !== file.birthtimeNs
+        )
+          throw new Error('WORKER_OUTPUT_INVALID')
+        return {
+          artifactId,
+          allocationName: basename(directory),
+          bytes: size,
+          sha256,
+          ownership: {
+            version: 1 as const,
+            ...ownership.snapshot(),
+            file: outputIdentity(current),
+          },
+        }
+      } finally {
+        closeSync(verificationDescriptor)
+      }
+    }
     return {
+      artifactId,
       directory,
       screenshotPath,
       append(data: Uint8Array): Promise<void> {
@@ -88,6 +172,7 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
                 throw new Error('WORKER_OUTPUT_INVALID')
               offset += bytes
             }
+            writtenHash.update(copy)
             size += copy.byteLength
           })
           .catch(() => {
@@ -100,41 +185,10 @@ export function createWorkerOutput(root: string, writer: WorkerOutputWriter = wr
         return pending
       },
       close,
-      validate() {
-        if (!closing || descriptor !== undefined || pending || failed)
-          throw new Error('WORKER_OUTPUT_INVALID')
-        ownership.verifyParents()
-        const parent = lstatSync(directory)
-        const file = lstatSync(screenshotPath)
-        if (
-          !parent.isDirectory() ||
-          parent.isSymbolicLink() ||
-          realpathSync(directory) !== directory ||
-          !file.isFile() ||
-          file.isSymbolicLink()
-        )
-          throw new Error('WORKER_OUTPUT_INVALID')
-        const verificationDescriptor = openSync(screenshotPath, 'r')
-        try {
-          // Compare 64-bit handle identities on both sides (Windows path dev differs from fstat).
-          const current = fstatSync(verificationDescriptor, { bigint: true })
-          const header = Buffer.alloc(pngSignature.length)
-          if (
-            !current.isFile() ||
-            current.nlink !== 1n ||
-            current.dev !== fileIdentity.dev ||
-            current.ino !== fileIdentity.ino ||
-            current.size !== BigInt(size) ||
-            current.size < BigInt(header.length) ||
-            current.size > BigInt(maxWorkerScreenshotBytes) ||
-            readSync(verificationDescriptor, header, 0, header.length, 0) !== header.length ||
-            !header.equals(pngSignature)
-          )
-            throw new Error('WORKER_OUTPUT_INVALID')
-          return screenshotPath
-        } finally {
-          closeSync(verificationDescriptor)
-        }
+      inspect,
+      validate: () => {
+        inspect()
+        return screenshotPath
       },
       async discard() {
         await close()

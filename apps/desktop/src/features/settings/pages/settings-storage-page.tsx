@@ -1,3 +1,4 @@
+import { ArtifactInventory } from '../components/artifact-inventory'
 import { HistoryCleanup } from '../components/history-cleanup'
 import { OrphanDirectories } from '../components/orphan-directories'
 import { Separator } from '@/components/ui/separator'
@@ -81,6 +82,8 @@ export function SettingsStoragePage() {
               </div>
             ))}
           </dl>
+          <Separator />
+          <ArtifactInventory />
           <Separator />
           <HistoryCleanup />
           <Separator />

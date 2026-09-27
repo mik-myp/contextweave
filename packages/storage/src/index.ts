@@ -736,3 +736,5 @@ export {
 } from './lock'
 
 export { readProcessIdentityAsync } from './process-identity-async'
+
+export { ArtifactRepository } from './artifacts'

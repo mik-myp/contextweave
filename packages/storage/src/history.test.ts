@@ -336,7 +336,7 @@ it("migrates genuine v5 by adding only indexes, preserves constraints/data and r
   const original = legacy.sqlite.prepare("SELECT * FROM operations").all();
   const tables = legacy.sqlite
     .prepare(
-      "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name",
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name != 'screenshot_artifacts' ORDER BY name",
     )
     .all();
   const exec = legacy.sqlite.exec.bind(legacy.sqlite);
@@ -367,14 +367,14 @@ it("migrates genuine v5 by adding only indexes, preserves constraints/data and r
   cleanup.push(migrated.close);
   expect(
     migrated.sqlite.prepare("PRAGMA user_version").get()?.user_version,
-  ).toBe(6);
+  ).toBe(7);
   expect(migrated.sqlite.prepare("SELECT * FROM operations").all()).toEqual(
     original,
   );
   expect(
     migrated.sqlite
       .prepare(
-        "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name",
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name != 'screenshot_artifacts' ORDER BY name",
       )
       .all(),
   ).toEqual(tables);
@@ -384,7 +384,7 @@ it("migrates genuine v5 by adding only indexes, preserves constraints/data and r
   expect(migrated.sqlite.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   migrateDatabase(migrated.sqlite, file);
   const backups = readdirSync(root).filter((name) => name.endsWith(".bak"));
-  expect(backups).toHaveLength(2); // Failed attempt and successful migration, no backup on reopening v6.
+  expect(backups).toHaveLength(2); // Failed attempt and successful migration, no backup on reopening current schema.
   const backup = new DatabaseSync(join(root, backups[0]!));
   expect(backup.prepare("PRAGMA user_version").get()?.user_version).toBe(5);
   expect(backup.prepare("SELECT * FROM operations").all()).toEqual(original);

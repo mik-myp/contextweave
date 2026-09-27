@@ -1,3 +1,4 @@
+import type { RegisterWorkerOutput } from './artifacts'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { BrowserControlLease } from './browser-control-access'
 import {
@@ -19,6 +20,7 @@ export function createWorkerService(
   workerPath: string,
   outputRoot: string,
   forkWorker: ForkWorker,
+  registerOutput: RegisterWorkerOutput,
   allocateOutput: typeof createWorkerOutput = createWorkerOutput,
 ) {
   const workers = new Map<
@@ -124,6 +126,7 @@ export function createWorkerService(
         startGrace()
         void (async () => {
           let outcome: Outcome = stopResult ?? fail('WORKER_FAILED')
+          let preserveOutput = false
           try {
             // Electron 44 may notify JS of process.exit before the OS process is gone.
             // Keep the slot through that gap and beyond the public response deadline.
@@ -132,12 +135,28 @@ export function createWorkerService(
             await output.close()
             if (!stopResult && code === 0 && transfer.result) {
               const result = transfer.result
-              outcome = ok(result.ok ? { ...result, screenshotPath: output.validate() } : result)
+              if (result.ok) {
+                // Unexpected registrar exceptions must preserve any possibly committed output.
+                preserveOutput = true
+                const registered = registerOutput(task, output)
+                if (registered.ok)
+                  outcome = ok({
+                    ...result,
+                    artifactId: registered.artifactId,
+                    screenshotPath: registered.screenshotPath,
+                  })
+                else {
+                  preserveOutput = registered.preserve
+                  outcome = fail(registered.code)
+                }
+              } else outcome = ok(result)
             }
           } catch {
-            outcome = fail('WORKER_OUTPUT_FAILED')
+            outcome = fail(
+              preserveOutput ? 'WORKER_OUTPUT_REGISTRATION_UNCONFIRMED' : 'WORKER_OUTPUT_FAILED',
+            )
           }
-          if (!outcome.ok || !outcome.data.ok) {
+          if (!preserveOutput && (!outcome.ok || !outcome.data.ok)) {
             try {
               await output.discard()
             } catch {

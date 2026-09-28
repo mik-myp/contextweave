@@ -12,11 +12,14 @@ import {
 } from '@contextweave/contracts'
 import { WorkspaceRepository } from './workspaces'
 
+// Node 22 SQLite TEXT reads truncate embedded NUL. JSON escaping preserves legacy
+// labels at the read boundary while storage/uniqueness keep their original TEXT bytes.
+const tagColumns = 'tag_id, workspace_id, json_quote(name) AS name_json, revision, updated_at'
 const tag = (row: Record<string, unknown>): EnvironmentTag =>
   environmentTagSchema.parse({
     workspaceId: row.workspace_id,
     id: row.tag_id,
-    name: row.name,
+    name: JSON.parse(String(row.name_json)),
     revision: row.revision,
     updatedAt: row.updated_at,
   })
@@ -29,7 +32,7 @@ export class TagRepository {
   }
   list(): EnvironmentTag[] {
     return this.sqlite
-      .prepare('SELECT * FROM environment_tags ORDER BY name_key, tag_id')
+      .prepare(`SELECT ${tagColumns} FROM environment_tags ORDER BY name_key, tag_id`)
       .all()
       .map(tag)
   }
@@ -70,7 +73,7 @@ export class TagRepository {
   register(names: readonly string[]): string[] {
     return names.map((name) => {
       const row = this.sqlite
-        .prepare('SELECT * FROM environment_tags WHERE name_key=?')
+        .prepare(`SELECT ${tagColumns} FROM environment_tags WHERE name_key=?`)
         .get(organizationNameKey(name))
       return (row ? tag(row) : this.insert(name)).name
     })
@@ -89,7 +92,9 @@ export class TagRepository {
     if (row && row.tag_id !== except) throw new Error('ORGANIZATION_NAME_EXISTS')
   }
   private current(id: string, expectedRevision: number) {
-    const row = this.sqlite.prepare('SELECT * FROM environment_tags WHERE tag_id=?').get(id)
+    const row = this.sqlite
+      .prepare(`SELECT ${tagColumns} FROM environment_tags WHERE tag_id=?`)
+      .get(id)
     if (!row) throw new Error('NOT_FOUND')
     const value = tag(row)
     if (value.revision !== expectedRevision) throw new Error('ORGANIZATION_CONFLICT')
@@ -107,7 +112,9 @@ export class TagRepository {
           'UPDATE environment_tags SET name=?, name_key=?, revision=revision+1, updated_at=? WHERE tag_id=?',
         )
         .run(name, organizationNameKey(name), updatedAt, id)
-      return tag(this.sqlite.prepare('SELECT * FROM environment_tags WHERE tag_id=?').get(id)!)
+      return tag(
+        this.sqlite.prepare(`SELECT ${tagColumns} FROM environment_tags WHERE tag_id=?`).get(id)!,
+      )
     })
   }
   delete(input: unknown) {
@@ -172,13 +179,20 @@ export function verifyTagStorage(sqlite: DatabaseSync) {
     if (entries.some((item) => item.workspaceId !== repo.workspaceId))
       throw new Error('INVALID_OWNER')
     const keys = new Set(entries.map((item) => organizationNameKey(item.name)))
-    for (const row of sqlite.prepare('SELECT name, name_key FROM environment_tags').all())
+    for (const row of sqlite
+      .prepare(
+        'SELECT json_quote(name) AS name_json, json_quote(name_key) AS key_json FROM environment_tags',
+      )
+      .all()) {
+      const name: unknown = JSON.parse(String(row.name_json))
+      const key: unknown = JSON.parse(String(row.key_json))
       if (
-        typeof row.name !== 'string' ||
-        row.name !== row.name.trim().normalize('NFC') ||
-        row.name_key !== organizationNameKey(row.name)
+        typeof name !== 'string' ||
+        name !== name.trim().normalize('NFC') ||
+        key !== organizationNameKey(name)
       )
         throw new Error('INVALID_LABEL')
+    }
     for (const row of sqlite.prepare('SELECT tags_json FROM environment_organization').all())
       if (
         tagsSchema

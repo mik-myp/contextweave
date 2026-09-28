@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { environmentConfigSchema, type EnvironmentView } from '@contextweave/contracts'
+import { environmentConfigSchema, tagsSchema, type EnvironmentView } from '@contextweave/contracts'
 import { EnvironmentRepository, openLocalDatabase, WorkspaceRepository } from './index'
 import { legacyFixtureWriter, openVersion13Fixture } from './legacy-fixture'
 import { migrateDatabase } from './migrations'
@@ -275,6 +275,49 @@ it('backfills genuine v13 associations and filter-only tags without changing old
   const again = track(openLocalDatabase(f.file))
   expect(new EnvironmentRepository(again.sqlite).organization.snapshot()).toEqual(snapshot)
   expect(readFileSync(join(f.root, 'browser-data'), 'utf8')).toBe('only browser session copy')
+})
+it('upgrades legacy-valid NUL labels and filter keys without changing association bytes', () => {
+  const f = fixture(true)
+  const names = tagsSchema.parse(['\u0000retained', 'a\u0000b', '😀'.repeat(20)])
+  const raw = JSON.stringify(names)
+  f.db.sqlite
+    .prepare(
+      'INSERT INTO environment_organization(environment_id,tags_json,note,revision) VALUES(?,?,?,1)',
+    )
+    .run('env', raw, 'retained')
+  f.db.sqlite
+    .prepare(
+      'INSERT INTO environment_views(view_id,name,name_key,view_json,revision,updated_at) VALUES(?,?,?,?,1,?)',
+    )
+    .run(
+      randomUUID(),
+      'Filter',
+      'filter',
+      JSON.stringify({ ...view, filters: { ...view.filters, tags: ['\u0000filter-only'] } }),
+      '2026-09-28T00:00:00.000Z',
+    )
+  migrateDatabase(f.db.sqlite, f.file)
+  expect(f.db.sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(14)
+  expect(
+    f.db.sqlite.prepare('SELECT tags_json FROM environment_organization').get()?.tags_json,
+  ).toBe(raw)
+  expect(new Set(f.org.snapshot().tags.map((tag) => tag.name))).toEqual(
+    new Set([...names, '\u0000filter-only']),
+  )
+  f.db.close()
+  const again = track(openLocalDatabase(f.file))
+  const snapshot = new EnvironmentRepository(again.sqlite).organization.snapshot()
+  expect(snapshot.environments[0]?.tags).toEqual(names)
+  const org = new EnvironmentRepository(again.sqlite).organization
+  const original = snapshot.tags.find((tag) => tag.name === names[0])!
+  expect(() => org.createTag({ name: names[0] })).toThrow('ORGANIZATION_NAME_EXISTS')
+  org.updateTag({ id: original.id, expectedRevision: original.revision, name: 'renamed' })
+  expect(org.snapshot().environments[0]?.tags).toEqual(['renamed', ...names.slice(1)])
+  org.deleteTag({ id: original.id, expectedRevision: original.revision + 1 })
+  expect(org.snapshot().environments[0]?.tags).toEqual(names.slice(1))
+  expect(new Set(snapshot.tags.map((tag) => tag.name))).toEqual(
+    new Set([...names, '\u0000filter-only']),
+  )
 })
 it('aborts malformed v13 tags without discarding the raw data or advancing the version', () => {
   const f = fixture(true)

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { WriteStream } from 'node:fs'
+import { finished } from 'node:stream/promises'
 
 const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
 const { buildSync } = createRequire(require.resolve('vite/package.json'))('esbuild')
@@ -15,7 +17,9 @@ try {
   const content = join(root, 'archive-source')
   await mkdir(content)
   await writeFile(join(content, 'index.js'), 'module.exports = "fixture"\n')
-  await createPackage(content, join(root, 'fixture.asar'))
+  const output = await createPackage(content, join(root, 'fixture.asar'))
+  assert(output instanceof WriteStream, 'Expected ASAR 3.4.1 output stream')
+  await finished(output, { cleanup: true })
   buildSync({
     entryPoints: [resolve('apps/desktop/electron/services/app-update-electron.ts')],
     bundle: true,

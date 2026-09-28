@@ -1,5 +1,4 @@
-import { ArtifactBudget } from '../components/artifact-budget'
-import { ArtifactInventory } from '../components/artifact-inventory'
+import { StorageDiagnostics } from '../components/storage-diagnostics'
 import { HistoryCleanup } from '../components/history-cleanup'
 import { OrphanDirectories } from '../components/orphan-directories'
 import { Separator } from '@/components/ui/separator'
@@ -84,13 +83,11 @@ export function SettingsStoragePage() {
             ))}
           </dl>
           <Separator />
-          <ArtifactBudget />
-          <Separator />
-          <ArtifactInventory />
-          <Separator />
           <HistoryCleanup />
           <Separator />
           <OrphanDirectories />
+          <Separator />
+          <StorageDiagnostics />
         </>
       )}
     </SettingsSection>

@@ -1,4 +1,5 @@
 export const commandMessages = {
+  'commands.details': '诊断详情',
   'commands.title': '命令回执',
   'commands.help':
     '回执跨页面和重启保留。启动按顺序执行，不限制已运行浏览器的数量；结果未知时不会自动重试。',

@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'storage.diagnostics': '高级诊断：截图与任务产物',
+  'storage.diagnosticsHelp':
+    '用于开发测试和故障排查，不是日常环境管理或全盘空间清理。折叠此处不会删除文件、修改预算或停止任务。',
+  'cleanup.details': '诊断详情',
+
   'error.ORGANIZATION_NAME_EXISTS': '此名称已存在。请使用不同的分组或视图名称。',
   'error.ORGANIZATION_CONFLICT': '组织信息已被其他操作修改。请先重新加载，再决定是否保存。',
   'error.ORGANIZATION_GROUP_MISSING': '选择的分组已不存在。请重新选择分组。',

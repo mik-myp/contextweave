@@ -267,3 +267,16 @@ it('renders English help and a persisted receipt without initiating any cleanup 
   expect(previewCall).not.toHaveBeenCalled()
   expect(confirmCall).not.toHaveBeenCalled()
 })
+
+it('shows deletion outcomes while keeping technical receipt identifiers collapsed by default', async () => {
+  receiptCall.mockResolvedValue({ ok: true, data: receipt })
+  await render()
+  expect(container.textContent).toContain('候选 500 · 已删除 499 · 已跳过 1')
+  const details = container.querySelector('details')!
+  expect(details.open).toBe(false)
+  expect(details.querySelector('summary')?.textContent).toBe('诊断详情')
+  expect(details.textContent).toContain(receipt.previewId)
+  await act(async () => details.querySelector('summary')!.click())
+  expect(details.open).toBe(true)
+  expect(confirmCall).not.toHaveBeenCalled()
+})

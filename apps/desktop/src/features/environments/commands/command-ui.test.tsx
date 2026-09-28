@@ -234,6 +234,10 @@ describe('pending identity verification and command receipts', () => {
         lookup.mockResolvedValue({ ok: false, code: 'NOT_FOUND', message: 'not found' })
       await render(<PendingCommands />)
       expect(document.body.textContent).toContain(id)
+      const details = container.querySelector('details')!
+      expect(details.open).toBe(false)
+      expect(details.textContent).toContain(id)
+      expect(details.querySelector('summary')?.textContent).toBe('诊断详情')
       expect(document.body.textContent).toContain(
         status === 'missing' ? '暂未找到回执' : '结果未知',
       )

@@ -41,6 +41,8 @@ export const appPathsSchema = z
   })
   .strict()
 export type AppPaths = z.infer<typeof appPathsSchema>
+export const appPathKeySchema = appPathsSchema.keyof()
+export type AppPathKey = z.infer<typeof appPathKeySchema>
 
 export const externalUrlSchema = z
   .string()
@@ -535,3 +537,5 @@ export * from './batches'
 export * from './commands'
 
 export * from './bookmarks'
+
+export * from './management'

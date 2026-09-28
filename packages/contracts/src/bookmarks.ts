@@ -4,6 +4,8 @@ import { workspaceContextSchema } from './workspaces'
 export const maxDefaultBookmarks = 200
 export const bookmarkSchema = z.strictObject({
   id: z.string().uuid(),
+  // Older workspace templates omit this field; absence is opt-out.
+  openOnStart: z.boolean().optional(),
   name: z.string().trim().min(1).max(120),
   url: z
     .string()

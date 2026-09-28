@@ -53,7 +53,7 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
     <tr
       data-slot="table-row"
       className={cn(
-        'border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted',
+        'group/table-row border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted',
         className,
       )}
       {...props}
@@ -67,6 +67,7 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
       data-slot="table-head"
       className={cn(
         'h-10 px-2 text-start align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pe-0',
+        'data-actions:sticky data-actions:right-0 data-actions:z-20 data-actions:bg-background data-actions:text-right data-actions:shadow-[-1px_0_0_var(--border)]',
         className,
       )}
       {...props}
@@ -78,7 +79,10 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   return (
     <td
       data-slot="table-cell"
-      className={cn('p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pe-0', className)}
+      className={cn(
+        'p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pe-0 data-actions:sticky data-actions:right-0 data-actions:z-10 data-actions:bg-background data-actions:text-right data-actions:shadow-[-1px_0_0_var(--border)] data-actions:group-hover/table-row:bg-muted data-actions:group-data-[state=selected]/table-row:bg-muted',
+        className,
+      )}
       {...props}
     />
   )

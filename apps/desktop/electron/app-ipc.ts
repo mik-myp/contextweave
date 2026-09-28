@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   appInfoSchema,
+  appPathKeySchema,
   appPathsSchema,
   externalUrlSchema,
   type AppInfo,
@@ -11,6 +12,7 @@ import { ok, fail } from './services/result'
 export function createAppHandlers(options: {
   getInfo(): AppInfo
   getPaths(): AppPaths
+  copyText(text: string): void
   quit(): void
   openExternal(url: string): Promise<void>
 }) {
@@ -23,6 +25,16 @@ export function createAppHandlers(options: {
       z.undefined().safeParse(input).success
         ? ok(appPathsSchema.parse(options.getPaths()))
         : fail('INVALID_INPUT'),
+    'app:copy-path': (input: unknown) => {
+      const parsed = appPathKeySchema.safeParse(input)
+      if (!parsed.success) return fail('INVALID_INPUT')
+      try {
+        options.copyText(appPathsSchema.parse(options.getPaths())[parsed.data])
+        return ok(true)
+      } catch {
+        return fail('COMMAND_FAILED')
+      }
+    },
     'app:quit': (input: unknown) => {
       if (!z.undefined().safeParse(input).success) return fail('INVALID_INPUT')
       setImmediate(options.quit)

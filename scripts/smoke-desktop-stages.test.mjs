@@ -66,7 +66,7 @@ test('navigation activates only its owned manager and still uses the real page',
     assert.equal(actual, page)
     return { evaluate: async fn => fn(native), dispose: async () => order.push('dispose') }
   } }, page)
-  assert.deepEqual(order, ['show', 'focus', 'bringToFront', 'dispose'])
+  assert.deepEqual(order, ['bringToFront', 'show', 'focus', 'dispose'])
 })
 
 test('an unactivated manager fails rather than force-clicking or bypassing visibility', async () => {

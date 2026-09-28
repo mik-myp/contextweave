@@ -17,7 +17,7 @@ export function KernelDownloadTasks({
     (release) =>
       release.id !== selectedId &&
       release.installation &&
-      ['downloading', 'verifying', 'extracting'].includes(release.installation.phase),
+      ['downloading', 'verifying', 'extracting', 'testing'].includes(release.installation.phase),
   )
   if (!active.length) return null
   return (
@@ -29,6 +29,7 @@ export function KernelDownloadTasks({
           <div key={release.id} className="flex flex-col gap-2 rounded-lg border p-3">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-medium">{release.version}</span>
+              {state.phase === 'testing' && <span>{t('kernel.testing')}</span>}
               <Button
                 size="sm"
                 variant="ghost"

@@ -1,3 +1,4 @@
+import { openStartupBookmarkTargets } from './startup-bookmarks'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'
@@ -225,6 +226,27 @@ export async function createBrowserControl() {
       } catch (error) {
         close() // Also cleans a late/cancelled startup root; no clients have been admitted yet.
         throw error
+      }
+    },
+    async openStartupBookmarks(urls: string[], signal: AbortSignal, deadline: number) {
+      try {
+        await openStartupBookmarkTargets(
+          urls,
+          async (method, params) => {
+            if (!pipe || pipe.closed || closed) throw new Error('BOOKMARKS_STARTUP_FAILED')
+            const remaining = deadline - performance.now()
+            if (remaining <= 0) throw new Error('BOOKMARKS_STARTUP_FAILED')
+            const response = await pipe.send(method, params, undefined, {
+              timeoutMs: Math.min(5000, remaining),
+              signal,
+            })
+            if (response.error) throw new Error('BOOKMARKS_STARTUP_FAILED')
+            return response.result
+          },
+          signal,
+        )
+      } catch {
+        throw new Error('BOOKMARKS_STARTUP_FAILED')
       }
     },
     async closeBrowser() {

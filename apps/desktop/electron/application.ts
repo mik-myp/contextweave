@@ -1,3 +1,12 @@
+import { removeItems } from './services/bulk-removal'
+import {
+  deleteTagsSchema,
+  deleteKernelsSchema,
+  renameKernelSchema,
+  installKernelSchema,
+  managedKernelIdSchema,
+  bulkDeleteResultSchema,
+} from '@contextweave/contracts'
 import { createBookmarkHandlers } from './bookmarks-ipc'
 import { BookmarkSettingsRepository } from '@contextweave/storage'
 import { createEnvironmentCommandDispatcher } from './services/environment-command-dispatcher'
@@ -173,6 +182,15 @@ export function createApplication(options: {
     'batch:cancel': (input) => ok(batches.cancel(input)),
     'batch:retry-preview': (input) => ok(batches.retryPreview(input)),
     'organization:list': () => ok(repository.organization.snapshot()),
+    'organization:tags-delete': async (input) => {
+      const result = await removeItems(
+        deleteTagsSchema.parse(input),
+        (tag) => tag.id,
+        (tag) => ok(repository.organization.deleteTag(tag)),
+      )
+      changed(['organization'])
+      return ok(bulkDeleteResultSchema.parse(result))
+    },
     'organization:tag-create': (input) => {
       const result = repository.organization.createTag(input)
       changed(['organization'])
@@ -232,8 +250,26 @@ export function createApplication(options: {
       return kernels.catalog(parsed.refresh).then(ok)
     },
     'kernel:list': () => ok(kernels.list()),
-    'kernel:install': (input) =>
-      commands.run('install', null, async () => ok(await kernels.install(id(input)))),
+    'kernel:rename': (input) => ok(kernels.rename(renameKernelSchema.parse(input))),
+    'kernel:verify': (input) => kernels.verify(managedKernelIdSchema.parse(input)).then(ok),
+    'kernel:remove-many': (input) => {
+      const ids = deleteKernelsSchema.parse(input)
+      return commands.run('remove-kernel', null, async () =>
+        ok(
+          bulkDeleteResultSchema.parse(
+            await removeItems(
+              ids,
+              (id) => id,
+              async (id) => ok(await kernels.remove(id)),
+            ),
+          ),
+        ),
+      )
+    },
+    'kernel:install': (input) => {
+      const { id: kernelId, name } = installKernelSchema.parse(input)
+      return commands.run('install', null, async () => ok(await kernels.install(kernelId, name)))
+    },
     'kernel:remove': (input) =>
       commands.run('remove-kernel', null, async () => ok(await kernels.remove(id(input)))),
     'kernel:cancel-install': (input) => ok(kernels.cancelInstall(id(input))),
@@ -351,6 +387,7 @@ export function createApplication(options: {
       updating = value
     },
     hasActiveEnvironments: () =>
+      kernels.hasActive() ||
       batches.hasActive() ||
       environmentCommands.hasActive() ||
       repository
@@ -396,6 +433,7 @@ export function createApplication(options: {
       kernels.cancelAll()
       runtime.cancelStarts()
       const drains = await Promise.allSettled([
+        kernels.drain(),
         commandDrain,
         batchDrain,
         workerDrain,

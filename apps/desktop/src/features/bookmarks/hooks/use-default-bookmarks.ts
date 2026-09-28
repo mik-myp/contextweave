@@ -24,6 +24,7 @@ export function useDefaultBookmarks() {
   const [draft, setDraft] = useState<{ items: Bookmark[]; revision: number } | null>(null)
   const [isSaving, setSaving] = useState(false)
   const [isSaved, setSaved] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const request = useRef({ generation: 0, busy: false })
   useEffect(
@@ -47,6 +48,8 @@ export function useDefaultBookmarks() {
   const canSave = Boolean(draft && canEdit)
   return {
     query,
+    showErrors,
+    validation: defaultBookmarkListSchema.safeParse(draft?.items ?? data?.items ?? []),
     error,
     isSaving,
     isSaved,
@@ -59,7 +62,7 @@ export function useDefaultBookmarks() {
     replace(items: Bookmark[], revision = draft?.revision ?? data?.revision) {
       if (!canEdit || request.current.busy || !data) return
       setDraft({
-        items: defaultBookmarkListSchema.parse(items),
+        items,
         revision: revision ?? data.revision,
       })
       setSaved(false)
@@ -68,11 +71,15 @@ export function useDefaultBookmarks() {
     reset() {
       if (request.current.busy) return
       setDraft(null)
+      setShowErrors(false)
       setSaved(false)
       setError(null)
     },
     async save() {
       if (!canSave || !draft || request.current.busy) return
+      const parsed = defaultBookmarkListSchema.safeParse(draft.items)
+      setShowErrors(true)
+      if (!parsed.success) return false
       request.current.busy = true
       const generation = ++request.current.generation
       setSaving(true)
@@ -80,7 +87,7 @@ export function useDefaultBookmarks() {
       setError(null)
       try {
         const value = await unwrapIpc(
-          api.bookmarks.save({ expectedRevision: draft.revision, items: draft.items }),
+          api.bookmarks.save({ expectedRevision: draft.revision, items: parsed.data }),
         )
         if (generation !== request.current.generation) return
         await client.cancelQueries({ queryKey: key, exact: true })
@@ -88,6 +95,8 @@ export function useDefaultBookmarks() {
         client.setQueryData(key, value)
         setDraft(null)
         setSaved(true)
+        setShowErrors(false)
+        return true
       } catch (failure) {
         if (generation === request.current.generation) {
           setError(failure instanceof Error ? failure.message : errorMessage('COMMAND_FAILED'))

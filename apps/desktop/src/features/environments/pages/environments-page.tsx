@@ -1,7 +1,7 @@
 import { CommandHistorySheet } from '../commands/command-history-sheet'
 import { useCommandTracking } from '../commands/use-commands'
 import { BatchPreviewDialog } from '../batches/batch-preview-dialog'
-import { BatchTasks } from '../batches/batch-tasks'
+import { BatchProgressNotice } from '../batches/batch-progress-notice'
 import type { BatchAction } from '@contextweave/contracts'
 import {
   organizeEnvironments,
@@ -9,15 +9,13 @@ import {
   type OrganizedEnvironment,
 } from '../organization/use-organization'
 import { EnvironmentOrganizationDialog } from '../organization/environment-organization-dialog'
-import { GroupManagerDialog } from '../organization/group-manager-dialog'
-import { SavedViewsDialog } from '../organization/saved-views-dialog'
 import { organizationNameKey } from '@contextweave/contracts'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { EnvironmentTrash } from '../components/environment-trash'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
 import { useMemo, useState, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Clock3Icon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
+import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import { environmentStatusSchema, type EnvironmentSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import { useAppData } from '@/app/use-app-data'
@@ -37,11 +35,10 @@ export function EnvironmentsPage() {
   const { t } = useI18n()
   const tracking = useCommandTracking()
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [tab, setTab] = useState('active'),
-    [selectedTask, setSelectedTask] = useState<string>()
+  const [tab, setTab] = useState('active')
+  const [selectedTask, setSelectedTask] = useState<string>()
   const onCreated = useCallback((id: string) => {
     setSelectedTask(id)
-    setTab('batches')
   }, [])
   return (
     <Tabs
@@ -53,30 +50,23 @@ export function EnvironmentsPage() {
         <TabsList className="shrink-0">
           <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
           <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
-          <TabsTrigger value="batches">{t('batch.tasks')}</TabsTrigger>
         </TabsList>
-        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
-          <Clock3Icon data-icon="inline-start" />
-          {t('commands.title')}
-        </Button>
       </div>
       {(tracking.problem || tracking.entries.length > 0) && !historyOpen && (
         <Alert>
           <AlertDescription>{t('commands.pendingHelp')}</AlertDescription>
           <Button type="button" size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
-            {t('commands.title')} ({tracking.entries.length})
+            {t('commands.resolve')}
           </Button>
         </Alert>
       )}
       <CommandHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
+      <BatchProgressNotice selectedId={selectedTask} onSelect={setSelectedTask} />
       <TabsContent value="active" className="flex min-h-0 flex-col gap-4">
         <ActiveEnvironmentsPage onCreated={onCreated} />
       </TabsContent>
       <TabsContent value="trash" className="flex min-h-0 flex-col gap-4">
         <EnvironmentTrash onCreated={onCreated} />
-      </TabsContent>
-      <TabsContent value="batches" className="flex min-h-0 flex-col gap-4">
-        <BatchTasks selectedId={selectedTask} onSelect={setSelectedTask} />
       </TabsContent>
     </Tabs>
   )
@@ -94,8 +84,6 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
     [environments, organization.data],
   )
   const [organizationTarget, setOrganizationTarget] = useState<OrganizedEnvironment>()
-  const [groupsOpen, setGroupsOpen] = useState(false)
-  const [viewsOpen, setViewsOpen] = useState(false)
   const actions = useEnvironmentActions()
   const [target, setTarget] = useState<{
     action: BatchAction
@@ -186,8 +174,6 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
           onClose={() => setOrganizationTarget(undefined)}
         />
       )}
-      {groupsOpen && <GroupManagerDialog onClose={() => setGroupsOpen(false)} />}
-      {viewsOpen && <SavedViewsDialog table={table} onClose={() => setViewsOpen(false)} />}
       <DataTable
         table={table}
         label={t('env.list')}
@@ -200,27 +186,7 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
           void organization.refetch()
         }}
         selectedRowId={savedId}
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!organization.data || organization.isError}
-              onClick={() => setGroupsOpen(true)}
-            >
-              {t('org.groups')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!organization.data || organization.isError}
-              onClick={() => setViewsOpen(true)}
-            >
-              {t('org.views')}
-            </Button>
-            {newAction}
-          </>
-        }
+        actions={newAction}
         bulkActions={
           <DataTableBulkActions
             table={table}

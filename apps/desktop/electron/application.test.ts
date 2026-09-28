@@ -686,3 +686,69 @@ it('enforces tag ownership/CAS/schema checks and emits scoped invalidation only 
   expect(f.repository.organization.snapshot().tags).toEqual([])
   expect(f.events).toHaveLength(3)
 })
+
+it('bulk tag removal validates the whole request first and preserves per-item revision failures', async () => {
+  const f = fixture()
+  const one = f.repository.organization.createTag({ name: 'One' })
+  const two = f.repository.organization.createTag({ name: 'Two' })
+  f.repository.organization.updateTag({
+    id: two.id,
+    expectedRevision: two.revision,
+    name: 'Changed',
+  })
+  const item = { id: one.id, expectedRevision: one.revision }
+  expect(await f.app.invoke('organization:tags-delete', [item, item])).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  expect(f.repository.organization.snapshot().tags).toHaveLength(2)
+  expect(
+    await f.app.invoke('organization:tags-delete', [
+      item,
+      { id: two.id, expectedRevision: two.revision },
+    ]),
+  ).toEqual({
+    ok: true,
+    data: [
+      { id: one.id, ok: true },
+      { id: two.id, ok: false, code: 'ORGANIZATION_CONFLICT' },
+    ],
+  })
+  expect(f.repository.organization.snapshot().tags.map((tag) => tag.name)).toEqual(['Changed'])
+  expect(
+    await f.rawApp.invoke('organization:tags-delete', {
+      workspaceId: randomUUID(),
+      payload: [{ id: two.id, expectedRevision: 2 }],
+    }),
+  ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+  expect(f.repository.organization.snapshot().tags).toHaveLength(1)
+})
+it('refuses unsafe kernel management requests without granting arbitrary files or browser controls', async () => {
+  const { app } = fixture()
+  expect(await app.invoke('kernel:rename', { id: '../outside', name: 'Bad' })).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  expect(await app.invoke('kernel:verify', '/private/browser')).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  expect(await app.invoke('kernel:remove-many', ['one', 'one'])).toMatchObject({
+    ok: false,
+    code: 'INVALID_INPUT',
+  })
+  expect(await app.invoke('kernel:remove-many', ['standard-chromium'])).toMatchObject({
+    ok: true,
+    data: [{ id: 'standard-chromium', ok: false, code: 'KERNEL_NOT_MANAGED' }],
+  })
+})
+
+it('rejects invalid installation names before recording a command or changing aliases', async () => {
+  const { app, repository } = fixture()
+  const before = repository.listOperations()
+  expect(
+    await app.invoke('kernel:install', { id: 'standard-chromium', name: 'x'.repeat(81) }),
+  ).toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  expect(repository.getSetting('kernel-name:standard-chromium')).toBeUndefined()
+  expect(repository.listOperations()).toEqual(before)
+})

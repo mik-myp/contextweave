@@ -95,7 +95,7 @@ export function AppLogTable({
           <TableHead>{t('logs.source')}</TableHead>
           <TableHead>{t('logs.message')}</TableHead>
           <TableHead className="text-end">{t('logs.duration')}</TableHead>
-          <TableHead className="text-end">{t('env.actions')}</TableHead>
+          <TableHead data-actions="">{t('env.actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -138,7 +138,7 @@ export function AppLogTable({
             <TableCell className="text-end font-mono text-xs tabular-nums text-muted-foreground">
               {entry.durationMs === undefined ? '—' : `${entry.durationMs} ms`}
             </TableCell>
-            <TableCell>
+            <TableCell data-actions="">
               <DataTableRowActions
                 label={t('logs.details')}
                 actions={[

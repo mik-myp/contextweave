@@ -1,4 +1,67 @@
 export const lifecycleMessages = {
+  'kernel.installName': 'Kernel name (optional)',
+  'kernel.installNameHelp':
+    'Leave blank to use the default name. You can change it after installation.',
+  'table.deleteLimit': 'Delete up to {count} items at a time. Select fewer items to continue.',
+
+  'logs.dateRange': 'Date range',
+  'logs.pickRange': 'Pick a date range',
+  'table.confirmDelete': 'Delete selected',
+  'table.deleteSelected': 'Delete {count} selected items?',
+  'table.deleteResult': 'Deleted {success} items; {failed} failed',
+  'table.deleteRetryHelp':
+    'Unsuccessful items are kept. If data has changed, close this dialog and review the refreshed list before selecting again.',
+  'kernel.rename': 'Rename',
+  'kernel.renameHelp':
+    'Change the display name only, not the kernel ID, version or environment bindings. Leave empty to restore the default name.',
+  'kernel.invalidName': 'Use up to 80 characters without control characters.',
+  'kernel.testing': 'Checking capabilities…',
+  'kernel.verify': 'Verify again',
+  'kernel.probeComplete':
+    'Basic checks completed. Capabilities outside the check remain unverified.',
+  'kernel.probeFailed': 'Some capability checks did not pass. Review the individual results.',
+  'kernel.installedProbeFailed':
+    'Installed, but capability checks did not complete. Retry in details',
+  'kernel.bulkDeleteHelp':
+    'Remove only app-managed kernel files; keep environments and browser profiles. These kernels are referenced by {count} environments, which will require reinstallation before starting. Kernels in use will not be removed.',
+  'error.KERNEL_PROBE_FAILED':
+    'Capability checks did not complete. Installed files are kept. Stop environments using this kernel and try again.',
+  'error.KERNEL_PROBE_CLEANUP_FAILED':
+    'The test process did not exit. Further kernel changes are blocked. Quit the app and check the test browser process before retrying.',
+  'error.KERNEL_CHANGED':
+    'Kernel files changed during the check. Results were not saved; verify again.',
+
+  'about.diceUi':
+    'Drag sorting uses the MIT Dice UI Base Sortable registry component and dnd-kit, adapted for localized accessibility, inline editing and this theme.',
+  'about.licenseBoundary':
+    'Attribution records the reference and adaptation scope; it does not replace license permission. Source is used only as permitted, with full notices below.',
+  'table.searchCurrentPage': 'Search this page…',
+  'table.cursorScope': 'Search and sort apply to this page. Use pagination for more records.',
+  'about.antBrowser':
+    'Inline editing, drag ordering and startup choices draw interaction inspiration from Ant Browser. No source is copied or existing profiles overwritten.',
+  'about.shadcnBase':
+    'Date filters compose the official Base Calendar and Popover within the existing theme.',
+  'about.cossUi':
+    'Kbd shortcuts are installed from its registry; notifications use its deduplication pattern. Only the MIT-licensed UI directory is used.',
+
+  'logs.commandHistory': 'Environment actions',
+  'logs.pickDate': 'Pick a date and time',
+  'logs.time': 'Time',
+  'logs.clearDate': 'Clear date',
+  'commands.resolve': 'Review and resolve',
+  'batch.history': 'Bulk action history',
+  'batch.viewProgress': 'View progress',
+  'batch.viewResult': 'View result',
+  'batch.progressUnavailable':
+    'Bulk action progress is unavailable. Retry viewing it rather than submitting again.',
+  'error.BROWSER_CONTROL_FAILED':
+    'The browser control connection was lost and the environment was stopped. Restart it; if this repeats, check runtime history.',
+  'error.BROWSER_CONTROL_TIMEOUT':
+    'The browser stopped responding to control requests and the environment was stopped. Restart it; if this repeats, check runtime history.',
+  'error.BROWSER_PROXY_CONTROL_FAILED':
+    'Automatic proxy authentication could not continue. The environment was stopped to protect its proxy settings. Check the proxy and retry.',
+  'error.BROWSER_RESTORE_FAILED':
+    'Previous browser windows could not be opened. Your profile was preserved; retry starting.',
   'storage.maintenanceHelp':
     'Clean up completed history only. Environments, sign-in sessions and browser data are not deleted.',
   'storage.showMaintenance': 'Show cleanup options',
@@ -203,7 +266,7 @@ export const lifecycleMessages = {
   'life.cap.unsupported': 'Unsupported',
   'life.cap.failed': 'Verification failed',
   'life.capHelp':
-    'Declared capabilities are separate from version-specific observations. Unverified does not mean supported.',
+    'Unverified means the capability is declared but lacks local test evidence. After a verified download, disposable offline checks test CDP, screenshots, file upload, User-Agent and timezone. Proxy and WebRTC need dedicated network scenarios. Basic checks do not certify the provider or fingerprint behavior.',
   'life.sessions': 'Browser sessions',
   'life.operations': 'Operations',
   'life.endedAt': 'Ended',

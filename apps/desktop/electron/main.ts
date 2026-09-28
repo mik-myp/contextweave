@@ -232,6 +232,7 @@ if (hasInstanceLock)
         ...createAppUpdateHandlers(updates),
         ...createAppLogHandlers(applicationLogs, (text) => clipboard.writeText(text)),
         ...createAppHandlers({
+          copyText: (text) => clipboard.writeText(text),
           getInfo: () => ({
             name: 'ContextWeave',
             version: app.getVersion(),

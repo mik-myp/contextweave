@@ -24,6 +24,23 @@ const autoAttach = {
   filter: [{ type: 'page' }, { type: 'iframe' }, { exclude: true }],
 }
 
+export class BrowserSettingsError extends Error {
+  constructor(
+    readonly code:
+      'BROWSER_CONTROL_TIMEOUT' | 'BROWSER_CONTROL_FAILED' | 'BROWSER_PROXY_CONTROL_FAILED',
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+type QueuedCommand = {
+  sessionId?: string
+  timer: ReturnType<typeof setTimeout>
+  dispatch(): void
+  reject(error: Error): void
+}
+
 type PendingCommand = {
   resolve: (result: Record<string, unknown>) => void
   reject: (error: Error) => void
@@ -44,8 +61,8 @@ export async function connectBrowserSettings(
   signal?.throwIfAborted()
   if (settings.language === 'auto' || settings.timezone === 'auto')
     throw new Error('IP_LOCALE_FAILED')
-  const needsOverrides = !!proxy || settings.language !== 'system' || settings.timezone !== 'system'
-  if (!needsOverrides && !onNoPages) return () => {}
+  const needsOverrides = settings.language !== 'system' || settings.timezone !== 'system'
+  if (!proxy && !needsOverrides && !onNoPages) return () => {}
   const socket = new WebSocket(browserControlUrl(access), {
     headers: { Authorization: `Bearer ${access.token}` },
     handshakeTimeout: 5000,
@@ -53,7 +70,18 @@ export async function connectBrowserSettings(
     perMessageDeflate: false,
   })
   const pending = new Map<number, PendingCommand>()
+  // The authenticated bridge admits 128 outstanding commands per client. A page can
+  // pause hundreds of requests at once: queue locally instead of tripping its limit.
+  const queued: QueuedCommand[] = []
+  const drain = () => {
+    while (!closed && pending.size < 32 && queued.length) {
+      const command = queued.shift()!
+      clearTimeout(command.timer)
+      command.dispatch()
+    }
+  }
   const attached = new Set<string>()
+  const parents = new Map<string, string>()
   const initializing = new Set<Promise<void>>()
   const authAttempts = new Set<string>()
   let sequence = 0
@@ -98,7 +126,12 @@ export async function connectBrowserSettings(
       command.reject(new Error('Browser settings connection closed'))
     }
     pending.clear()
+    for (const command of queued.splice(0)) {
+      clearTimeout(command.timer)
+      command.reject(new Error('Browser settings connection closed'))
+    }
     attached.clear()
+    parents.clear()
     authAttempts.clear()
   }
   const closeForNoPages = () => {
@@ -121,59 +154,111 @@ export async function connectBrowserSettings(
         reject(new Error('Browser settings connection closed'))
         return
       }
-      const timeoutMs =
-        !ready && startupDeadline !== undefined ? startupDeadline - performance.now() : 5000
-      if (timeoutMs <= 0) {
-        reject(new Error(`Browser settings command timed out: ${method}`))
-        return
+      const dispatch = () => {
+        if (closed || (sessionId && !attached.has(sessionId))) {
+          reject(new Error('Browser target detached'))
+          return
+        }
+        const timeoutMs =
+          !ready && startupDeadline !== undefined ? startupDeadline - performance.now() : 5000
+        const timeout = () =>
+          new BrowserSettingsError(
+            'BROWSER_CONTROL_TIMEOUT',
+            `Browser settings command timed out: ${method}`,
+          )
+        if (timeoutMs <= 0) {
+          reject(timeout())
+          return
+        }
+        const id = ++sequence
+        const timer = setTimeout(() => {
+          // Give buffered replies a turn after a busy event loop.
+          setImmediate(() => {
+            if (!pending.delete(id)) return
+            reject(timeout())
+            queueMicrotask(drain)
+          })
+        }, timeoutMs)
+        pending.set(id, { resolve, reject, timer, sessionId })
+        try {
+          socket.send(JSON.stringify({ id, method, params, sessionId }))
+        } catch (cause) {
+          clearTimeout(timer)
+          pending.delete(id)
+          reject(cause instanceof Error ? cause : new Error('Browser settings command failed'))
+          queueMicrotask(drain)
+        }
       }
-      const id = ++sequence
-      const timer = setTimeout(() => {
-        // Timers can run before queued socket messages after a busy main-loop turn.
-        setImmediate(() => {
-          if (!pending.delete(id)) return
-          reject(new Error(`Browser settings command timed out: ${method}`))
-        })
-      }, timeoutMs)
-      pending.set(id, { resolve, reject, timer, sessionId })
-      try {
-        socket.send(JSON.stringify({ id, method, params, sessionId }))
-      } catch (cause) {
-        clearTimeout(timer)
-        pending.delete(id)
-        reject(cause instanceof Error ? cause : new Error('Browser settings command failed'))
+      if (pending.size < 32 && queued.length === 0) dispatch()
+      else {
+        if (queued.length >= 4096) {
+          reject(new BrowserSettingsError('BROWSER_CONTROL_FAILED', 'Browser settings queue full'))
+          return
+        }
+        const command: QueuedCommand = {
+          sessionId,
+          dispatch,
+          reject,
+          timer: setTimeout(
+            () => {
+              const index = queued.indexOf(command)
+              if (index < 0) return
+              queued.splice(index, 1)
+              reject(
+                new BrowserSettingsError(
+                  'BROWSER_CONTROL_TIMEOUT',
+                  'Browser settings queue timed out',
+                ),
+              )
+            },
+            !ready && startupDeadline !== undefined
+              ? Math.max(0, startupDeadline - performance.now())
+              : 30000,
+          ),
+        }
+        queued.push(command)
       }
     })
-  const configure = async (sessionId: string) => {
+  const override = async (
+    method: 'Emulation.setTimezoneOverride' | 'Emulation.setLocaleOverride',
+    params: Record<string, unknown>,
+    sessionId: string,
+  ) => {
+    try {
+      return await send(method, params, sessionId)
+    } catch (cause) {
+      // Chromium shares these overrides between targets in one renderer process.
+      // Every target in this owned environment receives the same configuration.
+      // A sibling's existing override is not a control failure; other errors still fail closed.
+      const duplicate =
+        method === 'Emulation.setLocaleOverride'
+          ? 'Another locale override is already in effect'
+          : 'Timezone override is already in effect'
+      if (cause instanceof Error && cause.message === duplicate) return {}
+      throw cause
+    }
+  }
+  const configure = async (sessionId: string, type: string) => {
     try {
       // Pause future targets until overrides are in place; do not patch page JavaScript.
       await send('Target.setAutoAttach', autoAttach, sessionId)
+      if (type === 'tab') return
       if (settings.timezone !== 'system')
-        await send('Emulation.setTimezoneOverride', { timezoneId: settings.timezone }, sessionId)
-      if (settings.language !== 'system')
-        await send('Emulation.setLocaleOverride', { locale: settings.language }, sessionId)
-      if (proxy)
-        await send(
-          'Fetch.enable',
-          {
-            // Chromium rejects empty patterns when auth is enabled. Request-stage ACKs
-            // do not wait for the remote response; never intercept the response body.
-            patterns: [
-              { urlPattern: 'http://*', requestStage: 'Request' },
-              { urlPattern: 'https://*', requestStage: 'Request' },
-            ],
-            handleAuthRequests: true,
-          },
+        await override(
+          'Emulation.setTimezoneOverride',
+          { timezoneId: settings.timezone },
           sessionId,
         )
+      if (settings.language !== 'system')
+        await override('Emulation.setLocaleOverride', { locale: settings.language }, sessionId)
       await send('Runtime.runIfWaitingForDebugger', {}, sessionId)
     } catch (cause) {
       // Closing a tab during setup is normal; other failures invalidate this runtime.
       if (attached.has(sessionId)) fail(cause)
     }
   }
-  const requestFailure = (sessionId: string, cause: unknown) => {
-    if (!attached.has(sessionId) || closed) return
+  const requestFailure = (sessionId: string | undefined, cause: unknown) => {
+    if ((sessionId && !attached.has(sessionId)) || closed) return
     // Navigation/cancellation can invalidate a request before its continuation arrives.
     if (
       cause instanceof Error &&
@@ -182,7 +267,11 @@ export async function connectBrowserSettings(
       )
     )
       return
-    fail(cause)
+    fail(
+      cause instanceof BrowserSettingsError
+        ? cause
+        : new BrowserSettingsError('BROWSER_PROXY_CONTROL_FAILED', 'Browser proxy control failed'),
+    )
   }
   socket.addEventListener('message', (event) => {
     if (closed) return
@@ -196,6 +285,7 @@ export async function connectBrowserSettings(
         pending.delete(message.id)
         if (message.error) command.reject(new Error(message.error.message))
         else command.resolve(message.result ?? {})
+        queueMicrotask(drain)
       } else if (
         onNoPages &&
         ['Target.targetCreated', 'Target.targetInfoChanged'].includes(message.method ?? '')
@@ -213,24 +303,25 @@ export async function connectBrowserSettings(
       } else if (message.method === 'Target.attachedToTarget') {
         const target = attachedSchema.parse(message.params)
         attached.add(target.sessionId)
-        const task = configure(target.sessionId)
+        if (message.sessionId) parents.set(target.sessionId, message.sessionId)
+        const task = configure(target.sessionId, target.targetInfo.type)
         initializing.add(task)
         void task.finally(() => initializing.delete(task))
-      } else if (message.method === 'Fetch.requestPaused' && message.sessionId) {
+      } else if (message.method === 'Fetch.requestPaused') {
         const request = z.object({ requestId: z.string() }).parse(message.params)
         void send(
           'Fetch.continueRequest',
           { requestId: request.requestId },
           message.sessionId,
-        ).catch((cause) => requestFailure(message.sessionId!, cause))
-      } else if (message.method === 'Fetch.authRequired' && message.sessionId) {
+        ).catch((cause) => requestFailure(message.sessionId, cause))
+      } else if (message.method === 'Fetch.authRequired') {
         const request = z
           .object({
             requestId: z.string(),
             authChallenge: z.object({ source: z.string(), origin: z.string() }),
           })
           .parse(message.params)
-        const key = `${message.sessionId}:${request.requestId}`
+        const key = `${message.sessionId ?? 'browser'}:${request.requestId}`
         let matchesProxy = false
         try {
           const origin = new URL(request.authChallenge.origin)
@@ -258,18 +349,33 @@ export async function connectBrowserSettings(
                 : { response: matchesProxy ? 'CancelAuth' : 'Default' },
           },
           message.sessionId,
-        ).catch((cause) => requestFailure(message.sessionId!, cause))
+        ).catch((cause) => requestFailure(message.sessionId, cause))
       } else if (message.method === 'Target.detachedFromTarget') {
         const detached = z.object({ sessionId: z.string() }).parse(message.params)
-        attached.delete(detached.sessionId)
+        const removed = new Set([detached.sessionId])
+        for (const parent of removed)
+          for (const [child, owner] of parents) if (owner === parent) removed.add(child)
+        for (const sessionId of removed) {
+          attached.delete(sessionId)
+          parents.delete(sessionId)
+        }
         for (const [id, command] of pending) {
-          if (command.sessionId !== detached.sessionId) continue
+          if (!command.sessionId || !removed.has(command.sessionId)) continue
           clearTimeout(command.timer)
           pending.delete(id)
           command.reject(new Error('Browser target detached'))
         }
+        for (let index = queued.length - 1; index >= 0; index--) {
+          const command = queued[index]
+          if (!command.sessionId || !removed.has(command.sessionId)) continue
+          queued.splice(index, 1)
+          clearTimeout(command.timer)
+          command.reject(new Error('Browser target detached'))
+        }
+        queueMicrotask(drain)
         for (const key of authAttempts)
-          if (key.startsWith(`${detached.sessionId}:`)) authAttempts.delete(key)
+          if ([...removed].some((sessionId) => key.startsWith(`${sessionId}:`)))
+            authAttempts.delete(key)
       }
     } catch (cause) {
       fail(cause)
@@ -321,6 +427,28 @@ export async function connectBrowserSettings(
         { once: true },
       )
     })
+    if (proxy) {
+      // Browser-scoped Fetch also covers a target's very first navigation and
+      // restored/background requests, before a page session can be configured.
+      await send('Fetch.enable', {
+        patterns: [
+          { urlPattern: 'http://*', requestStage: 'Request' },
+          { urlPattern: 'https://*', requestStage: 'Request' },
+        ],
+        handleAuthRequests: true,
+      })
+    }
+    // A lifecycle-only observer must not attach/pause page execution or interfere
+    // with independent Worker/Playwright CDP clients. Discovery alone is sufficient.
+    if (needsOverrides) {
+      // Attach the tab container before its renderer exists. Attaching page targets
+      // directly can be too late to pause scripts during native session restoration.
+      await send('Target.setAutoAttach', {
+        ...autoAttach,
+        filter: [{ type: 'tab' }, { exclude: true }],
+      })
+      while (initializing.size) await Promise.all([...initializing])
+    }
     if (onNoPages) {
       await send('Target.setDiscoverTargets', {
         discover: true,
@@ -334,12 +462,6 @@ export async function connectBrowserSettings(
           pages.add(target.targetId)
           sawPage = true
         }
-    }
-    // A lifecycle-only observer must not attach/pause page execution or interfere
-    // with independent Worker/Playwright CDP clients. Discovery alone is sufficient.
-    if (needsOverrides) {
-      await send('Target.setAutoAttach', autoAttach)
-      while (initializing.size) await Promise.all([...initializing])
     }
     signal?.throwIfAborted()
     if (failure) throw failure

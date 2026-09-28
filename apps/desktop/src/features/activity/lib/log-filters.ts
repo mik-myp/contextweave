@@ -39,7 +39,7 @@ export function filterAppLogs(
 ) {
   if (hasInvalidLogTimeRange(filters)) return []
   const from = filters.from ? new Date(filters.from).getTime() : -Infinity
-  // datetime-local has minute precision. Include the entire ending minute.
+  // Date-range bounds have minute precision. Include the entire ending minute.
   const to = filters.to ? new Date(filters.to).getTime() + 59_999 : Infinity
   const minDuration = Number(filters.minDuration)
   const terms = filters.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)

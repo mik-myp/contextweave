@@ -1,4 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { SettingsBookmarksPage } from '@/features/bookmarks/pages/settings-bookmarks-page'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/settings/bookmarks')({ component: SettingsBookmarksPage })
+// Preserve links from older builds without keeping a duplicate settings page.
+export const Route = createFileRoute('/settings/bookmarks')({
+  beforeLoad: () => {
+    throw redirect({ to: '/bookmarks', replace: true })
+  },
+})

@@ -1,36 +1,36 @@
 import type { bookmarkMessages as zh } from './zh-CN-bookmarks'
 
 export const bookmarkMessages: Record<keyof typeof zh, string> = {
-  'bookmarks.title': 'Default bookmarks',
-  'bookmarks.description':
-    'Manage the bookmark template for new browser profiles in this workspace.',
-  'bookmarks.scopeHelp':
-    'Bookmarks are added to the bookmarks bar in this order only before the first launch of a confirmed uninitialized profile. Existing profiles, including cloned and imported data, are left unchanged. Saving does not update previously launched profiles, open websites or change startup pages.',
+  'bookmarks.openOnStart': 'Open on startup',
+  'bookmarks.drag': 'Drag to reorder',
+  'bookmarks.dragHelp':
+    'Press Space to pick up, arrow keys to move, Space to drop, Escape to cancel.',
+  'bookmarks.dragging': 'Bookmark picked up',
+  'bookmarks.dragPosition': 'Move to position {position}',
+  'bookmarks.dragged': 'Order updated; save to apply',
+  'bookmarks.dragCancelled': 'Reordering cancelled',
+  'bookmarks.undoDelete': 'Undo removal',
+  'error.BOOKMARKS_STARTUP_FAILED':
+    'Startup bookmarks could not be opened. Check the browser and bookmark settings, then retry.',
+  'bookmarks.list': 'Bookmark list',
+  'bookmarks.title': 'Bookmarks',
   'bookmarks.add': 'Add bookmark',
-  'bookmarks.edit': 'Edit bookmark',
   'bookmarks.delete': 'Delete bookmark',
-  'bookmarks.up': 'Move up',
-  'bookmarks.down': 'Move down',
   'bookmarks.name': 'Name',
   'bookmarks.url': 'URL',
   'bookmarks.urlHelp':
     'Use an HTTP(S) URL without a username, password, spaces or control characters.',
   'bookmarks.invalidName': 'Enter a name of 1–120 characters.',
-  'bookmarks.apply': 'Apply to list',
-  'bookmarks.empty': 'No default bookmarks',
-  'bookmarks.emptyHelp':
-    'The list starts empty. Add bookmarks, or leave it empty to add none to new profiles.',
-  'bookmarks.save': 'Save template',
+  'bookmarks.empty': 'No bookmarks yet',
+  'bookmarks.emptyHelp': 'Add a bookmark and choose whether to open it when an environment starts.',
+  'bookmarks.save': 'Save changes',
   'bookmarks.saving': 'Saving…',
   'bookmarks.saved':
-    'Template saved. Only profiles initialized for the first time from now on are affected.',
+    'Bookmarks saved. Startup choices apply the next time you start an environment.',
   'bookmarks.unsaved': 'List changes have not been saved.',
   'bookmarks.reset': 'Discard changes',
   'bookmarks.conflict':
-    'The template changed elsewhere. Note your edits, then discard changes and edit again.',
-  'bookmarks.deleteConfirm': 'Remove from the default bookmark list?',
-  'bookmarks.deleteHelp':
-    'Takes effect when you save the template. Bookmarks in existing browser profiles are not deleted.',
+    'Bookmarks changed elsewhere. Note your edits, then discard changes and edit again.',
   'error.BOOKMARKS_CONFLICT':
     'Default bookmarks changed elsewhere. Your edits are kept; reload the template before editing again.',
   'error.BOOKMARKS_SETTINGS_INVALID':

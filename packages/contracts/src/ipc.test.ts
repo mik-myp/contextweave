@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appInfoSchema, appPathsSchema, customKernelSourceSchema, externalUrlSchema } from './index'
+import { appInfoSchema, appPathsSchema, appPathKeySchema, customKernelSourceSchema, externalUrlSchema } from './index'
 
 describe('application IPC contracts', () => {
   it('validates platform-aware app information without accepting private extra fields', () => {
@@ -34,4 +34,12 @@ describe('application IPC contracts', () => {
         .success,
     ).toBe(false)
   })
+})
+
+it('limits copyable data addresses to the declared application path keys', () => {
+  expect(appPathKeySchema.options).toEqual(['userData', 'dataRoot', 'environmentRoot', 'kernelRoot', 'logRoot'])
+  for (const key of appPathKeySchema.options) expect(appPathKeySchema.safeParse(key).success).toBe(true)
+  for (const input of ['../private', 'clipboard', '__proto__', '', null, { key: 'dataRoot' }]) {
+    expect(appPathKeySchema.safeParse(input).success).toBe(false)
+  }
 })

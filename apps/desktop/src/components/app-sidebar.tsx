@@ -3,6 +3,7 @@
 import * as React from 'react'
 import {
   ScrollTextIcon,
+  BookmarkIcon,
   BoxesIcon,
   TagsIcon,
   Globe2Icon,
@@ -37,6 +38,11 @@ export function AppSidebar({
       title: t('nav.tags'),
       url: appRoutes.tags,
       icon: <TagsIcon className="text-muted-foreground" />,
+    },
+    {
+      title: t('bookmarks.title'),
+      url: appRoutes.bookmarks,
+      icon: <BookmarkIcon className="text-muted-foreground" />,
     },
     {
       title: t('nav.kernels'),

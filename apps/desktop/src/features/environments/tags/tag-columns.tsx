@@ -58,6 +58,7 @@ export function tagColumns({
     {
       id: 'actions',
       header: t('tags.actions'),
+      meta: { label: t('tags.actions'), align: 'end' },
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => (

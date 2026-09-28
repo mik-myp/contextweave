@@ -1,3 +1,4 @@
+import { restoreBrowserWindows } from './browser-window-restore'
 import { initializeDefaultBookmarks } from './browser-bookmarks'
 import { createStartupBudget, confirmProcessIdentity } from './runtime-startup'
 import { applyIpLocale, type IpLocaleService } from './ip-locale'
@@ -15,6 +16,7 @@ import {
 } from '@contextweave/contracts'
 import {
   acquireRuntimeLock,
+  BookmarkSettingsRepository,
   isSqliteFailure,
   inspectRuntimeLock,
   isRuntimeProcessAlive,
@@ -25,7 +27,11 @@ import {
   type WorkspacePaths,
 } from '@contextweave/storage'
 import type { LaunchPlan } from '@contextweave/kernel-core'
-import { prepareBrowserProfile, connectBrowserSettings } from '../browser-settings'
+import {
+  prepareBrowserProfile,
+  connectBrowserSettings,
+  BrowserSettingsError,
+} from '../browser-settings'
 import { resolveEnvironmentProxy } from '../environment-management'
 import type { KernelService } from './kernel-service'
 import type { CredentialStore } from './credentials'
@@ -40,6 +46,7 @@ type Session = {
   stopReason?: 'USER_STOPPED' | 'BROWSER_CLOSED'
   stopRequested: boolean
   startFailed: boolean
+  failureReason?: BrowserSettingsError['code']
   processIdentity?: string
   releaseKernel: () => void
   closeProxy?: () => Promise<void>
@@ -54,6 +61,7 @@ type RuntimeDriver = {
     signal: AbortSignal,
     deadline?: number,
   ): Promise<string | undefined>
+  restore: typeof restoreBrowserWindows
   settings: typeof connectBrowserSettings
   close?: (control: BrowserControl) => Promise<void>
 }
@@ -99,6 +107,7 @@ const defaultDriver: RuntimeDriver = {
     }),
   ready: (control, signal, deadline) => control.ready(signal, deadline),
   settings: connectBrowserSettings,
+  restore: restoreBrowserWindows,
   close: (control) => control.closeBrowser(),
 }
 
@@ -182,6 +191,10 @@ export function createRuntimeSupervisor(options: {
         repository,
         environmentConfigSchema.parse(JSON.parse(record.configJson)),
       )
+      const startupUrls = new BookmarkSettingsRepository(repository)
+        .get()
+        .items.filter((bookmark) => bookmark.openOnStart === true)
+        .map((bookmark) => bookmark.url)
       control = await driver.openControl()
       const port = control.port
       controller.signal.throwIfAborted()
@@ -219,7 +232,7 @@ export function createRuntimeSupervisor(options: {
       const plan = kernels.buildLaunchPlan(record, config, transport?.args)
       initializeDefaultBookmarks(repository, record, sessionId, options.paths)
       prepareBrowserProfile(record.dataDir, config.commonConfig.language, Boolean(config.proxy))
-      const child = driver.launch(plan)
+      const child = driver.launch({ ...plan, args: [...plan.args, '--no-startup-window'] })
       child.once('error', () => {
         controller.abort()
         if (managed) managed.startFailed = true
@@ -273,7 +286,7 @@ export function createRuntimeSupervisor(options: {
           sessionId,
           failed ? 'crashed' : 'stopped',
           session.startFailed
-            ? 'START_FAILED'
+            ? (session.failureReason ?? 'START_FAILED')
             : session.stopRequested
               ? (session.stopReason ?? 'USER_STOPPED')
               : signal
@@ -330,11 +343,20 @@ export function createRuntimeSupervisor(options: {
       settingsConnection.close = await driver.settings(
         settingsLease.access,
         config.commonConfig,
-        () => {
+        (error) => {
+          const reason =
+            error instanceof BrowserSettingsError ? error.code : 'BROWSER_CONTROL_FAILED'
+          if (starting.has(id)) {
+            session.startFailed = true
+            session.failureReason = reason
+            controller.abort()
+            return
+          }
           // Closing the browser normally disconnects CDP before the OS reports process exit.
           void waitForChildExit(child, 3000).then((exited) => {
             if (exited || session.stopRequested) return
             session.startFailed = true
+            session.failureReason = reason
             terminateChild(child, 'SIGTERM', session.processIdentity)
           })
         },
@@ -350,6 +372,10 @@ export function createRuntimeSupervisor(options: {
       )
       budget.throwIfAborted()
       if (!isChildRunning(child)) throw new Error('START_FAILED')
+      await driver.restore(plan, budget.signal)
+      await control.openStartupBookmarks(startupUrls, budget.signal, budget.deadline)
+      budget.throwIfAborted()
+      if (!isChildRunning(child) || session.startFailed) throw new Error('START_FAILED')
       repository.updateRuntimeSession(sessionId, 'running')
       repository.updateStatus(id, 'running')
       changed()
@@ -382,6 +408,8 @@ export function createRuntimeSupervisor(options: {
       repository.updateStatus(id, cancelled ? 'stopped' : 'error')
       changed()
       const known = [
+        'BROWSER_RESTORE_FAILED',
+        'BOOKMARKS_STARTUP_FAILED',
         'BOOKMARKS_SETTINGS_INVALID',
         'BOOKMARKS_PROFILE_UNSAFE',
         'BOOKMARKS_PROFILE_CHANGED',

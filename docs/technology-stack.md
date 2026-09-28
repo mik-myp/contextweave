@@ -15,7 +15,7 @@
 ### 2026-09-28 个人工作流调整的实现边界
 
 - 标签是 storage 中工作空间内的持久词典，schema 14 只新增 `environment_tags`；沿用字符串关联兼容旧环境和保存筛选，事务内同步重命名/删除。
-- 默认书签复用 `app_settings`、专属 contracts 和最小白名单 IPC，在受控 Main 持锁且资料尚未初始化时种入 Chromium 书签栏；不建设通用配置平台，不使用扩展、远端同步或自动开页。
+- 默认书签复用 `app_settings`、专属 contracts 和最小白名单 IPC，在受控 Main 持锁且资料尚未初始化时种入 Chromium 书签栏；不建设通用配置平台，不使用扩展或远端同步；仅显式勾选的书签在启动认证/设置屏障后通过私有 CDP 打开。
 - 更新安装边界使用 Electron 内建 `original-fs.promises`，避免 ASAR 虚拟文件系统占用安装镜像或干扰清理；这是受控边界注入，不是新的 npm 依赖，也不全局关闭 ASAR。
 - UI 继续使用现有 shadcn/Base UI、TanStack Table 与统一分页底座。注册表只借鉴有真实消费者的交互；不安装另一套组件库或自动化平台。
 
@@ -1017,7 +1017,7 @@ v0.1.18 将桌面 Vitest 文件 worker 上限收敛到 2；v0.1.19 的后续 Win
 
 截图登记/预算维持原 contracts、Main、repository、schema 与失败保护，只将 Renderer 普通设置中的入口改为显式展开后按需加载的高级诊断；历史维护与命令核对收起内部标识，未知结果仍按原规则处理，不自动重发有副作用的操作。所有既存数据与升级链保持兼容。
 
-发布说明用 UTF-8 Markdown 和现有 Node 工具校验，不引入模板框架/解析库。只读构建阶段验证并上传版本说明；具有写权限的发布任务只读取已验证文件与附件创建草稿，不执行源代码构建或扫描。CI 仅由 PR 触发，主分支 Build 与 tag Release 仍包含原有三平台源码检查和各自原生/包体验证。
+发布说明用 UTF-8 Markdown 和现有 Node 工具校验，不引入模板框架/解析库。只读构建阶段验证并上传版本说明；具有写权限的发布任务只读取已验证文件与附件创建草稿，不执行源代码构建或扫描。CI 仅由 PR 触发，tag Release 保留三平台源码检查及各自原生/包体验证；按下文维护者追加决定移除主分支安装包 Build。
 
 
 ## 31. 维护者授权的个人工作流调整（未发布）
@@ -1031,3 +1031,47 @@ UI 继续使用现有 shadcn `base-nova` / Base UI、Public Sans、主题语义 
 ### v0.3.0 固定来源的适配边界（2026-09-28）
 
 沿用现有 `kernel-fingerprint-chromium` 包、Registry与Main安装服务。已核验Apostate/pocchian具体发行物的源码与notice后，静态 `source-reviewed` 注册只授权这些精确平台/版本/摘要，不扩大旧提供方的通用major版本白名单。Main提供宿主逻辑核数，Adapter解释各提供方参数；Renderer不拼接新参数、不提供任意profile JSON或CDP入口。提供方名称与许可各自展示，旧manifest缺provider字段只允许原namespace。进入原生验收不等于验收通过，最终矩阵与发布门禁记录在版本台账17.35；本次不增加库/服务端/内核构建工程。
+
+
+### 2026-09-28 用户体验收敛与浏览器启动屏障
+
+不新增依赖、公共任意 IPC 或数据库表。沿用现有 Base UI 组件、命令/批任务 contracts 与持久回执：前台入口收敛到按需面板；依本轮后续决定，历史统一在日志查看，故障排查 UI 移除。历史清理仍为显式预览/确认，截图预算仍保护已登记产物。
+
+浏览器控制继续使用受控 pipe 和认证的 loopback 转发。启动屏障须先建立认证/设置监听，再允许 Chromium 恢复旧窗口，不能关闭代理认证或改写用户会话文件；所有辅助进程须限定到已验证内核与当前锁定资料目录，限制等待时间并随取消清理。设置客户端实行有界在途指令调度，保留控制桥现有安全限额；运行失败只持久化固定错误码，不记录代理秘密或 CDP 原始错误。
+
+
+真实 Chromium 验证进一步确认：仅暂停新目标的 JavaScript 不能阻止首个导航先触发代理认证。因此认证改为 browser 级 Fetch，在恢复任何用户窗口前完成启用；不再等页面级会话附加，也不创建用户可见/隐藏的认证探测页。保留本地代理的一次性认证与严格挑战源匹配，不向网站提供代理凭据。
+
+同一 renderer 的页面共享语言/时区 override；只把 Chromium 的两个精确“已有 override”响应视为重复配置，其他响应仍按错误处理。从 browser 自动附加 tab 容器，再在容器内附加 page/iframe，保证旧会话的 renderer 创建前已经建立暂停屏障；语言/时区收到成功回执后才恢复页面，不能靠并发发送 resume 绕过超时。直接附加已开始恢复的 page 会过晚，甚至在设置回执前执行首段脚本。本地验收检查页面第一段脚本读到的时区，而非只检查最终状态。
+
+
+本轮新增显式原生验收命令 `pnpm test:runtime-stability --executable "$CHROMIUM_EXECUTABLE"`：仅使用调用者指定的已核验 Chromium、临时资料和 loopback 网站/带认证上游代理；不下载内核，不读取真实账号或访问外部网站。覆盖首次启动、四标签并发请求、退出后旧会话恢复、首段脚本时区、关闭后补开标签，以及运行设置连接和窗口生命周期无异常。该命令不是提供方/跨平台认证，不能把本机通过扩写成 Windows/Linux 或全部指纹内核通过。
+
+
+本轮本机记录（2026-09-28，macOS arm64 / Node 22.23.3）：`pnpm check`、Electron 源码构建和 `scripts/smoke-history-cleanup.mjs` 通过；上述原生稳定性脚本分别在 Chrome 151.0.7922.34 与 153.0.8010.54 通过（各恢复四个旧标签、完成 900 个资源请求、关闭并补开标签、设置失败为零）。真实 Electron 页面检查确认环境页无常驻任务/记录入口，本地存储无维护/截图诊断面板，故障排查区域当时默认折叠；按本轮后续决定已完整移除该 UI。未替换用户已安装应用，未执行 Windows/Linux 或所有指纹提供方的原生验收。
+
+### 2026-09-28 工作台组件与受控复制
+
+- 设计依据：已读取 `black-ant/Ant-Browser` 的 `frontend/src/modules/browser/pages/BookmarkSettingsPage.tsx`。只借鉴顶部操作栏、横向名称/网址列表、底部新增入口，不复制无明确许可证的源码，不实现其旧资料同步；本轮后续明确授权的启动打开由本项目受控 Main 独立实现，见下文。
+- shadcn 官方 Base Date Picker（`https://ui.shadcn.com/docs/components/base/date-picker`）明确是 Calendar 与 Popover 组合，而非独立注册表条目。采用官方 Calendar、现有 Base Popover；新增 react-day-picker / date-fns（MIT、纯 JS、无原生模块/运行时网络/遥测），仅供本地日历与格式化，替换成本限于日期组件。
+- 官方目录核验 `@coss`（`https://coss.com/ui/r/{name}.json`），采用其去重 Toast 模式并适配已有 Base UI toast，保留本项目主题、可关闭反馈与按任务 ID 去重，不整套安装样式。新增组件源码在采用前核验许可，来源与实际组件记录在本节。
+- Clipboard IPC：contracts 枚举 appPaths 的键；Preload 参数/返回值校验；Main 使用既有 sender 验证，仅写入受控路径，不接受任意 Renderer 文本、不放开浏览器权限。
+- 构建政策：删除重复的分支 push 安装包 workflow，Release tag 为唯一安装包入口；PR CI 保留。2026-09-28 已核验 GitHub run 36390461314，失败在 Windows Run checks 的书签文件身份校验与提供方测试 fixture，而不是 electron-builder。
+
+实际采用与追溯：`pnpm dlx shadcn@latest add calendar @coss/kbd` 添加 Base Calendar 和 coss Kbd/KbdGroup；保留原有 Button，不覆盖主题。Kbd 用于全局搜索的键盘快捷键，Base Calendar/Popover 用于日志的日期时间筛选。coss 来源仅限 `apps/ui/`（该目录由上游 README/LICENSING.md 明确豁免为 MIT，不采用仓库其他 AGPL 目录），具体源码 blob `bca72b133c903828070fb56de525f9bae31dbed2`；许可文本在根目录 THIRD_PARTY_NOTICES.md。Kbd 无新增依赖/原生/网络/遥测，替换成本为一个展示组件。
+
+Windows 书签校验：Node 22.15.0 所带 libuv `deps/uv/src/win/fs.c` 使用 `VolumeSerialNumber.QuadPart`，新版 libuv 改为 `LowPart`；旧运行时的 stat/fstat 上半部不一致可触发错误拒绝。仅在 Windows 比较卷号有效低 32 位，同时仍严格比较文件编号、类型与所有父目录锚点；其他平台保持完整 dev 比较。排他创建、原子 link、回滚归属校验及不覆盖旧资料的保护不变。提供方 provenance 测试的宿主参数改为实际平台/架构，避免在 Windows 上用 Darwin 的适配器发现路径。真实 Windows 复验需由 PR CI 执行，不以 macOS 单测替代。
+
+### 行内编辑、拖拽与启动网址
+
+采用 shadcn 官方目录的 `@diceui` Base Sortable（注册表 `https://diceui.com/r/{style}/{name}.json`；MIT，源码 sadmann7/diceui），组合现有 Input、Field、Checkbox、Button。新增 @dnd-kit/core、sortable、modifiers、utilities：均 MIT、纯 JS、无原生/运行时网络/遥测；用于鼠标/触摸/键盘拖拽及读屏提示，替换范围限于 Sortable 组件及书签行。保留项目 Base UI 版本及主题，注册表源组件有严格类型/可访问性适配时记录原因。持久草稿由 bookmarks feature hook 管理而非通用组件。注册表适配使用 Base UI 原生 ref 合并，替换额外 compose-refs helper；dnd-kit 的键盘 activator.preventDefault 是防止滚屏，不能据此跳过拖拽提交，取消只走 onDragCancel。
+
+bookmarkSchema 增加可选 boolean openOnStart，缺省语义 false，兼容旧 JSON；Main 在私有 BrowserControl 增加受限打开书签方法，验证 HTTP(S) 白名单、去重、超时/取消，与已启用的认证/设置会话共用浏览器 pipe。Renderer 不接收 CDP 连接、任意目标或文件系统能力。DataTable 复用现有 TanStack Table v9，服务端历史游标保留，不能引入第二套 TanStack 大版本或 Radix 基础。
+
+### 2026-09-28 范围选择、批量删除和能力证据
+
+复用已安装的 Calendar(mode=range)、Base Popover、Field/Input，无新增日期/表格/拖拽库。DataTable 在共享渲染层固定 actions 列并右对齐；简单 Table 的操作列同步采用相同布局规范。标签/内核选择复用 selectionColumn 和 DataTableBulkActions；提交逻辑属于 feature hook，通过专属有界 bulk IPC 在 Main 内逐项调用已有受保护删除服务；不提供任意批量 IPC 调用通道，Renderer 离开页面不会截断已接受的删除操作。
+
+新增内核命名/复验的专属运行时 schema 与 Preload/Main 白名单接口。名称、能力证据使用 app_settings，不新增表或迁移；证据绑定当前可执行文件身份，文件变更失效。能力探测使用 Main-owned 私有 CDP pipe、临时用户目录与离线页面，运行验证不等于提供方指纹验收。自动探测在安装归属提交后执行；失败保留已校验的安装物并显示真实结果，不把失败能力伪造为 verified。保留最低权限与运行中删除保护。
+
+安装请求以 strict `{ id, name? }` contract 传递可选显示名称，与重命名复用 80 字符 / 控制字符校验。storage repository 将 manifest、安装登记和可选名称在同一事务提交，无数据库 schema 变化；名称只在安装登记成功后写入设置；下载失败不提前改变名称，留空恢复默认，不改变版本或来源。可执行文件证据标识使用路径、设备、inode、大小及内容修改时间；不使用 ctime，因为 macOS 启动时更新文件使用元数据也会改变 ctime，不能误报成内核内容变化。

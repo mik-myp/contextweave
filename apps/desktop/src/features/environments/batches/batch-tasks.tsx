@@ -1,3 +1,6 @@
+import type { ColumnDef } from '@tanstack/react-table'
+import type { DataTableFeatures } from '@/components/data-table/data-table-features'
+import { CursorDataTable } from '@/components/data-table/cursor-data-table'
 import { useState } from 'react'
 import { isBatchActive, type BatchSummary } from '@contextweave/contracts'
 import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
@@ -5,7 +8,6 @@ import { useI18n } from '@/i18n'
 import { errorMessage } from '@/shared/lib/error-message'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -23,7 +25,6 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table'
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { Progress, ProgressLabel } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { useBatchPage, useBatchTask, useBatchCommand } from './use-batches'
@@ -44,6 +45,7 @@ function TaskProgress({ task }: { task: BatchSummary }) {
     </Progress>
   )
 }
+const batchRowId = (task: BatchSummary) => task.id
 export function BatchTasks({
   selectedId,
   onSelect,
@@ -54,96 +56,83 @@ export function BatchTasks({
   const { t, locale } = useI18n(),
     [cursors, setCursors] = useState<(string | null)[]>([null])
   const query = useBatchPage(cursors.at(-1) ?? null)
-  return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={t('batch.tasks')}>
-      <Alert>
-        <AlertDescription>{t('batch.help')}</AlertDescription>
-      </Alert>
-      {query.error && (
-        <Alert variant="destructive">
-          <AlertDescription>{query.error.message}</AlertDescription>
-        </Alert>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={query.isFetching}
-          onClick={() => void query.refetch()}
-        >
-          {t('batch.refresh')}
-        </Button>
-        {cursors.length > 1 && (
-          <Button variant="outline" size="sm" onClick={() => setCursors([null])}>
-            {t('batch.latest')}
-          </Button>
-        )}
-      </div>
-      {query.isPending ? (
-        <p role="status" className="flex items-center gap-2">
-          <Spinner />
-          {t('batch.loading')}
-        </p>
-      ) : query.data?.items.length ? (
-        <div className="min-h-0 overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('batch.createdAt')}</TableHead>
-                <TableHead>{t('batch.action')}</TableHead>
-                <TableHead>{t('batch.progress')}</TableHead>
-                <TableHead>{t('batch.result')}</TableHead>
-                <TableHead>{t('env.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.data.items.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    {new Date(task.createdAt).toLocaleString(locale)}
-                    <span
-                      className="block max-w-48 truncate text-xs text-muted-foreground"
-                      title={task.id}
-                    >
-                      {task.id}
-                    </span>
-                  </TableCell>
-                  <TableCell>{t(`batch.action.${task.action}`)}</TableCell>
-                  <TableCell>
-                    <TaskProgress task={task} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{t(`batch.status.${task.status}`)}</Badge>
-                    <p className="text-xs text-muted-foreground">
-                      {t('batch.counts')
-                        .replace('{success}', String(task.counts.succeeded))
-                        .replace('{failed}', String(task.counts.failed))
-                        .replace('{unknown}', String(task.counts.unknown))}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => onSelect(task.id)}>
-                      {t('batch.details')}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+  const columns: ColumnDef<DataTableFeatures, BatchSummary, unknown>[] = [
+    {
+      accessorKey: 'createdAt',
+      header: t('batch.createdAt'),
+      meta: { label: t('batch.createdAt') },
+      cell: ({ row }) => new Date(row.original.createdAt).toLocaleString(locale),
+    },
+    {
+      accessorKey: 'action',
+      header: t('batch.action'),
+      meta: { label: t('batch.action') },
+      cell: ({ row }) => t(`batch.action.${row.original.action}`),
+    },
+    {
+      id: 'progress',
+      header: t('batch.progress'),
+      meta: { label: t('batch.progress') },
+      enableSorting: false,
+      cell: ({ row }) => <TaskProgress task={row.original} />,
+    },
+    {
+      accessorKey: 'status',
+      header: t('batch.result'),
+      meta: { label: t('batch.result') },
+      cell: ({ row }) => (
+        <div className="flex flex-col items-start gap-1">
+          <Badge
+            variant={
+              row.original.counts.failed || row.original.counts.unknown
+                ? 'destructive'
+                : 'secondary'
+            }
+          >
+            {t(`batch.status.${row.original.status}`)}
+          </Badge>
+          <p className="text-xs text-muted-foreground">
+            {t('batch.counts')
+              .replace('{success}', String(row.original.counts.succeeded))
+              .replace('{failed}', String(row.original.counts.failed))
+              .replace('{unknown}', String(row.original.counts.unknown))}
+          </p>
         </div>
-      ) : (
-        !query.error && (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>{t('batch.empty')}</EmptyTitle>
-              <EmptyDescription>{t('batch.emptyHelp')}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )
-      )}
-      <DataTablePaginationControls
-        label={t('batch.pagination')}
-        disabled={query.isFetching}
+      ),
+    },
+    {
+      id: 'actions',
+      header: t('env.actions'),
+      meta: { label: t('env.actions') },
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <Button variant="outline" size="sm" onClick={() => onSelect(row.original.id)}>
+          {t('batch.details')}
+        </Button>
+      ),
+    },
+  ]
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <CursorDataTable
+        data={query.data?.items ?? []}
+        columns={columns}
+        getRowId={batchRowId}
+        label={t('batch.history')}
+        emptyTitle={t('batch.empty')}
+        loading={query.isPending}
+        refreshing={query.isFetching}
+        error={query.error?.message}
+        refreshLabel={t('batch.refresh')}
+        onRefresh={() => void query.refetch()}
+        actions={
+          cursors.length > 1 && (
+            <Button variant="outline" size="sm" onClick={() => setCursors([null])}>
+              {t('batch.latest')}
+            </Button>
+          )
+        }
         previous={{
           label: t('batch.previous'),
           disabled: cursors.length === 1,
@@ -151,7 +140,7 @@ export function BatchTasks({
         }}
         next={{
           label: t('batch.next'),
-          disabled: !query.data?.nextCursor || Boolean(query.error),
+          disabled: !query.data?.nextCursor || query.isError,
           onClick: () => {
             const next = query.data?.nextCursor
             if (next) setCursors((current) => [...current, next])
@@ -166,10 +155,10 @@ export function BatchTasks({
           onCreated={onSelect}
         />
       )}
-    </section>
+    </div>
   )
 }
-function BatchTaskDialog({
+export function BatchTaskDialog({
   id,
   onClose,
   onCreated,

@@ -75,6 +75,17 @@ export function AboutPage() {
           </Button>
           <p className="text-sm leading-relaxed text-muted-foreground">{t('about.shadcnAdmin')}</p>
         </div>
+        <p className="text-sm text-muted-foreground">{t('about.licenseBoundary')}</p>
+        <div className="flex flex-col items-start gap-2">
+          <Button
+            variant="link"
+            className="h-auto px-0"
+            onClick={() => void open('https://github.com/black-ant/Ant-Browser')}
+          >
+            Ant Browser <ExternalLinkIcon />
+          </Button>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t('about.antBrowser')}</p>
+        </div>
       </section>
       <Accordion>
         <AccordionItem value="notices">

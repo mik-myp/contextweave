@@ -1,3 +1,4 @@
+import { sameFileIdentity } from './file-identity'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
@@ -99,12 +100,7 @@ function seedProfile(options: {
     paths.environment(record)
     for (const { path, stat } of anchors) {
       const current = lstatSync(path, { bigint: true })
-      if (
-        !current.isDirectory() ||
-        current.isSymbolicLink() ||
-        current.dev !== stat.dev ||
-        current.ino !== stat.ino
-      )
+      if (!current.isDirectory() || current.isSymbolicLink() || !sameFileIdentity(current, stat))
         throw new Error('BOOKMARKS_PROFILE_UNSAFE')
     }
   }
@@ -153,8 +149,7 @@ function seedProfile(options: {
         !temporaryStat.isFile() ||
         temporaryStat.isSymbolicLink() ||
         !opened.isFile() ||
-        opened.dev !== temporaryStat.dev ||
-        opened.ino !== temporaryStat.ino
+        !sameFileIdentity(opened, temporaryStat)
       )
         throw new Error('BOOKMARKS_PROFILE_UNSAFE')
       // Opening can follow a concurrently replaced parent. Revalidate before placing any
@@ -174,12 +169,7 @@ function seedProfile(options: {
     )
       throw new Error('BOOKMARKS_PROFILE_CHANGED')
     const source = lstatSync(temporary, { bigint: true })
-    if (
-      !source.isFile() ||
-      source.isSymbolicLink() ||
-      source.dev !== temporaryStat.dev ||
-      source.ino !== temporaryStat.ino
-    )
+    if (!source.isFile() || source.isSymbolicLink() || !sameFileIdentity(source, temporaryStat))
       throw new Error('BOOKMARKS_PROFILE_UNSAFE')
     linkSync(temporary, target)
     published = true
@@ -188,8 +178,7 @@ function seedProfile(options: {
     if (
       !destination.isFile() ||
       destination.isSymbolicLink() ||
-      destination.dev !== temporaryStat.dev ||
-      destination.ino !== temporaryStat.ino
+      !sameFileIdentity(destination, temporaryStat)
     )
       throw new Error('BOOKMARKS_PROFILE_UNSAFE')
     unlinkSync(temporary)
@@ -205,8 +194,7 @@ function seedProfile(options: {
           !temporaryStat ||
           !stat.isFile() ||
           stat.isSymbolicLink() ||
-          stat.dev !== temporaryStat.dev ||
-          stat.ino !== temporaryStat.ino
+          !sameFileIdentity(stat, temporaryStat)
         )
           throw new Error('BOOKMARKS_PROFILE_RECOVERY_REQUIRED')
         unlinkSync(path)

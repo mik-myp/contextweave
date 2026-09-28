@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as BookmarksRouteImport } from './routes/bookmarks'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as FingerprintsRouteImport } from './routes/fingerprints'
 import { Route as KernelsRouteImport } from './routes/kernels'
@@ -40,6 +41,11 @@ const AboutRoute = AboutRouteImport.update({
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookmarksRoute = BookmarksRouteImport.update({
+  id: '/bookmarks',
+  path: '/bookmarks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnvironmentsRoute = EnvironmentsRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/activity': typeof ActivityRoute
+  '/bookmarks': typeof BookmarksRoute
   '/environments': typeof EnvironmentsRouteWithChildren
   '/fingerprints': typeof FingerprintsRoute
   '/kernels': typeof KernelsRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/activity': typeof ActivityRoute
+  '/bookmarks': typeof BookmarksRoute
   '/fingerprints': typeof FingerprintsRoute
   '/kernels': typeof KernelsRoute
   '/proxies': typeof ProxiesRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/activity': typeof ActivityRoute
+  '/bookmarks': typeof BookmarksRoute
   '/environments': typeof EnvironmentsRouteWithChildren
   '/fingerprints': typeof FingerprintsRoute
   '/kernels': typeof KernelsRoute
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/activity'
+    | '/bookmarks'
     | '/environments'
     | '/fingerprints'
     | '/kernels'
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/activity'
+    | '/bookmarks'
     | '/fingerprints'
     | '/kernels'
     | '/proxies'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/activity'
+    | '/bookmarks'
     | '/environments'
     | '/fingerprints'
     | '/kernels'
@@ -232,6 +244,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ActivityRoute: typeof ActivityRoute
+  BookmarksRoute: typeof BookmarksRoute
   EnvironmentsRoute: typeof EnvironmentsRouteWithChildren
   FingerprintsRoute: typeof FingerprintsRoute
   KernelsRoute: typeof KernelsRoute
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bookmarks': {
+      id: '/bookmarks'
+      path: '/bookmarks'
+      fullPath: '/bookmarks'
+      preLoaderRoute: typeof BookmarksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/environments': {
@@ -404,6 +424,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ActivityRoute: ActivityRoute,
+  BookmarksRoute: BookmarksRoute,
   EnvironmentsRoute: EnvironmentsRouteWithChildren,
   FingerprintsRoute: FingerprintsRoute,
   KernelsRoute: KernelsRoute,

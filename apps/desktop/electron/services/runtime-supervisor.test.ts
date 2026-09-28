@@ -101,6 +101,7 @@ function fixture(
     executableVersion: '123.0.0.1',
   })
   const control: BrowserControl = {
+    openStartupBookmarks: vi.fn(async () => {}),
     port: 9000,
     attach: vi.fn(),
     close: vi.fn(),
@@ -123,6 +124,7 @@ function fixture(
         ) => Promise<string | undefined>
       >()
       .mockResolvedValue('Chrome/123.0.0.1'),
+    restore: vi.fn(async () => {}),
     settings: vi.fn<typeof connectBrowserSettings>(async () => () => {}),
     // Ordinary stop tests should model Browser.close, not spend three seconds
     // waiting for a synthetic process that cannot receive a real CDP command.
@@ -821,4 +823,103 @@ it('surfaces a provider CPU limit without spawning or rewriting the saved identi
   expect(f.driver.launch).not.toHaveBeenCalled()
   expect(f.repository.get('env-a')!.configJson).toEqual(before)
   expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+})
+
+it('keeps restored windows behind the settings/authentication startup barrier', async () => {
+  const f = fixture('local', false, 'http')
+  const order: string[] = []
+  f.driver.launch.mockImplementation((plan) => {
+    expect(plan.args).toContain('--no-startup-window')
+    order.push('launch-without-windows')
+    return f.child
+  })
+  f.driver.settings.mockImplementation(async (_access, _settings, _failure, auth) => {
+    expect(auth?.host).toBe('127.0.0.1')
+    order.push('authentication-ready')
+    return () => {}
+  })
+  f.driver.restore.mockImplementation(async () => {
+    order.push('restore-windows')
+  })
+  expect((await f.runtime.start('env-a')).ok).toBe(true)
+  expect(order).toEqual(['launch-without-windows', 'authentication-ready', 'restore-windows'])
+  await f.runtime.stop('env-a')
+})
+
+it('does not restore any windows if initial settings fail', async () => {
+  const f = fixture()
+  f.driver.settings.mockRejectedValue(new Error('fixture settings failure'))
+  expect((await f.runtime.start('env-a')).ok).toBe(false)
+  expect(f.driver.restore).not.toHaveBeenCalled()
+})
+
+it('preserves the profile and returns a specific failure if window restore fails', async () => {
+  const f = fixture()
+  f.driver.restore.mockRejectedValue(new Error('BROWSER_RESTORE_FAILED'))
+  expect(await f.runtime.start('env-a')).toMatchObject({
+    ok: false,
+    code: 'BROWSER_RESTORE_FAILED',
+  })
+  expect(existsSync(f.dir)).toBe(true)
+  expect(f.child.kill).toHaveBeenCalled()
+})
+
+it('records runtime control loss separately from a launch failure without persisting raw errors', async () => {
+  const f = fixture()
+  expect((await f.runtime.start('env-a')).ok).toBe(true)
+  vi.useFakeTimers()
+  f.driver.settings.mock.calls[0][2]?.(new Error('https://user:secret@private.invalid'))
+  await vi.advanceTimersByTimeAsync(3001)
+  expect(f.child.kill).toHaveBeenCalledWith('SIGTERM')
+  expect(f.repository.get('env-a')?.status).toBe('needs-recovery')
+  expect(f.repository.listRuntimeSessions()[0]).toMatchObject({
+    status: 'crashed',
+    exitReason: 'BROWSER_CONTROL_FAILED',
+  })
+  expect(JSON.stringify(f.repository.listRuntimeSessions())).not.toContain('secret')
+})
+
+it('opens opted-in startup bookmarks only after authentication/settings and session restoration', async () => {
+  const { BookmarkSettingsRepository } = await import('@contextweave/storage')
+  const f = fixture()
+  new BookmarkSettingsRepository(f.repository).save({
+    expectedRevision: 0,
+    items: [
+      {
+        id: '00000000-0000-4000-8000-000000000011',
+        name: 'Opt in',
+        url: 'https://startup.test/',
+        openOnStart: true,
+      },
+      { id: '00000000-0000-4000-8000-000000000012', name: 'Legacy', url: 'https://legacy.test/' },
+    ],
+  })
+  expect((await f.runtime.start('env-a')).ok).toBe(true)
+  expect(f.control.openStartupBookmarks).toHaveBeenCalledWith(
+    ['https://startup.test/'],
+    expect.any(AbortSignal),
+    expect.any(Number),
+  )
+  expect(vi.mocked(f.driver.settings).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(f.driver.restore).mock.invocationCallOrder[0]!,
+  )
+  expect(vi.mocked(f.driver.restore).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(f.control.openStartupBookmarks).mock.invocationCallOrder[0]!,
+  )
+  expect(JSON.stringify(f.driver.launch.mock.calls)).not.toContain('https://startup.test/')
+})
+
+it('cleans up a failed startup-bookmark launch without removing the profile or leaking a running lease', async () => {
+  const f = fixture()
+  vi.mocked(f.control.openStartupBookmarks).mockRejectedValue(new Error('BOOKMARKS_STARTUP_FAILED'))
+  expect(await f.runtime.start('env-a')).toMatchObject({
+    ok: false,
+    code: 'BOOKMARKS_STARTUP_FAILED',
+  })
+  expect(f.repository.get('env-a')?.status).toBe('error')
+  expect(f.control.close).toHaveBeenCalled()
+  expect(f.child.kill).toHaveBeenCalled()
+  expect(existsSync(f.dir)).toBe(true)
+  expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+  expect(() => f.runtime.leaseControl('env-a')).toThrow('ENVIRONMENT_NOT_RUNNING')
 })

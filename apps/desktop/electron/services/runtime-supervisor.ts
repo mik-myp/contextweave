@@ -1,3 +1,4 @@
+import { initializeDefaultBookmarks } from './browser-bookmarks'
 import { createStartupBudget, confirmProcessIdentity } from './runtime-startup'
 import { applyIpLocale, type IpLocaleService } from './ip-locale'
 import { openProxyTransport, type ProxyTransport } from './proxy-transport'
@@ -21,6 +22,7 @@ import {
   releaseRuntimeLock,
   updateRuntimeLockOwner,
   type EnvironmentRepository,
+  type WorkspacePaths,
 } from '@contextweave/storage'
 import type { LaunchPlan } from '@contextweave/kernel-core'
 import { prepareBrowserProfile, connectBrowserSettings } from '../browser-settings'
@@ -102,6 +104,7 @@ const defaultDriver: RuntimeDriver = {
 
 export function createRuntimeSupervisor(options: {
   repository: EnvironmentRepository
+  paths: WorkspacePaths
   kernels: KernelService
   credentials: CredentialStore
   preflight(id: string): Promise<PreflightReport>
@@ -214,6 +217,7 @@ export function createRuntimeSupervisor(options: {
         phase('launch')
       }
       const plan = kernels.buildLaunchPlan(record, config, transport?.args)
+      initializeDefaultBookmarks(repository, record, sessionId, options.paths)
       prepareBrowserProfile(record.dataDir, config.commonConfig.language, Boolean(config.proxy))
       const child = driver.launch(plan)
       child.once('error', () => {
@@ -378,6 +382,12 @@ export function createRuntimeSupervisor(options: {
       repository.updateStatus(id, cancelled ? 'stopped' : 'error')
       changed()
       const known = [
+        'BOOKMARKS_SETTINGS_INVALID',
+        'BOOKMARKS_PROFILE_UNSAFE',
+        'BOOKMARKS_PROFILE_CHANGED',
+        'BOOKMARKS_PROFILE_IO_FAILED',
+        'BOOKMARKS_PROFILE_LOCK_REQUIRED',
+        'BOOKMARKS_PROFILE_RECOVERY_REQUIRED',
         'BROWSER_PREFERENCES_INVALID',
         'BROWSER_PREFERENCES_TOO_LARGE',
         'BROWSER_PROFILE_IO_FAILED',

@@ -1,3 +1,4 @@
+import { BookmarkSettingsRepository } from '@contextweave/storage'
 import { isFingerprintKernel } from '@contextweave/kernel-fingerprint-chromium'
 import { randomInt, randomUUID } from 'node:crypto'
 import { mkdirSync, readdirSync, statSync } from 'node:fs'
@@ -51,7 +52,10 @@ export function createEnvironmentService(
       })
       const dataDir = join(root, environmentId)
       mkdirSync(dataDir, { recursive: true })
-      return repository.create({ config, dataDir, platform, arch })
+      const record = repository.create({ config, dataDir, platform, arch })
+      // Proven new here, even if a later startup fails/cancels before acquiring its lock.
+      new BookmarkSettingsRepository(repository).setProfileState(environmentId, 'eligible')
+      return record
     },
     restore(id: string) {
       const record = repository.get(id)

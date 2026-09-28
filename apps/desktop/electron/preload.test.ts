@@ -51,6 +51,7 @@ describe('sandboxed preload contract', () => {
       'activity',
       'app',
       'batch',
+      'bookmarks',
       'environment',
       'events',
       'kernel',
@@ -608,4 +609,36 @@ it('validates tag CRUD inputs, revisions and responses under the captured worksp
     },
   })
   await expect(api.organization.list(workspace)).rejects.toThrow()
+})
+
+it('validates scoped bookmark requests and refuses malformed or foreign success responses', async () => {
+  const item = {
+    id: '00000000-0000-4000-8000-000000000002',
+    name: 'Example',
+    url: 'https://example.test/',
+  }
+  await expect(
+    api.bookmarks.save(workspace, {
+      expectedRevision: 0,
+      items: [{ ...item, url: 'https://u:p@example.test' }],
+    }),
+  ).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  const data = { ...workspace, revision: 1, items: [item] }
+  bridge.invoke.mockResolvedValue({ ok: true, data })
+  expect(await api.bookmarks.save(workspace, { expectedRevision: 0, items: [item] })).toEqual({
+    ok: true,
+    data,
+  })
+  expect(bridge.invoke).toHaveBeenCalledWith('bookmarks:save', {
+    ...workspace,
+    payload: { expectedRevision: 0, items: [item] },
+  })
+  bridge.invoke.mockResolvedValue({ ok: true, data: { ...data, workspaceId: item.id } })
+  await expect(api.bookmarks.get(workspace)).rejects.toThrow('WORKSPACE_MISMATCH')
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: { ...data, items: [{ ...item, url: 'file:///private' }] },
+  })
+  await expect(api.bookmarks.get(workspace)).rejects.toThrow()
 })

@@ -1,4 +1,5 @@
 import { tagMessages } from './zh-CN-tags'
+import { bookmarkMessages } from './zh-CN-bookmarks'
 import { commandMessages } from './zh-CN-commands'
 import { batchMessages } from './zh-CN-batches'
 import { organizationMessages } from './zh-CN-organization'
@@ -10,6 +11,7 @@ import type { TranslationKey } from '../types'
 
 export const zhCNMessages: Record<TranslationKey, string> = {
   ...tagMessages,
+  ...bookmarkMessages,
   ...logMessages,
   ...lifecycleMessages,
   ...workspaceMessages,

@@ -1,3 +1,5 @@
+import { createBookmarkHandlers } from './bookmarks-ipc'
+import { BookmarkSettingsRepository } from '@contextweave/storage'
 import { createEnvironmentCommandDispatcher } from './services/environment-command-dispatcher'
 import { createBatchService } from './services/batch-service'
 import { dataChangedSchema, type DataChanged } from '@contextweave/contracts'
@@ -113,6 +115,7 @@ export function createApplication(options: {
   const locale = createIpLocaleService()
   const localePreview = createIpLocalePreview(repository, credentials, locale)
   const runtime = createRuntimeSupervisor({
+    paths,
     locale,
     repository,
     kernels,
@@ -160,6 +163,9 @@ export function createApplication(options: {
     string,
     (input?: unknown) => IpcResult<unknown> | Promise<IpcResult<unknown>>
   > = {
+    ...createBookmarkHandlers(new BookmarkSettingsRepository(repository), () =>
+      changed(['bookmarks']),
+    ),
     'batch:preview': (input) => ok(batches.preview(input)),
     'batch:confirm': (input) => ok(batches.confirm(input)),
     'batch:page': (input) => ok(batches.page(input)),

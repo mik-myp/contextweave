@@ -22,6 +22,7 @@ import { Route as EnvironmentsIndexRouteImport } from './routes/environments.ind
 import { Route as EnvironmentsNewRouteImport } from './routes/environments.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
+import { Route as SettingsBookmarksRouteImport } from './routes/settings.bookmarks'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
 import { Route as SettingsUpdatesRouteImport } from './routes/settings.updates'
 import { Route as EnvironmentsEnvironmentIdEditRouteImport } from './routes/environments.$environmentId.edit'
@@ -91,6 +92,11 @@ const SettingsAboutRoute = SettingsAboutRouteImport.update({
   path: '/about',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsBookmarksRoute = SettingsBookmarksRouteImport.update({
+  id: '/bookmarks',
+  path: '/bookmarks',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsStorageRoute = SettingsStorageRouteImport.update({
   id: '/storage',
   path: '/storage',
@@ -120,6 +126,7 @@ export interface FileRoutesByFullPath {
   '/tags': typeof TagsRoute
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/bookmarks': typeof SettingsBookmarksRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/settings/updates': typeof SettingsUpdatesRoute
   '/environments/': typeof EnvironmentsIndexRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/tags': typeof TagsRoute
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/bookmarks': typeof SettingsBookmarksRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/settings/updates': typeof SettingsUpdatesRoute
   '/environments': typeof EnvironmentsIndexRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/tags': typeof TagsRoute
   '/environments/new': typeof EnvironmentsNewRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/bookmarks': typeof SettingsBookmarksRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/settings/updates': typeof SettingsUpdatesRoute
   '/environments/': typeof EnvironmentsIndexRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/tags'
     | '/environments/new'
     | '/settings/about'
+    | '/settings/bookmarks'
     | '/settings/storage'
     | '/settings/updates'
     | '/environments/'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/tags'
     | '/environments/new'
     | '/settings/about'
+    | '/settings/bookmarks'
     | '/settings/storage'
     | '/settings/updates'
     | '/environments'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/tags'
     | '/environments/new'
     | '/settings/about'
+    | '/settings/bookmarks'
     | '/settings/storage'
     | '/settings/updates'
     | '/environments/'
@@ -321,6 +333,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAboutRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/bookmarks': {
+      id: '/settings/bookmarks'
+      path: '/bookmarks'
+      fullPath: '/settings/bookmarks'
+      preLoaderRoute: typeof SettingsBookmarksRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/storage': {
       id: '/settings/storage'
       path: '/storage'
@@ -363,6 +382,7 @@ const EnvironmentsRouteWithChildren = EnvironmentsRoute._addFileChildren(
 
 interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
+  SettingsBookmarksRoute: typeof SettingsBookmarksRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
   SettingsUpdatesRoute: typeof SettingsUpdatesRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -370,6 +390,7 @@ interface SettingsRouteChildren {
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
+  SettingsBookmarksRoute: SettingsBookmarksRoute,
   SettingsStorageRoute: SettingsStorageRoute,
   SettingsUpdatesRoute: SettingsUpdatesRoute,
   SettingsIndexRoute: SettingsIndexRoute,

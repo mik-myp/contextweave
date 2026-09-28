@@ -1,4 +1,5 @@
 import type { tagMessages } from './locales/zh-CN-tags'
+import type { bookmarkMessages } from './locales/zh-CN-bookmarks'
 import type { commandMessages } from './locales/zh-CN-commands'
 import type { batchMessages } from './locales/zh-CN-batches'
 import type { organizationMessages } from './locales/zh-CN-organization'
@@ -10,6 +11,7 @@ export type Locale = 'zh-CN' | 'en-US'
 
 export type TranslationKey =
   | keyof typeof tagMessages
+  | keyof typeof bookmarkMessages
   | keyof typeof commandMessages
   | keyof typeof batchMessages
   | keyof typeof organizationMessages

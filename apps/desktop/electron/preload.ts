@@ -1,4 +1,9 @@
 import {
+  defaultBookmarksSchema,
+  saveDefaultBookmarksSchema,
+  type SaveDefaultBookmarks,
+} from '@contextweave/contracts'
+import {
   environmentCommandRequestSchema,
   environmentCommandReceiptSchema,
   environmentRecoveryInspectionSchema,
@@ -321,6 +326,16 @@ const api = {
       ),
     openRelease: async () =>
       ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('update:open-release')),
+  },
+  bookmarks: {
+    get: async (context: WorkspaceContext) =>
+      ipcResultSchema(defaultBookmarksSchema).parse(
+        await invokeWorkspace(context, 'bookmarks:get'),
+      ),
+    save: async (context: WorkspaceContext, input: SaveDefaultBookmarks) =>
+      ipcResultSchema(defaultBookmarksSchema).parse(
+        await invokeWorkspace(context, 'bookmarks:save', saveDefaultBookmarksSchema.parse(input)),
+      ),
   },
   settings: {
     getTheme: async () =>

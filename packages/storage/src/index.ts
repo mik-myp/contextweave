@@ -817,3 +817,5 @@ export function isSqliteFailure(error: unknown): boolean {
 }
 
 export { databaseVersion, describeDatabaseMigration, readDatabaseMigrationPlan, type DatabaseMigrationPlan } from './storage-compatibility'
+
+export { BookmarkSettingsRepository } from './bookmarks'

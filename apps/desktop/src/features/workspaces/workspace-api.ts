@@ -13,6 +13,10 @@ export function createWorkspaceApi(input: WorkspaceContext) {
     return (...args: Args) => method()(context, ...args)
   }
   return {
+    bookmarks: {
+      get: bindWorkspace(() => window.contextweave.bookmarks.get),
+      save: bindWorkspace(() => window.contextweave.bookmarks.save),
+    },
     batch: {
       preview: bindWorkspace(() => window.contextweave.batch.preview),
       confirm: bindWorkspace(() => window.contextweave.batch.confirm),

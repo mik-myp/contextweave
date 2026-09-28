@@ -75,3 +75,10 @@ describe('default bookmark contracts', () => {
     expect(defaultBookmarksSchema.safeParse({ revision: 0, items: [] }).success).toBe(false)
   })
 })
+
+it('keeps legacy startup opt-out compatible and accepts only explicit booleans', () => {
+  expect(bookmarkSchema.parse(item).openOnStart).toBeUndefined()
+  expect(bookmarkSchema.parse({ ...item, openOnStart: true }).openOnStart).toBe(true)
+  expect(bookmarkSchema.parse({ ...item, openOnStart: false }).openOnStart).toBe(false)
+  expect(bookmarkSchema.safeParse({ ...item, openOnStart: 'true' }).success).toBe(false)
+})

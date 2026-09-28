@@ -3,7 +3,9 @@ import { AppLogViewer } from '../components/app-log-viewer'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { OperationsTable } from './operations-table'
 import { errorMessage } from '@/shared/lib/error-message'
-import { useMemo } from 'react'
+import { EnvironmentCommands } from '@/features/environments/commands/environment-commands'
+import { BatchTasks } from '@/features/environments/batches/batch-tasks'
+import { useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { activityHistoryQuerySchema, type ActivitySummary } from '@contextweave/contracts'
@@ -18,13 +20,16 @@ const getRowId = (row: ActivitySummary) => row.sessionId
 const statuses = ['starting', 'running', 'stopping', 'stopped', 'crashed'] as const
 export function ActivityPage() {
   const { t } = useI18n()
+  const [selectedTask, setSelectedTask] = useState<string>()
   return (
     <Tabs defaultValue="logs" className="min-h-0 flex-1 gap-4">
       <h1 className="sr-only">{t('nav.activity')}</h1>
-      <TabsList className="max-w-full shrink-0">
+      <TabsList className="max-w-full shrink-0 flex-wrap h-auto">
         <TabsTrigger value="logs">{t('logs.application')}</TabsTrigger>
         <TabsTrigger value="sessions">{t('life.sessions')}</TabsTrigger>
         <TabsTrigger value="operations">{t('life.operations')}</TabsTrigger>
+        <TabsTrigger value="commands">{t('logs.commandHistory')}</TabsTrigger>
+        <TabsTrigger value="batches">{t('batch.history')}</TabsTrigger>
       </TabsList>
       <TabsContent value="logs" className="flex min-h-0 flex-col">
         <AppLogViewer />
@@ -34,6 +39,12 @@ export function ActivityPage() {
       </TabsContent>
       <TabsContent value="operations" className="flex min-h-0 flex-col">
         <OperationsTable />
+      </TabsContent>
+      <TabsContent value="commands" className="flex min-h-0 flex-col">
+        <EnvironmentCommands />
+      </TabsContent>
+      <TabsContent value="batches" className="flex min-h-0 flex-col">
+        <BatchTasks selectedId={selectedTask} onSelect={setSelectedTask} />
       </TabsContent>
     </Tabs>
   )

@@ -66,11 +66,11 @@ export async function desktopStage(stage, action, {
 export async function activateDesktopPage(desktop, page, timeoutMs = 5000) {
   const window = await desktop.browserWindow(page)
   try {
+    await page.bringToFront()
     await window.evaluate(window => {
       window.show()
       window.focus()
     })
-    await page.bringToFront()
     // Native focus acknowledgement can arrive after show/focus returns. Do not
     // resend focus requests or mistake the synchronous call for acknowledgement.
     await until(() => window.evaluate(window => window.isVisible() && window.isFocused()), timeoutMs, 'MANAGER_NOT_ACTIVATED')

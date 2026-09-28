@@ -1,7 +1,4 @@
-import { StorageDiagnostics } from '../components/storage-diagnostics'
-import { StorageMaintenance } from '../components/storage-maintenance'
-import { OrphanDirectories } from '../components/orphan-directories'
-import { Separator } from '@/components/ui/separator'
+import { unwrapIpc } from '@/shared/lib/ipc'
 import { CopyIcon } from 'lucide-react'
 import { useAppData } from '@/app/use-app-data'
 import { useI18n } from '@/i18n'
@@ -24,9 +21,9 @@ const pathKeys: Array<keyof AppPaths> = [
 export function SettingsStoragePage() {
   const { t } = useI18n()
   const { paths, appInfo, appError, loading, refresh, setNotice } = useAppData(['app'])
-  const copy = async (value: string) => {
+  const copy = async (key: keyof AppPaths) => {
     try {
-      await navigator.clipboard.writeText(value)
+      await unwrapIpc(window.contextweave.app.copyPath(key))
       setNotice({ kind: 'success', message: t('admin.copied') })
     } catch {
       setNotice({ kind: 'error', message: t('admin.operationError') })
@@ -73,7 +70,7 @@ export function SettingsStoragePage() {
                       size="icon-sm"
                       variant="ghost"
                       aria-label={`${t('admin.copy')} ${t(`settings.${key}`)}`}
-                      onClick={() => void copy(paths[key])}
+                      onClick={() => void copy(key)}
                     >
                       <CopyIcon />
                     </Button>
@@ -82,11 +79,6 @@ export function SettingsStoragePage() {
               </div>
             ))}
           </dl>
-          <Separator />
-          <StorageMaintenance />
-          <OrphanDirectories />
-          <Separator />
-          <StorageDiagnostics />
         </>
       )}
     </SettingsSection>

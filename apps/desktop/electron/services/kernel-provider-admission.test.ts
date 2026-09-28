@@ -1,4 +1,6 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import * as probe from './kernel-capability-probe'
+import * as installation from './kernel-installation'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -265,4 +267,145 @@ describe('runtime provider admission is separate from verification labels', () =
       }),
     ).toThrow('KERNEL_UNAVAILABLE')
   })
+})
+
+it('persists a custom display name without changing IDs or bindings and resets to the provider name', () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!
+  const f = fixture(manifest)
+  const original = f.kernels.list().find((item) => item.id === manifest.id)!
+  expect(f.kernels.rename({ id: manifest.id, name: ' Work browser ' })).toMatchObject({
+    id: manifest.id,
+    label: 'Work browser',
+    customName: 'Work browser',
+    version: original.version,
+  })
+  const reopened = createKernelService(f.repository, 'win32', 'x64', join(f.root, 'kernels'))
+  expect(reopened.list().find((item) => item.id === manifest.id)?.label).toBe('Work browser')
+  expect(reopened.rename({ id: manifest.id, name: '' }).label).toBe(original.label)
+  expect(() => reopened.rename({ id: '../outside', name: 'Bad' })).toThrow()
+})
+it('binds evidence to the executable, survives restart, and never promotes provider admission', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  const evidence = {
+    declared: true,
+    state: 'verified' as const,
+    version: manifest.version,
+    checkedAt: new Date().toISOString(),
+    evidence: 'offline-probe:fixture:v1',
+  }
+  vi.spyOn(probe, 'probeKernelCapabilities').mockResolvedValue({
+    version: manifest.version,
+    checkedAt: evidence.checkedAt,
+    report: { cdp: evidence, timezone: evidence },
+  })
+  const result = await f.kernels.verify(manifest.id)
+  expect(result.verification?.state).toBe('complete')
+  expect(result.providerStatus).toBe('candidate')
+  expect(result.capabilityReport.timezone.state).toBe('verified')
+  const reopened = createKernelService(f.repository, 'win32', 'x64', join(f.root, 'kernels'))
+  expect(
+    reopened.list().find((item) => item.id === manifest.id)?.capabilityReport.timezone.state,
+  ).toBe('verified')
+  writeFileSync(join(f.installPath, 'chrome.exe'), 'changed fixture executable')
+  expect(
+    reopened.list().find((item) => item.id === manifest.id)?.capabilityReport.timezone.state,
+  ).toBe('unverified')
+})
+it('keeps the verified install on probe failure and fences conflicting removal during a check', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  let fail!: (error: Error) => void
+  const check = vi.spyOn(probe, 'probeKernelCapabilities').mockReturnValue(
+    new Promise((_, reject) => {
+      fail = reject
+    }),
+  )
+  const pending = f.kernels.verify(manifest.id)
+  expect(f.kernels.verify(manifest.id)).toBe(pending)
+  await expect(f.kernels.remove(manifest.id)).rejects.toThrow('OPERATION_IN_PROGRESS')
+  fail(new Error('/private/secret'))
+  const result = await pending
+  expect(check).toHaveBeenCalledOnce()
+  expect(result.status).toBe('available')
+  expect(result.verification).toEqual({ state: 'failed', errorCode: 'KERNEL_PROBE_FAILED' })
+  expect(result.capabilityReport.cdp.state).toBe('failed')
+  expect(JSON.stringify(result)).not.toContain('secret')
+})
+it('automatically probes only after installation metadata is committed and retains a failed-check package', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  const record = f.repository.getKernelInstallation(manifest.id, manifest.version, 'win32', 'x64')!
+  f.repository.deleteKernelInstallation(record.id)
+  vi.spyOn(installation, 'installBrowserPackage').mockResolvedValue({
+    installPath: f.installPath,
+    executablePath: join(f.installPath, manifest.executable),
+    sizeBytes: 64,
+  })
+  const check = vi.spyOn(probe, 'probeKernelCapabilities').mockImplementation(async () => {
+    expect(
+      f.repository.getKernelInstallation(manifest.id, manifest.version, 'win32', 'x64')?.state,
+    ).toBe('installed')
+    throw new Error('test failure')
+  })
+  const result = await f.kernels.install(manifest.id, 'Work browser')
+  expect(result.label).toBe('Work browser')
+  expect(result.id).toBe(manifest.id)
+  expect(check).toHaveBeenCalledOnce()
+  expect(result.status).toBe('available')
+  expect(result.installation?.phase).toBe('complete')
+  expect(result.verification?.state).toBe('failed')
+})
+
+it('does not treat usage metadata changes as an executable content change', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  vi.spyOn(probe, 'probeKernelCapabilities').mockImplementation(async () => {
+    chmodSync(join(f.installPath, 'chrome.exe'), 0o700)
+    const checkedAt = new Date().toISOString()
+    return {
+      version: manifest.version,
+      checkedAt,
+      report: {
+        cdp: {
+          declared: true,
+          state: 'verified',
+          version: manifest.version,
+          checkedAt,
+          evidence: 'fixture',
+        },
+      },
+    }
+  })
+  const result = await f.kernels.verify(manifest.id)
+  expect(result.verification?.state).toBe('complete')
+  expect(result.capabilityReport.cdp.state).toBe('verified')
+})
+it('uses a newer runtime handshake instead of hiding it behind a failed earlier offline probe', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  vi.spyOn(probe, 'probeKernelCapabilities').mockRejectedValue(new Error('fixture'))
+  await f.kernels.verify(manifest.id)
+  expect(f.kernels.list().find((item) => item.id === manifest.id)?.capabilityReport.cdp.state).toBe(
+    'failed',
+  )
+  const record = f.environments.create({
+    name: 'Fixture environment',
+    kernelId: manifest.id,
+    commonConfig: {},
+  })
+  f.kernels.observeCdp(record, manifest.version)
+  expect(f.kernels.list().find((item) => item.id === manifest.id)?.capabilityReport.cdp.state).toBe(
+    'verified',
+  )
+})
+it('does not overwrite a saved name when the download fails before installation', async () => {
+  const manifest = bundledRelease('win32', 'x64').manifest!,
+    f = fixture(manifest)
+  const record = f.repository.getKernelInstallation(manifest.id, manifest.version, 'win32', 'x64')!
+  f.repository.deleteKernelInstallation(record.id)
+  f.repository.setSetting(`kernel-name:${manifest.id}`, 'Previous name')
+  vi.spyOn(installation, 'installBrowserPackage').mockRejectedValue(new Error('DOWNLOAD_FAILED'))
+  await expect(f.kernels.install(manifest.id, 'New name')).rejects.toThrow('DOWNLOAD_FAILED')
+  expect(f.repository.getSetting(`kernel-name:${manifest.id}`)).toBe('Previous name')
 })

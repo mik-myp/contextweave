@@ -16,7 +16,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { environmentConfigSchema } from '@contextweave/contracts'
+import { environmentConfigSchema, kernelSummarySchema } from '@contextweave/contracts'
 import {
   acquireRuntimeLock,
   BookmarkSettingsRepository,
@@ -374,18 +374,34 @@ it('records unused-profile provenance at creation without writing browser files 
   const { createEnvironmentService } = await import('./environment-service')
   const { createKernelService } = await import('./kernel-service')
   const f = fixture()
-  const kernels = createKernelService(f.repository, 'darwin', 'arm64')
+  const platform =
+    process.platform === 'win32' ? 'win32' : process.platform === 'linux' ? 'linux' : 'darwin'
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const kernels = createKernelService(f.repository, platform, arch)
   vi.spyOn(kernels, 'hasCompatibleProvider').mockReturnValue(true)
-  vi.spyOn(kernels, 'list').mockReturnValue(
-    kernels.list().map((kernel) => ({ ...kernel, status: 'available' })),
-  )
+  // This is a provenance test, not host browser discovery. It must work on an empty runner.
+  vi.spyOn(kernels, 'list').mockReturnValue([
+    kernelSummarySchema.parse({
+      id: 'standard-chromium',
+      label: 'Fixture',
+      family: 'chromium',
+      platform,
+      arch,
+      version: 'local',
+      status: 'available',
+      packageAvailable: false,
+      capabilities: {},
+      capabilityReport: {},
+      providerStatus: 'native',
+    }),
+  ])
   f.repository.setSetting('bookmarks:defaults:v1', null)
   const service = createEnvironmentService(
     f.repository,
     kernels,
     f.paths.environments(),
-    'darwin',
-    'arm64',
+    platform,
+    arch,
   )
   const record = service.create(
     { name: 'New', kernelId: 'standard-chromium', commonConfig: {}, kernelConfig: {} },

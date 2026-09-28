@@ -1,5 +1,11 @@
 import { useContext, useEffect, useState } from 'react'
-import { useTable, type ColumnDef, type RowData, type TableState } from '@tanstack/react-table'
+import {
+  useTable,
+  type ColumnDef,
+  type RowData,
+  type Row,
+  type TableState,
+} from '@tanstack/react-table'
 import { dataTableFeatures, type DataTableFeatures } from './data-table-features'
 import { DataTableStateContext } from './data-table-state-context'
 
@@ -19,7 +25,7 @@ export function useDataTable<TData extends RowData>({
   stateKey?: string
   initialState?: Partial<TableState<DataTableFeatures>>
   loading?: boolean
-  enableRowSelection?: boolean
+  enableRowSelection?: boolean | ((row: Row<DataTableFeatures, TData>) => boolean)
 }) {
   const snapshots = useContext(DataTableStateContext)
   const [startingState] = useState(() => ({

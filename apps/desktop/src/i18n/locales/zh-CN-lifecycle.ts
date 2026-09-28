@@ -1,4 +1,60 @@
 export const lifecycleMessages = {
+  'kernel.installName': '内核名称（可选）',
+  'kernel.installNameHelp': '留空使用默认名称，安装后仍可修改。',
+  'table.deleteLimit': '每次最多删除 {count} 项，请减少选择后重试。',
+
+  'logs.dateRange': '日期范围',
+  'logs.pickRange': '选择开始和结束日期',
+  'table.confirmDelete': '删除所选',
+  'table.deleteSelected': '删除选中的 {count} 项？',
+  'table.deleteResult': '已删除 {success} 项，{failed} 项失败',
+  'table.deleteRetryHelp':
+    '未成功的项目已保留。若数据已变化，请关闭此窗口，核对刷新后的列表再重新选择。',
+  'kernel.rename': '修改名称',
+  'kernel.renameHelp': '仅修改显示名称，不改变内核 ID、版本或环境绑定。留空可恢复默认名称。',
+  'kernel.invalidName': '名称最多 80 个字符，不能包含控制字符。',
+  'kernel.testing': '检测能力中…',
+  'kernel.verify': '重新验证',
+  'kernel.probeComplete': '基础能力检测完成，未覆盖的能力仍标为未验证。',
+  'kernel.probeFailed': '能力检测未全部通过，请查看各项结果。',
+  'kernel.installedProbeFailed': '已安装，但能力检测未完成，可在详情中重试',
+  'kernel.bulkDeleteHelp':
+    '仅删除应用下载的内核文件，保留环境和浏览器资料。所选内核被 {count} 个环境引用，删除后这些环境需要重新安装内核才能启动；运行中占用的内核不会删除。',
+  'error.KERNEL_PROBE_FAILED':
+    '能力检测未完成，安装文件已保留。可以关闭使用该内核的环境后重新验证。',
+  'error.KERNEL_PROBE_CLEANUP_FAILED':
+    '测试进程未能退出，已阻止继续修改该内核。请退出应用并检查测试浏览器进程后重试。',
+  'error.KERNEL_CHANGED': '检测期间内核文件发生变化，未保存验证结果，请重新验证。',
+
+  'about.diceUi':
+    '拖拽排序采用 Dice UI 的 Base Sortable 注册表组件与 dnd-kit，适配了中文读屏提示、行内编辑和本项目主题。',
+  'about.licenseBoundary':
+    '致谢说明参考与改编范围，不替代许可证授权。仅在许可证允许的范围内采用源码，完整许可与版权声明见下方。',
+  'table.searchCurrentPage': '搜索本页记录…',
+  'table.cursorScope': '搜索和排序仅针对当前页，翻页查看更多记录。',
+  'about.antBrowser':
+    '书签参考其行内编辑、拖拽排序与启动开关交互，独立实现；不复制源码或同步覆盖已有环境。',
+  'about.shadcnBase':
+    '日期筛选采用官方 Base Date Picker 的 Calendar 与 Popover 组合，沿用现有主题。',
+  'about.cossUi':
+    '通过官方注册表安装 Kbd 快捷键提示，并参考去重 Toast 模式。仅采用其 MIT 许可的 UI 目录。',
+
+  'logs.commandHistory': '环境操作',
+  'logs.pickDate': '选择日期与时间',
+  'logs.time': '时间',
+  'logs.clearDate': '清除日期',
+  'commands.resolve': '查看并处理',
+  'batch.history': '批量操作历史',
+  'batch.viewProgress': '查看进度',
+  'batch.viewResult': '查看结果',
+  'batch.progressUnavailable': '暂时无法读取批量操作进度，请重试查看，不要重复提交。',
+  'error.BROWSER_CONTROL_FAILED':
+    '与浏览器的控制连接中断，环境已停止。请重新启动；若再次出现，请查看运行记录。',
+  'error.BROWSER_CONTROL_TIMEOUT':
+    '浏览器长时间未响应控制请求，环境已停止。请重新启动；若再次出现，请查看运行记录。',
+  'error.BROWSER_PROXY_CONTROL_FAILED':
+    '无法继续自动处理代理认证，已停止环境以保护代理设置。请检查代理后重试。',
+  'error.BROWSER_RESTORE_FAILED': '未能打开原有浏览器窗口，资料已保留，请重试启动。',
   'storage.maintenanceHelp': '仅清理已完成的历史记录，不删除环境、登录状态或浏览器数据。',
   'storage.showMaintenance': '查看清理选项',
   'storage.hideMaintenance': '收起清理选项',
@@ -167,7 +223,8 @@ export const lifecycleMessages = {
   'life.cap.verified': '已验证',
   'life.cap.unsupported': '不支持',
   'life.cap.failed': '验证失败',
-  'life.capHelp': '声明能力与当前版本的实测结果分开显示。未验证不代表支持。',
+  'life.capHelp':
+    '未验证表示只有内核的能力声明，尚无本机测试证据。下载校验完成后会用临时资料和离线页面检测 CDP、截图、文件上传、User-Agent 与时区；代理和 WebRTC 仍需专门的网络场景验证。基础检测不代表提供方或指纹效果认证。',
   'life.sessions': '运行会话',
   'life.operations': '操作记录',
   'life.endedAt': '结束时间',
@@ -271,7 +328,7 @@ export const lifecycleMessages = {
   'error.KERNEL_IN_USE':
     '此内核仍被启动中、运行中、停止中或待恢复的环境占用。请先停止相关环境并完成恢复，再重试删除。',
   'kernel.pinnedVersion': '环境固定版本',
-  'cleanup.title': '历史记录清理',
+  'cleanup.title': '清理应用运行记录',
   'cleanup.help':
     '仅清理指定期限之前已结束的会话和操作记录。需先预览，再确认本批次；不会自动执行或继续下一批。',
   'cleanup.protected':

@@ -1,3 +1,9 @@
+import { probeKernelCapabilities } from './kernel-capability-probe'
+import {
+  capabilityEvidenceSchema,
+  renameKernelSchema,
+  installKernelSchema,
+} from '@contextweave/contracts'
 import { cpus } from 'node:os'
 import { KernelDmgCleanupError } from './kernel-dmg'
 import { validateKernelRemovalPath } from './kernel-removal'
@@ -174,6 +180,12 @@ export function createKernelService(
   const jobs = new Map<string, { controller: AbortController; promise: Promise<KernelSummary> }>()
   const progress = new Map<string, InstallProgress>()
   const removals = new Set<string>()
+  const probing = new Map<
+    string,
+    { controller: AbortController; promise: Promise<KernelSummary> }
+  >()
+  const probeStates = new Map<string, NonNullable<KernelSummary['verification']>>()
+  const cleanupBlocked = new Set<string>()
   const users = new Map<string, number>()
   function installationFor(id: string) {
     const manifest = registry
@@ -185,7 +197,8 @@ export function createKernelService(
       : undefined
   }
   function retain(id: string): () => void {
-    if (removals.has(id) || jobs.has(id)) throw new Error('OPERATION_IN_PROGRESS')
+    if (removals.has(id) || jobs.has(id) || probing.has(id) || cleanupBlocked.has(id))
+      throw new Error('OPERATION_IN_PROGRESS')
     if (installationFor(id)?.state === 'removing') throw new Error('KERNEL_REMOVAL_PENDING')
     users.set(id, (users.get(id) ?? 0) + 1)
     let released = false
@@ -198,7 +211,14 @@ export function createKernelService(
     }
   }
   async function remove(id: string): Promise<boolean> {
-    if (removals.has(id) || jobs.has(id) || users.has(id)) throw new Error('OPERATION_IN_PROGRESS')
+    if (
+      removals.has(id) ||
+      jobs.has(id) ||
+      probing.has(id) ||
+      cleanupBlocked.has(id) ||
+      users.has(id)
+    )
+      throw new Error('OPERATION_IN_PROGRESS')
     const installation = installationFor(id)
     if (!root || !installation || !isFingerprintKernel(id)) throw new Error('KERNEL_NOT_MANAGED')
     // Both active and trashed configurations can own a profile/process.
@@ -277,7 +297,77 @@ export function createKernelService(
   })
   function identity(path: string) {
     const stat = statSync(path)
-    return `${path}:${stat.size}:${stat.mtimeMs}`
+    // macOS updates usage metadata (ctime) when launching a binary; that is not a content change.
+    return `${path}:${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`
+  }
+  const probeSchema = z.object({
+    identity: z.string(),
+    report: z.record(z.string(), capabilityEvidenceSchema),
+  })
+  function rename(input: z.infer<typeof renameKernelSchema>) {
+    const value = renameKernelSchema.parse(input)
+    if (!list().some((item) => item.id === value.id)) throw new Error('KERNEL_UNAVAILABLE')
+    repository.setSetting(`kernel-name:${value.id}`, value.name)
+    changed()
+    return list().find((item) => item.id === value.id)!
+  }
+  async function runProbe(id: string, signal: AbortSignal) {
+    const executable = executableFor({ kernelId: id })
+    if (!executable) throw new Error('KERNEL_UNAVAILABLE')
+    const before = identity(executable)
+    const manifest = registry.get(id).getManifest()
+    probeStates.set(id, { state: 'running' })
+    changed()
+    try {
+      const result = await probeKernelCapabilities(executable, manifest.capabilities, signal)
+      signal.throwIfAborted()
+      if (identity(executable) !== before) throw new Error('KERNEL_CHANGED')
+      repository.setSetting(
+        `kernel-capability-probe:${id}`,
+        probeSchema.parse({ identity: before, report: result.report }),
+      )
+      probeStates.set(id, { state: 'complete' })
+    } catch (error) {
+      const errorCode =
+        error instanceof Error &&
+        ['KERNEL_PROBE_CLEANUP_FAILED', 'KERNEL_CHANGED'].includes(error.message)
+          ? error.message
+          : signal.aborted
+            ? 'CANCELLED'
+            : 'KERNEL_PROBE_FAILED'
+      if (errorCode === 'KERNEL_PROBE_CLEANUP_FAILED') cleanupBlocked.add(id)
+      probeStates.set(id, { state: 'failed', errorCode })
+      // Installation remains usable; failed detection never invents verified evidence.
+      if (!signal.aborted)
+        repository.setSetting(`kernel-capability-probe:${id}`, {
+          identity: before,
+          report: {
+            cdp: {
+              declared: manifest.capabilities.cdp,
+              state: 'failed',
+              checkedAt: new Date().toISOString(),
+            },
+          },
+        })
+    } finally {
+      changed()
+    }
+    return list().find((item) => item.id === id)!
+  }
+  function verify(id: string): Promise<KernelSummary> {
+    if (probing.has(id)) return probing.get(id)!.promise
+    if (
+      probing.size >= 2 ||
+      removals.has(id) ||
+      jobs.has(id) ||
+      users.has(id) ||
+      cleanupBlocked.has(id)
+    )
+      return Promise.reject(new Error('OPERATION_IN_PROGRESS'))
+    const controller = new AbortController()
+    const promise = runProbe(id, controller.signal).finally(() => probing.delete(id))
+    probing.set(id, { controller, promise })
+    return promise
   }
   function observeCdp(record: EnvironmentRecord, version: string) {
     const executable = executableFor(record)
@@ -308,12 +398,26 @@ export function createKernelService(
           observed.success && executablePath && observed.data.identity === identity(executablePath)
             ? observed.data
             : undefined
+        const named = renameKernelSchema.shape.name.safeParse(
+          repository.getSetting<unknown>(`kernel-name:${manifest.id}`),
+        )
+        const customName = named.success && named.data ? named.data : undefined
+        const probe = probeSchema.safeParse(
+          repository.getSetting<unknown>(`kernel-capability-probe:${manifest.id}`),
+        )
+        const proof =
+          probe.success && executablePath && probe.data.identity === identity(executablePath)
+            ? probe.data.report
+            : {}
         return kernelSummarySchema.parse({
           id: manifest.id,
+          customName,
+          verification: probeStates.get(manifest.id),
           label:
-            manifest.id === 'standard-chromium'
+            customName ??
+            (manifest.id === 'standard-chromium'
               ? 'Standard Chromium'
-              : `${fingerprintProvider(fingerprintKernelProviderId(manifest.id) ?? '')?.label ?? 'Fingerprint Chromium'} ${manifest.version}`,
+              : `${fingerprintProvider(fingerprintKernelProviderId(manifest.id) ?? '')?.label ?? 'Fingerprint Chromium'} ${manifest.version}`),
           family: manifest.family,
           platform,
           arch,
@@ -353,17 +457,19 @@ export function createKernelService(
           capabilityReport: Object.fromEntries(
             Object.entries(manifest.capabilities).map(([key, declared]) => [
               key,
-              {
-                declared,
-                state: key === 'cdp' && current ? 'verified' : 'unverified',
-                ...(key === 'cdp' && current
+              !declared
+                ? { declared, state: 'unsupported' }
+                : key === 'cdp' &&
+                    current &&
+                    (!proof[key]?.checkedAt || current.checkedAt >= proof[key].checkedAt)
                   ? {
+                      declared,
+                      state: 'verified',
                       version: current.version,
                       checkedAt: current.checkedAt,
                       evidence: 'Managed browser CDP handshake',
                     }
-                  : {}),
-              },
+                  : (proof[key] ?? { declared, state: 'unverified' }),
             ]),
           ),
         })
@@ -418,8 +524,10 @@ export function createKernelService(
       config.kernelConfig,
     )
   }
-  function install(id: string): Promise<KernelSummary> {
-    if (removals.has(id) || users.has(id)) return Promise.reject(new Error('OPERATION_IN_PROGRESS'))
+  function install(id: string, name?: string): Promise<KernelSummary> {
+    const input = installKernelSchema.parse({ id, name })
+    if (removals.has(id) || users.has(id) || probing.has(id) || cleanupBlocked.has(id))
+      return Promise.reject(new Error('OPERATION_IN_PROGRESS'))
     if (installationFor(id)?.state === 'removing')
       return Promise.reject(new Error('KERNEL_REMOVAL_PENDING'))
     const existing = jobs.get(id)
@@ -454,21 +562,31 @@ export function createKernelService(
                   },
                 }
               : manifest
-          repository.setSetting(`kernel-manifest:${id}`, storedManifest)
-          repository.recordKernelInstallation({
-            kernelId: id,
-            version: manifest.version,
-            platform,
-            arch,
-            sourceUrl: publicDownloadSource(manifest.package!.url!),
-            sha256: manifest.package!.sha256!,
-            installPath: result.installPath,
-            state: 'installed',
-          })
+          repository.commitKernelInstallation(
+            {
+              kernelId: id,
+              version: manifest.version,
+              platform,
+              arch,
+              sourceUrl: publicDownloadSource(manifest.package!.url!),
+              sha256: manifest.package!.sha256!,
+              installPath: result.installPath,
+              state: 'installed',
+            },
+            storedManifest,
+            input.name,
+          )
         } catch (error) {
           await rm(result.installPath, { recursive: true, force: true })
           throw error
         }
+        progress.set(id, {
+          phase: 'testing',
+          receivedBytes: result.sizeBytes,
+          totalBytes: result.sizeBytes,
+        })
+        changed()
+        await runProbe(id, signal)
         progress.set(id, {
           phase: 'complete',
           receivedBytes: result.sizeBytes,
@@ -527,6 +645,10 @@ export function createKernelService(
     return { ...entry.release, installed: Boolean(executableFor({ kernelId: entry.release.id })) }
   }
   return {
+    rename,
+    verify,
+    hasActive: () => jobs.size > 0 || probing.size > 0,
+    drain: () => Promise.allSettled([...probing.values()].map((job) => job.promise)),
     prepareCustom,
     remove,
     retain,
@@ -544,6 +666,7 @@ export function createKernelService(
     },
     cancelAll: () => {
       for (const job of jobs.values()) job.controller.abort()
+      for (const job of probing.values()) job.controller.abort()
     },
   }
 }

@@ -61,7 +61,7 @@
 维护者要求从当前版本连续开发到 `v1.0.2`，该指令替代此前“每次发布后暂停等待确认”的执行方式，不改变产品边界和工程质量门槛。
 
 1. 所有开发在 `master` 顺序完成，不开启子智能体、不强制推送或重写已发布 tag；原有 `README.md`、`BUGS.md` 用户改动保持原样，不混入提交。
-2. 每版按本台账冻结范围实现并回归，提交/推送 `master`，核对对应提交的 CI 与三平台构建后再创建版本 tag 和 Release；发布说明包含实际变化、迁移/兼容、证据和已知限制。
+2. 每版按本台账冻结范围实现并回归，通过 PR 核对三平台源码 CI 后合并 `master`，创建版本 tag 触发三平台安装包验证与草稿 Release；发布说明包含实际变化、迁移/兼容、证据和已知限制。
 3. 核验 Release 构建、安装附件和摘要，补齐实施台账后直接进入下一小版本，不再索取逐版确认；到 `v1.0.2` 后停止，等待维护者统一确认。
 4. 不以递增版本号代替功能完成，不跳过仍阻塞下一版本线的安全、恢复、平台或许可问题，不为“按反馈发布”的预留版本编造问题或空发布。反馈尚未收到时如实记录；维护者尚未决定的许可证等事项仍不能代为授权。
 5. 失败的 CI/构建先定位并修复，网络类外部失败可以有记录地重跑；无法继续的外部前提或必须由维护者决定的事项明确说明，不悄悄降低门槛。
@@ -123,7 +123,7 @@
 | B13  | **已接通：记录与日志。** 持久化运行/操作记录，应用会话日志查看、筛选、详情、复制与清空                                  | 应用日志是有界会话缓冲，不能当成持久团队审计；需要继续防止秘密和跨空间信息泄漏                          | [活动页](../apps/desktop/src/features/activity/pages/activity-page.tsx)、[日志服务](../apps/desktop/electron/services/app-log-service.ts)、[日志 IPC](../apps/desktop/electron/app-log-ipc.ts)                                                                                     |
 | B14  | **已接通：设置与外观。** 中英文、主题及其持久化，显示数据/内核/日志路径和安全存储可用性                                 | 存储设置页不是数据库连接、备份目的地或迁移管理页；不因路线重写重新开发已有主题                          | [设置页](../apps/desktop/src/features/settings/pages/settings-storage-page.tsx)、[主题](../apps/desktop/src/features/theme/theme-provider.tsx)、[语言](../apps/desktop/src/i18n/provider.tsx)                                                                                      |
 | B15  | **已接通：手动更新。** 检查发布、下载、取消、校验、打开安装包/发行说明                                                  | 不是后台自动安装或回滚系统；安装包实际兼容和签名状态单独验收                                            | [更新服务](../apps/desktop/electron/services/app-update-service.ts)、[更新 IPC](../apps/desktop/electron/app-update-ipc.ts)、[更新页](../apps/desktop/src/features/settings/pages/settings-updates-page.tsx)                                                                       |
-| B16  | **部分实现：质量与发布。** 有单元/契约/部分组件测试；构建与发布配置列出三类目标平台                                     | PR CI 目前为 Windows；指纹 smoke 显式跳过 macOS x64；有配置不等于本次构建、实机或签名已经验证           | [CI](../.github/workflows/ci.yml)、[构建](../.github/workflows/build-desktop.yml)、[发布](../.github/workflows/release.yml)、[smoke 脚本](../scripts/)                                                                                                                             |
+| B16  | **部分实现：质量与发布。** 有单元/契约/部分组件测试；构建与发布配置列出三类目标平台                                     | PR CI 目前为 Windows；指纹 smoke 显式跳过 macOS x64；有配置不等于本次构建、实机或签名已经验证           | [CI](../.github/workflows/ci.yml)、[发布](../.github/workflows/release.yml)、[smoke 脚本](../scripts/)                                                                                                                             |
 | B17  | **未发现产品级实现：三渠道备份。** 仅发现数据库迁移安全副本                                                             | 没有统一备份格式、加密开关、本地导出恢复、OpenList/S3 提供方或定时任务闭环                              | [迁移安全副本](../packages/storage/src/migrations.ts)、[当前命令清单](../apps/desktop/electron/application.ts)、[存储设置](../apps/desktop/src/features/settings/pages/settings-storage-page.tsx)                                                                                  |
 | B18  | **未发现产品级实现：扩展管理。** 可能可通过上游浏览器自行操作原生扩展页，但本项目未接通管理链路                         | 没有环境级扩展配置、受控目录加载、状态检查和迁移恢复验收；不把浏览器原生能力算成已交付                  | [当前配置契约](../packages/contracts/src/index.ts)、[启动参数](../packages/kernel-core/src/index.ts)、[环境表单](../apps/desktop/src/features/environments/environment-form.ts)                                                                                                    |
 | B19  | **仅预留：工作空间与团队切换。** `TeamSwitcher` 组件存在，侧栏传入空团队列表                                            | 没有真实成员、数据库连接、工作空间隔离或多团队操作闭环                                                  | [侧栏](../apps/desktop/src/components/app-sidebar.tsx)、[切换组件](../apps/desktop/src/components/team-switcher.tsx)、[本地初始化](../apps/desktop/electron/main.ts)                                                                                                               |
@@ -1683,7 +1683,7 @@ Intel job `108518376467` 在 dmgbuild 打包的 hdiutil detach 阶段报 Resourc
 #### 默认书签的最小语义（实现前冻结）
 
 - 工作空间内维护一个有序的默认书签列表，初始为空；只接受用户指定的 HTTP(S) 网址，不预置商业网址、凭据或跟踪链接。
-- 仅初始化尚未创建浏览器资料的新环境；已存在的资料（包括克隆）不追写、合并或覆盖。更改模板只影响之后首次初始化的环境，不同步已运行环境。
+- 书签栏仅初始化尚未创建浏览器资料的新环境；已存在的资料（包括克隆）不追写、合并或覆盖，不同步已运行环境。2026-09-28 追加的“启动时打开”是独立选项：显式启动时在认证/设置及窗口恢复后打开勾选的网址，旧数据默认关闭；具体边界见项目规划的“行内书签与日志表格”。
 - 在受控 Main 中、启动浏览器前写入，使用文件存在检查、受控路径、排他写入/原子发布；浏览器运行时绝不写书签文件。已有 Bookmarks、Preferences 或非预期链接/目录需安全跳过或明确拒绝，不以“默认”名义覆盖用户数据。
 - 复用现有工作空间数据库的 `app_settings` 保存小型设置，定义专属 contracts 和白名单 IPC；不引入新的通用配置平台、额外数据库表或浏览器扩展。
 
@@ -1741,3 +1741,23 @@ Intel job `108518376467` 在 dmgbuild 打包的 hdiutil detach 阶段报 Resourc
 - Apostate 152.0.7977.83 本机正式原生脚本通过：安装、启动、认证代理、远程 DNS、持久身份、语言/时区/核数、Cookie/localStorage、恢复标签、关窗停止、回收恢复及内核删除/重装保留资料。首次运行曾在代理 fixture 页面加载时 30 秒超时；只读诊断运行与显式激活前台标签的正式运行随后通过，**根因未确定**。没有删除断言、增加超时或添加自动重试；不能用后续通过抹去首次失败。
 - 合并 Mac ZIP 提取后，`pnpm test:app-update` 再次通过真实 Electron/ASAR 边界、准备、握手和清理；该自动 smoke 的 OS 安装命令为模拟，不代表真实 Windows/macOS 应用替换全部完成。
 - Windows x64、Mac Intel 的本轮固定候选原生 CI 尚待运行；本机较新 macOS 通过不代表 macOS 13.0 最低设备实测。三平台门禁未齐之前不标记 v0.3.0 完成、不发布。后续工作仍仅限本节与 17.33，结束后停止。
+
+
+### 2026-09-28 追加验收：行内书签与统一历史表格（未发布）
+
+- 书签菜单和页面采用行内编辑、鼠标/键盘拖拽、启动开关、可撤销草稿删除与统一保存；不使用编辑/删除弹窗，移除重复标题描述，最小桌面窗口下两侧边框和表单可见。标签页移除描述。
+- 命令和批任务历史复用 DataTable；刷新位于右上角工具栏，保留服务端游标，搜索/排序明确限于当前页。关于页列出参考/改编范围与许可声明，Ant Browser 仅为独立实现的交互参考。
+- 本机 macOS arm64：`pnpm check` 通过（151 个 Vitest 文件 / 1755 项测试，83 项 tooling）；Electron Vite 构建、`pnpm test:desktop --require-native` 通过，包括原有数据迁移、重启、旧书签不覆盖及有界历史维护契约。
+- `pnpm test:user-workflows` 连续两次通过：原生剪贴板、行内字段与启动选项持久化、键盘/鼠标拖拽、删除撤销、两类历史工具栏和日期筛选。等待 dnd-kit 首次目标测量后发送方向键，避免自动化比传感器安装和布局测量更早触发。
+- Chrome 153.0.8010.54 本机认证代理验收通过：恢复 4 个旧标签、900 次资源请求、启动书签去重/复用，设置失败为零。未执行 Windows/Linux 原生验收，不替代真实 Windows CI；未更改版本号或已安装应用，未发布安装包。
+
+
+### 2026-09-28 追加验收：范围筛选与内核管理（未发布）
+
+- 日志高级筛选改为 shadcn Base 双月日期范围选择，保留本地分钟精度。书签新增与保存位于列表右上方，行内名称、网址、启动勾选与删除按钮统一中心线。共享表格与应用日志的操作列固定右侧，表头/操作按钮对齐；标签和内核支持有界多选删除，系统浏览器不可选择删除，失败项保留选择。
+- 安装内核时即可填写可选名称，留空使用默认名称；安装后仍可修改，不改变 ID、版本或环境绑定。Main 使用专属安装 contract，storage 以同一事务保存 manifest、安装记录和名称；下载失败不改变原名称，名称写入失败会回滚登记。关于页只展示产品/项目参考，组件库保留必要的第三方许可声明，不逐一展示致谢卡片。
+- 下载验证及安装登记后自动使用临时资料与私有 CDP pipe 检测六项基础能力；旧安装可重新验证。报告记录实际版本、时间和证据；代理/WebRTC 保持未验证，不提升提供方认证状态。检测失败保留安装，取消或异常退出清理临时进程，无法确认退出时保留临时目录并拒绝后续冲突操作。修正 macOS 执行文件使用元数据引起的 ctime 变化误报；真正的内容身份变化仍使证据失效。
+- 本机 macOS arm64：`pnpm check` 通过（157 个 Vitest 文件 / 1791 项测试，83 项 tooling）；Electron Vite 构建通过。`pnpm test:user-workflows` 连续两次通过，覆盖日期范围、书签对齐/工具栏、键盘及鼠标排序、历史表格、右侧固定列、标签多选删除、内核重命名持久化与真实能力检测；另以真实桌面查看安装名称字段和已选日期范围布局。
+- `pnpm test:kernel-capabilities` 在 Chrome 153.0.8010.54 上实际通过 CDP、页面截图、元素截图、文件上传、User-Agent、时区六项，未将代理/WebRTC 标为已验证。`pnpm test:runtime-stability` 再次通过：4 个恢复标签、900 次资源请求、认证代理及启动书签去重，设置失败 0。
+- **综合原生门禁仍有失败：** 本轮 `pnpm test:desktop --require-native` 在 `batch-navigation-focus` 的 5 秒管理窗口焦点确认超时，独立运行也复现；此前的启动、认证代理、截图预算、默认书签和环境命令阶段通过。临时诊断显示原生 show/focus 与 CDP bringToFront 均已返回，但焦点确认未完成；试验增加一次应用激活请求也未解决，试验代码已撤销，未延长超时、强制点击或跳过断言。根因尚未确定，不把综合门禁记为通过，也不能仅凭此断言是浏览器闪退。
+- 尚无本轮 Windows / Linux 原生证据；未修改版本号、替换已安装应用或发布安装包。

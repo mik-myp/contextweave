@@ -55,7 +55,7 @@ async function click(text: string) {
 it('loads history maintenance only on request and retains the chosen retention while collapsed', async () => {
   await render()
   expect(receipt).not.toHaveBeenCalled()
-  expect(container.querySelector('[aria-label="历史记录清理"]')).toBeNull()
+  expect(container.querySelector('[aria-label="清理应用运行记录"]')).toBeNull()
   await click('查看清理选项')
   expect(receipt).toHaveBeenCalledOnce()
   await click('180')

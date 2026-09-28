@@ -173,7 +173,48 @@ it('identifies the selected publisher and its own license instead of relabeling 
       ).toHaveLength(2),
     )
   })
-  expect(document.body.textContent).toContain('Apostate (heretic-tech)')
+  await vi.waitFor(async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(document.body.textContent).toContain('Apostate (heretic-tech)')
+  })
   expect(document.body.textContent).toContain('GPLv3 (upstream LICENSE)')
   expect(document.body.textContent).not.toContain('BSD-3-Clause')
+})
+
+async function fillName(value: string) {
+  const input = document.querySelector<HTMLInputElement>('#kernel-install-name')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+it('accepts a display name before installation and sends it in the same request', async () => {
+  install.mockResolvedValue({ ok: true, data: { label: 'Work browser' } })
+  await render()
+  expect(document.querySelector('#kernel-install-name')).not.toBeNull()
+  await fillName(' Work browser ')
+  await act(async () => button('下载并安装').click())
+  expect(install).toHaveBeenCalledExactlyOnceWith(
+    'fingerprint-chromium-148-0-7778-215',
+    'Work browser',
+  )
+  expect(setNotice).toHaveBeenCalledWith({
+    kind: 'success',
+    message: expect.stringContaining('Work browser'),
+  })
+})
+it('keeps an empty name valid, rejects invalid names and retains the draft after a download failure', async () => {
+  install.mockResolvedValue({ ok: false, code: 'DOWNLOAD_FAILED' })
+  await render()
+  expect(button('下载并安装').disabled).toBe(false)
+  await fillName('x'.repeat(81))
+  expect(button('下载并安装').disabled).toBe(true)
+  await fillName('Retry browser')
+  await act(async () => button('下载并安装').click())
+  expect(document.querySelector<HTMLInputElement>('#kernel-install-name')!.value).toBe(
+    'Retry browser',
+  )
+  expect(button('下载并安装').disabled).toBe(false)
 })

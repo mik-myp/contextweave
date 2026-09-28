@@ -51,7 +51,7 @@ export function DataTableBody<TData extends RowData>({
           className: 'min-h-0 overflow-auto scroll-pt-10 focus-visible:outline-ring',
         }}
       >
-        <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableHeader className="sticky top-0 z-20 bg-background">
           {table.getHeaderGroups().map((group) => (
             <TableRow key={group.id}>
               {group.headers.map((header) => {
@@ -59,6 +59,7 @@ export function DataTableBody<TData extends RowData>({
                 return (
                   <TableHead
                     key={header.id}
+                    data-actions={header.column.id === 'actions' ? '' : undefined}
                     colSpan={header.colSpan}
                     className={cn(
                       'px-4',
@@ -90,7 +91,10 @@ export function DataTableBody<TData extends RowData>({
             Array.from({ length: 5 }, (_, index) => (
               <TableRow key={index}>
                 {columns.map((column) => (
-                  <TableCell key={column.id}>
+                  <TableCell
+                    key={column.id}
+                    data-actions={column.id === 'actions' ? '' : undefined}
+                  >
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
                 ))}
@@ -107,12 +111,19 @@ export function DataTableBody<TData extends RowData>({
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
+                    data-actions={cell.column.id === 'actions' ? '' : undefined}
                     className={cn(
                       'px-4 py-(--table-cell-py)',
                       cell.column.columnDef.meta?.align === 'end' && 'text-end',
                     )}
                   >
-                    <table.FlexRender cell={cell} />
+                    {cell.column.id === 'actions' ? (
+                      <div className="flex items-center justify-end">
+                        <table.FlexRender cell={cell} />
+                      </div>
+                    ) : (
+                      <table.FlexRender cell={cell} />
+                    )}
                   </TableCell>
                 ))}
               </TableRow>

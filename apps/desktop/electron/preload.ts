@@ -1,4 +1,12 @@
 import {
+  deleteTagsSchema,
+  deleteKernelsSchema,
+  renameKernelSchema,
+  installKernelSchema,
+  managedKernelIdSchema,
+  bulkDeleteResultSchema,
+} from '@contextweave/contracts'
+import {
   defaultBookmarksSchema,
   saveDefaultBookmarksSchema,
   type SaveDefaultBookmarks,
@@ -65,6 +73,8 @@ import {
   type HistoryCleanupRetentionDays,
   appInfoSchema,
   appPathsSchema,
+  appPathKeySchema,
+  type AppPathKey,
   externalUrlSchema,
   ipLocaleRequestSchema,
   ipLocaleResultSchema,
@@ -199,6 +209,10 @@ const api = {
       ),
   },
   organization: {
+    deleteTags: async (context: WorkspaceContext, input: z.input<typeof deleteTagsSchema>) =>
+      ipcResultSchema(bulkDeleteResultSchema).parse(
+        await invokeWorkspace(context, 'organization:tags-delete', deleteTagsSchema.parse(input)),
+      ),
     list: async (context: WorkspaceContext) =>
       ipcResultSchema(organizationSnapshotSchema).parse(
         await invokeWorkspace(context, 'organization:list'),
@@ -294,6 +308,10 @@ const api = {
       ipcResultSchema(appInfoSchema).parse(await ipcRenderer.invoke('app:get-info')),
     getPaths: async () =>
       ipcResultSchema(appPathsSchema).parse(await ipcRenderer.invoke('app:get-paths')),
+    copyPath: async (key: AppPathKey) =>
+      ipcResultSchema(z.boolean()).parse(
+        await ipcRenderer.invoke('app:copy-path', appPathKeySchema.parse(key)),
+      ),
     openExternal: async (url: string) =>
       ipcResultSchema(z.boolean()).parse(
         await ipcRenderer.invoke('app:open-external', externalUrlSchema.parse(url)),
@@ -360,6 +378,18 @@ const api = {
     },
   },
   kernel: {
+    rename: async (context: WorkspaceContext, input: z.input<typeof renameKernelSchema>) =>
+      ipcResultSchema(kernelSummarySchema).parse(
+        await invokeWorkspace(context, 'kernel:rename', renameKernelSchema.parse(input)),
+      ),
+    verify: async (context: WorkspaceContext, id: string) =>
+      ipcResultSchema(kernelSummarySchema).parse(
+        await invokeWorkspace(context, 'kernel:verify', managedKernelIdSchema.parse(id)),
+      ),
+    removeMany: async (context: WorkspaceContext, ids: string[]) =>
+      ipcResultSchema(bulkDeleteResultSchema).parse(
+        await invokeWorkspace(context, 'kernel:remove-many', deleteKernelsSchema.parse(ids)),
+      ),
     providers: async (context: WorkspaceContext) =>
       ipcResultSchema(z.array(kernelProviderSchema)).parse(
         await invokeWorkspace(context, 'kernel:providers'),
@@ -400,9 +430,13 @@ const api = {
       ipcResultSchema(z.array(kernelSummarySchema)).parse(
         await invokeWorkspace(context, 'kernel:list'),
       ),
-    install: async (context: WorkspaceContext, kernelId: string) =>
+    install: async (context: WorkspaceContext, kernelId: string, name?: string) =>
       ipcResultSchema(kernelSummarySchema).parse(
-        await invokeWorkspace(context, 'kernel:install', environmentIdSchema.parse(kernelId)),
+        await invokeWorkspace(
+          context,
+          'kernel:install',
+          installKernelSchema.parse({ id: kernelId, name }),
+        ),
       ),
   },
   operation: {

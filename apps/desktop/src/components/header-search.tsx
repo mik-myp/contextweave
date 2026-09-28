@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ArrowRightIcon, SearchIcon } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { appRoutes } from '@/shared/config/navigation'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -40,11 +41,17 @@ export function HeaderSearch() {
   const shortcutLabel = isMac ? '⌘ + K' : 'Ctrl + K'
   const shortcut = isMac ? (
     <>
-      <span className="text-xs">⌘</span> + K
+      <KbdGroup>
+        <Kbd>⌘</Kbd>
+        <Kbd>K</Kbd>
+      </KbdGroup>
     </>
   ) : (
     <>
-      <span className="text-xs">Ctrl</span> + K
+      <KbdGroup>
+        <Kbd>Ctrl</Kbd>
+        <Kbd>K</Kbd>
+      </KbdGroup>
     </>
   )
   const items = React.useMemo<SearchItem[]>(
@@ -82,7 +89,7 @@ export function HeaderSearch() {
       {
         url: appRoutes.activity,
         labelKey: 'nav.activity',
-        keywords: 'activity runtime logs 日志查看 运行记录 操作记录',
+        keywords: 'activity runtime logs 日志查看 运行记录',
         icon: <SearchIcon />,
       },
       {

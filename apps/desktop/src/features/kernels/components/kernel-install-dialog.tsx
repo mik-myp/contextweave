@@ -1,6 +1,7 @@
 import { workspaceKey, useWorkspaceContext } from '@/features/workspaces/workspace-session-context'
 import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { kernelDisplayNameSchema } from '@contextweave/contracts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, RefreshCwIcon } from 'lucide-react'
 import { useI18n } from '@/i18n'
@@ -23,8 +24,9 @@ import {
   SelectGroup,
   SelectItem,
 } from '@/components/ui/select'
-import { Field, FieldLabel, FieldDescription } from '@/components/ui/field'
+import { Field, FieldLabel, FieldDescription, FieldError, FieldGroup } from '@/components/ui/field'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
@@ -41,10 +43,12 @@ export function KernelInstallDialog({
   const workspaceContext = useWorkspaceContext()
   const workspaceApi = useWorkspaceApi()
   const { t, locale } = useI18n()
-  const { setNotice, refresh } = useAppData(['kernels'])
+  const { setNotice, refresh, kernels = [] } = useAppData(['kernels'])
   const client = useQueryClient()
   const providerId = 'fingerprint-chromium'
   const [selected, setSelected] = useState<string>()
+  const [names, setNames] = useState<Record<string, string>>({})
+  const submitting = useRef(false)
   const [pending, setPending] = useState<string>()
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string>()
@@ -64,10 +68,14 @@ export function KernelInstallDialog({
     releases.find((item) => item.id === selected) ??
     releases.find((item) => item.installable) ??
     releases[0]
+  const name = release?.installed
+    ? (kernels.find((item) => item.id === release.id)?.customName ?? '')
+    : (names[release?.id ?? ''] ?? '')
+  const parsedName = kernelDisplayNameSchema.safeParse(name)
   const state = release?.installation
   const installing = Boolean(
     (pending && pending === release?.id) ||
-    (state && ['downloading', 'verifying', 'extracting'].includes(state.phase)),
+    (state && ['downloading', 'verifying', 'extracting', 'testing'].includes(state.phase)),
   )
   const cancelInstall = (id: string) => {
     void unwrapIpc(workspaceApi.kernel.cancelInstall(id)).catch((cause: unknown) => {
@@ -88,19 +96,27 @@ export function KernelInstallDialog({
     }
   }
   const install = async () => {
-    if (installing || pending) return
+    if (installing || pending || submitting.current || !parsedName.success) return
+    submitting.current = true
     setError(undefined)
     setPending('preparing')
     try {
       const target = release
       if (!target?.installable) return
       setPending(target.id)
-      await unwrapIpc(workspaceApi.kernel.install(target.id))
+      const installed = await unwrapIpc(workspaceApi.kernel.install(target.id, parsedName.data))
       await refresh()
-      setNotice({ kind: 'success', message: `${t('kernel.installed')}: ${target.version}` })
+      const probeFailed =
+        installed.verification?.state === 'failed' ||
+        Object.values(installed.capabilityReport ?? {}).some((item) => item.state === 'failed')
+      setNotice({
+        kind: probeFailed ? 'error' : 'success',
+        message: `${t(probeFailed ? 'kernel.installedProbeFailed' : 'kernel.installed')}: ${installed.label ?? target.version}`,
+      })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('admin.operationError'))
     } finally {
+      submitting.current = false
       setPending(undefined)
     }
   }
@@ -119,50 +135,69 @@ export function KernelInstallDialog({
             </p>
           ) : (
             release && (
-              <Field>
-                <div className="flex items-center justify-between">
-                  <FieldLabel htmlFor="kernel-release-version">{t('kernel.version')}</FieldLabel>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    disabled={refreshing || !!pending}
-                    onClick={() => void updateCatalog()}
-                    aria-label={t('kernel.refreshVersions')}
+              <FieldGroup>
+                <Field>
+                  <div className="flex items-center justify-between">
+                    <FieldLabel htmlFor="kernel-release-version">{t('kernel.version')}</FieldLabel>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      disabled={refreshing || !!pending}
+                      onClick={() => void updateCatalog()}
+                      aria-label={t('kernel.refreshVersions')}
+                    >
+                      <RefreshCwIcon className={refreshing ? 'animate-spin' : ''} />
+                    </Button>
+                  </div>
+                  <Select
+                    items={releases.map((item) => ({
+                      value: item.id,
+                      label: `${providerLabel(item.provider)} · ${item.version}${item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
+                    }))}
+                    value={release.id}
+                    disabled={!!pending}
+                    onValueChange={(value) => {
+                      if (value) {
+                        setSelected(value)
+                        setError(undefined)
+                      }
+                    }}
                   >
-                    <RefreshCwIcon className={refreshing ? 'animate-spin' : ''} />
-                  </Button>
-                </div>
-                <Select
-                  items={releases.map((item) => ({
-                    value: item.id,
-                    label: `${providerLabel(item.provider)} · ${item.version}${item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
-                  }))}
-                  value={release.id}
-                  disabled={!!pending}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setSelected(value)
-                      setError(undefined)
+                    <SelectTrigger id="kernel-release-version">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {releases.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {providerLabel(item.provider)} · {item.version}
+                            {item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}
+                            {item.installed ? ` · ${t('kernel.installed')}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>{t('kernel.keepVersions')}</FieldDescription>
+                </Field>
+                <Field data-invalid={!parsedName.success || undefined}>
+                  <FieldLabel htmlFor="kernel-install-name">{t('kernel.installName')}</FieldLabel>
+                  <Input
+                    id="kernel-install-name"
+                    value={name}
+                    maxLength={80}
+                    placeholder={`${providerLabel(release.provider)} ${release.version}`}
+                    autoComplete="off"
+                    disabled={installing || !!pending || release.installed}
+                    aria-invalid={!parsedName.success || undefined}
+                    onChange={(event) =>
+                      setNames((previous) => ({ ...previous, [release.id]: event.target.value }))
                     }
-                  }}
-                >
-                  <SelectTrigger id="kernel-release-version">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {releases.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {providerLabel(item.provider)} · {item.version}
-                          {item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}
-                          {item.installed ? ` · ${t('kernel.installed')}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <FieldDescription>{t('kernel.keepVersions')}</FieldDescription>
-              </Field>
+                  />
+                  <FieldDescription>{t('kernel.installNameHelp')}</FieldDescription>
+                  {!parsedName.success && <FieldError>{t('kernel.invalidName')}</FieldError>}
+                </Field>
+              </FieldGroup>
             )
           )}
           {catalog.data && catalog.data.sourceStatus !== 'live' && (
@@ -236,11 +271,13 @@ export function KernelInstallDialog({
                 <p className="flex items-center gap-2 text-sm">
                   <Spinner />
                   {t(
-                    state?.phase === 'extracting'
-                      ? 'kernel.extracting'
-                      : state?.phase === 'verifying'
-                        ? 'kernel.verifying'
-                        : 'kernel.downloading',
+                    state?.phase === 'testing'
+                      ? 'kernel.testing'
+                      : state?.phase === 'extracting'
+                        ? 'kernel.extracting'
+                        : state?.phase === 'verifying'
+                          ? 'kernel.verifying'
+                          : 'kernel.downloading',
                   )}
                   <span className="ms-auto text-muted-foreground tabular-nums">
                     {Math.round((state?.receivedBytes ?? 0) / 1048576)} MB
@@ -282,7 +319,9 @@ export function KernelInstallDialog({
             </Button>
           ) : (
             <Button
-              disabled={!!pending || !release?.installable || release.installed}
+              disabled={
+                !!pending || !release?.installable || release.installed || !parsedName.success
+              }
               onClick={() => void install()}
             >
               {pending ? <Spinner /> : <DownloadIcon />}

@@ -21,6 +21,8 @@ export const capabilityEvidenceSchema = z
 export const kernelSummarySchema = z.object({
   id: z.string().min(1),
   label: z.string(),
+  customName: z.string().max(80).optional(),
+  verification: z.object({ state: z.enum(['running', 'complete', 'failed']), errorCode: z.string().optional() }).optional(),
   family: z.string(),
   platform: z.string(),
   arch: z.string(),
@@ -39,7 +41,7 @@ export const kernelSummarySchema = z.object({
   license: z.string().optional(),
   unsupportedReason: z.string().optional(),
   installation: z.object({
-    phase: z.enum(['downloading', 'verifying', 'extracting', 'complete', 'failed', 'cancelled']),
+    phase: z.enum(['downloading', 'verifying', 'extracting', 'testing', 'complete', 'failed', 'cancelled']),
     receivedBytes: z.number().nonnegative(),
     totalBytes: z.number().nonnegative(),
     errorCode: z.string().optional(),

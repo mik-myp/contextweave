@@ -84,3 +84,110 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - `yauzl` 3.4.0 — MIT; https://github.com/thejoshwolfe/yauzl
 
 These libraries run in the desktop main process. Their original package license files are retained with the application dependencies. No telemetry is introduced by their integration.
+
+## coss ui — Kbd and toast composition
+
+Source: https://github.com/cosscom/coss/tree/main/apps/ui
+Registry: https://coss.com/ui/r/kbd.json
+Kbd source blob: bca72b133c903828070fb56de525f9bae31dbed2
+
+ContextWeave includes Kbd/KbdGroup from the `apps/ui/` registry and adapts the
+`p-toast-11` deduplicated notification pattern to its existing Base UI toast.
+Only the MIT-licensed `apps/ui/` materials are used, as expressly designated in
+the upstream README and LICENSING.md; the rest of that repository is not included.
+
+MIT License
+
+Copyright (c) 2025 coss.com
+Originally Copyright (c) 2025 Origin UI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Ant Browser layout reference
+
+Source: https://github.com/black-ant/Ant-Browser/blob/master/frontend/src/modules/browser/pages/BookmarkSettingsPage.tsx
+
+The bookmarks page independently implements the actions toolbar, inline name
+and URL fields, startup checkboxes, drag handles, and bottom add action with
+ContextWeave's own components. No Ant Browser source or assets are copied; its repository does
+not declare a license. Existing-profile synchronization is not adopted. Startup navigation is independently
+implemented through the authenticated Main-only browser-control boundary.
+
+## Dice UI — Base Sortable
+
+Source: https://github.com/sadmann7/diceui
+Registry: https://diceui.com/r/base-nova/sortable.json
+
+The Sortable components and use-isomorphic-layout-effect hook are installed from the Base UI registry. ContextWeave adapts localization,
+strict typing, Base UI native ref composition, style integration and
+keyboard/mouse/touch bookmark ordering. The integration does not treat dnd-kit's
+keyboard scroll prevention as drag cancellation.
+The dnd-kit dependencies retain their MIT licenses; they have no runtime network
+access or telemetry in this integration.
+
+MIT License
+
+Copyright (c) 2024 Sadman Sakib
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## dnd-kit
+
+Source: https://github.com/clauderic/dnd-kit
+
+Applies to @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/modifiers and
+@dnd-kit/utilities, bundled in the Renderer for accessible drag ordering.
+
+MIT License
+
+Copyright (c) 2021, Claudéric Demers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

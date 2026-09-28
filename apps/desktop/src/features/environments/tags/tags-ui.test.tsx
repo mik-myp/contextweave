@@ -22,6 +22,8 @@ const tag: EnvironmentTag = {
   updatedAt: '2026-09-28T00:00:00.000Z',
 }
 let snapshot: OrganizationSnapshot, client: QueryClient, container: HTMLDivElement, root: Root
+vi.mock('@/components/ui/toast', () => ({ toast: { add: vi.fn() } }))
+const removeMany = vi.fn()
 const list = vi.fn(),
   create = vi.fn(),
   update = vi.fn(),
@@ -79,7 +81,8 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   localStorage.clear()
   localStorage.setItem('contextweave:locale', 'en-US')
-  for (const mock of [list, create, update, remove, save, onClose, onSaved]) mock.mockReset()
+  for (const mock of [list, create, update, remove, removeMany, save, onClose, onSaved])
+    mock.mockReset()
   snapshot = { ...fixtureWorkspace, tags: [tag], environments: [], views: [], groups: [] }
   list.mockImplementation(async () => ({ ok: true, data: snapshot }))
   vi.stubGlobal(
@@ -90,6 +93,7 @@ beforeEach(() => {
         createTag: create,
         updateTag: update,
         deleteTag: remove,
+        deleteTags: removeMany,
         saveEnvironment: save,
       },
     }),
@@ -361,4 +365,39 @@ it('renders the Chinese dictionary labels as well as English', async () => {
   await render(<TagsPage />)
   expect(document.querySelector('table')?.getAttribute('aria-label')).toBe('标签管理')
   expect(button('新建标签')).toBeDefined()
+})
+
+it('selects tags, confirms only those revisions and keeps failed deletions selected', async () => {
+  const other = { ...tag, id: '00000000-0000-4000-8000-000000000002', name: 'Other' }
+  snapshot.tags = [tag, other]
+  removeMany.mockImplementation(async () => {
+    snapshot.tags = [other]
+    return {
+      ok: true,
+      data: [
+        { id: tag.id, ok: true },
+        { id: other.id, ok: false, code: 'ORGANIZATION_CONFLICT' },
+      ],
+    }
+  })
+  await render(<TagsPage />)
+  expect(container.querySelector('thead [data-actions]')?.textContent).toBe('Actions')
+  expect(container.querySelector('tbody [data-actions] [role="group"]')?.className).toContain(
+    'justify-end',
+  )
+  await act(async () => container.querySelector<HTMLElement>('thead [role="checkbox"]')!.click())
+  await click('Delete selected', container)
+  const dialog = document.querySelector('[role="alertdialog"]')!
+  expect(dialog.textContent).toContain(tag.name)
+  expect(dialog.textContent).toContain(other.name)
+  await click('Delete selected', dialog)
+  expect(removeMany).toHaveBeenCalledExactlyOnceWith([
+    { id: tag.id, expectedRevision: tag.revision },
+    { id: other.id, expectedRevision: other.revision },
+  ])
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Other')
+  expect(container.querySelector('tbody [role="checkbox"]')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(remove).not.toHaveBeenCalled()
 })

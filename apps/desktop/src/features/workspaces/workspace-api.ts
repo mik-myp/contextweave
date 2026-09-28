@@ -26,6 +26,7 @@ export function createWorkspaceApi(input: WorkspaceContext) {
       retryPreview: bindWorkspace(() => window.contextweave.batch.retryPreview),
     },
     organization: {
+      deleteTags: bindWorkspace(() => window.contextweave.organization.deleteTags),
       createTag: bindWorkspace(() => window.contextweave.organization.createTag),
       updateTag: bindWorkspace(() => window.contextweave.organization.updateTag),
       deleteTag: bindWorkspace(() => window.contextweave.organization.deleteTag),
@@ -39,6 +40,9 @@ export function createWorkspaceApi(input: WorkspaceContext) {
       deleteView: bindWorkspace(() => window.contextweave.organization.deleteView),
     },
     kernel: {
+      removeMany: bindWorkspace(() => window.contextweave.kernel.removeMany),
+      rename: bindWorkspace(() => window.contextweave.kernel.rename),
+      verify: bindWorkspace(() => window.contextweave.kernel.verify),
       providers: bindWorkspace(() => window.contextweave.kernel.providers),
       prepareCustom: bindWorkspace(() => window.contextweave.kernel.prepareCustom),
       catalog: bindWorkspace(() => window.contextweave.kernel.catalog),

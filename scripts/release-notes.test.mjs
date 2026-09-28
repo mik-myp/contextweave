@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   releaseSections,
@@ -104,18 +104,17 @@ test("publish consumes validated notes without giving the write job build or sca
     new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   );
-  const build = readFileSync(
-    new URL("../.github/workflows/build-desktop.yml", import.meta.url),
-    "utf8",
-  );
+  assert.equal(existsSync(new URL("../.github/workflows/build-desktop.yml", import.meta.url)), false);
   assert.match(ci, /pull_request:/);
   assert.doesNotMatch(ci, /\n  push:/);
-  assert.match(build, /\n  push:/);
+  assert.match(workflow, /push:\s+tags:\s+- "v\*\.\*\.\*"/);
+  assert.doesNotMatch(workflow, /branches:|workflow_dispatch:/);
+  assert.doesNotMatch(ci, /desktop build\b|build:dir|electron-builder/);
   for (const gate of [
     "pnpm check",
     "test:desktop --require-native",
     "test:packaged-native",
     "test:packaged-fuses",
   ])
-    assert.ok(build.includes(gate), gate);
+    assert.ok(workflow.includes(gate), gate);
 });

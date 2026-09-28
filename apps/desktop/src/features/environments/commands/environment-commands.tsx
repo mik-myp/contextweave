@@ -1,28 +1,21 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import type { EnvironmentCommandReceipt } from '@contextweave/contracts'
+import type { ColumnDef } from '@tanstack/react-table'
+import type { DataTableFeatures } from '@/components/data-table/data-table-features'
+import { CursorDataTable } from '@/components/data-table/cursor-data-table'
 import { useWorkspaceSession, workspaceKey } from '@/features/workspaces/workspace-session-context'
 import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from '@/components/ui/table'
 import { PendingCommands } from './pending-commands'
 import { EnvironmentRecoveryDialog } from './recovery-dialog'
 import { errorMessage } from '@/shared/lib/error-message'
+const getRowId = (item: EnvironmentCommandReceipt) => item.requestId
 
-export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean }) {
+export function EnvironmentCommands({ showHelp = false }: { showHelp?: boolean }) {
   const { context, api } = useWorkspaceSession(),
     { t, locale } = useI18n(),
     cache = useQueryClient()
@@ -58,125 +51,116 @@ export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean })
       setPending(undefined)
     }
   }
+  const columns: ColumnDef<DataTableFeatures, EnvironmentCommandReceipt, unknown>[] = [
+    {
+      accessorKey: 'requestId',
+      header: t('commands.requestId'),
+      meta: { label: t('commands.requestId') },
+      cell: ({ row }) => <span className="font-mono text-xs">{row.original.requestId}</span>,
+    },
+    {
+      accessorKey: 'kind',
+      header: t('batch.action'),
+      meta: { label: t('batch.action') },
+      cell: ({ row }) => t(`life.op.${row.original.kind}`),
+    },
+    {
+      accessorKey: 'environmentId',
+      header: t('commands.target'),
+      meta: { label: t('commands.target') },
+      cell: ({ row }) => (
+        <Button
+          size="sm"
+          variant="link"
+          render={
+            <Link
+              to="/environments/$environmentId/edit"
+              params={{ environmentId: row.original.environmentId }}
+            />
+          }
+        >
+          {row.original.environmentId}
+        </Button>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: t('env.status'),
+      meta: { label: t('env.status') },
+      cell: ({ row }) => (
+        <div className="flex flex-col items-start gap-1">
+          <Badge
+            variant={
+              ['unknown', 'failed'].includes(row.original.status) ? 'destructive' : 'outline'
+            }
+          >
+            {t(`commands.${row.original.status}`)}
+          </Badge>
+          {row.original.errorCode && (
+            <span className="max-w-72 text-wrap text-xs text-muted-foreground">
+              {errorMessage(row.original.errorCode)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header: t('commands.created'),
+      meta: { label: t('commands.created') },
+      cell: ({ row }) => new Date(row.original.createdAt).toLocaleString(locale),
+    },
+    {
+      id: 'actions',
+      header: t('env.actions'),
+      meta: { label: t('env.actions') },
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) =>
+        row.original.status === 'queued' ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={Boolean(pending)}
+            onClick={() => void cancel(row.original.requestId)}
+          >
+            {t('commands.cancelQueued')}
+          </Button>
+        ) : row.original.status === 'unknown' ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRecover(row.original.environmentId)}
+          >
+            {t('env.recover')}
+          </Button>
+        ) : (
+          '—'
+        ),
+    },
+  ]
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={t('commands.title')}>
-      {showHelp ? (
-        <Alert>
-          <AlertDescription>
-            {t('commands.help')} {t('commands.cancelHelp')}
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <p className="text-sm text-muted-foreground">{t('commands.cancelHelp')}</p>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {showHelp && (
+        <p className="text-sm text-muted-foreground">
+          {t('commands.help')} {t('commands.cancelHelp')}
+        </p>
       )}
       <PendingCommands />
-      {(error || query.error) && (
-        <Alert variant="destructive">
-          <AlertDescription>{error ?? query.error?.message}</AlertDescription>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setCursors([])
-              void query.refetch()
-            }}
-          >
-            {t('common.refresh')}
-          </Button>
-        </Alert>
-      )}
-      {query.isPending ? (
-        <Skeleton className="h-32" />
-      ) : query.data?.items.length ? (
-        <Table aria-label={t('commands.title')}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('commands.requestId')}</TableHead>
-              <TableHead>{t('env.actions')}</TableHead>
-              <TableHead>{t('commands.target')}</TableHead>
-              <TableHead>{t('env.status')}</TableHead>
-              <TableHead>{t('commands.created')}</TableHead>
-              <TableHead>{t('env.actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.items.map((item) => (
-              <TableRow key={item.requestId}>
-                <TableCell className="font-mono text-xs">{item.requestId}</TableCell>
-                <TableCell>{t(`life.op.${item.kind}`)}</TableCell>
-                <TableCell>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="link"
-                    render={
-                      <Link
-                        to="/environments/$environmentId/edit"
-                        params={{ environmentId: item.environmentId }}
-                      />
-                    }
-                  >
-                    {item.environmentId}
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col items-start gap-1">
-                    <Badge
-                      variant={
-                        item.status === 'unknown' || item.status === 'failed'
-                          ? 'destructive'
-                          : 'outline'
-                      }
-                    >
-                      {t(`commands.${item.status}`)}
-                    </Badge>
-                    {item.errorCode && (
-                      <span className="max-w-72 text-wrap text-xs text-muted-foreground">
-                        {errorMessage(item.errorCode)}
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>{new Date(item.createdAt).toLocaleString(locale)}</TableCell>
-                <TableCell>
-                  {item.status === 'queued' ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={Boolean(pending)}
-                      onClick={() => void cancel(item.requestId)}
-                    >
-                      {t('commands.cancelQueued')}
-                    </Button>
-                  ) : item.status === 'unknown' ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRecover(item.environmentId)}
-                    >
-                      {t('env.recover')}
-                    </Button>
-                  ) : (
-                    '—'
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      ) : (
-        !query.error && (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>{t('commands.none')}</EmptyTitle>
-            </EmptyHeader>
-          </Empty>
-        )
-      )}
-      <DataTablePaginationControls
-        disabled={query.isFetching}
+      <CursorDataTable
+        data={query.data?.items ?? []}
+        columns={columns}
+        getRowId={getRowId}
+        label={t('commands.title')}
+        emptyTitle={t('commands.none')}
+        loading={query.isPending}
+        refreshing={query.isFetching}
+        error={error ?? query.error?.message}
+        refreshLabel={t('common.refresh')}
+        onRefresh={() => {
+          setError(undefined)
+          void query.refetch()
+        }}
         previous={{
           label: t('commands.previous'),
           disabled: !cursors.length,
@@ -184,7 +168,7 @@ export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean })
         }}
         next={{
           label: t('commands.next'),
-          disabled: !query.data?.nextBeforeId,
+          disabled: !query.data?.nextBeforeId || query.isError,
           onClick: () => {
             const next = query.data?.nextBeforeId
             if (next) setCursors((value) => [...value, next])
@@ -194,6 +178,6 @@ export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean })
       {recover && (
         <EnvironmentRecoveryDialog environmentId={recover} onClose={() => setRecover(undefined)} />
       )}
-    </section>
+    </div>
   )
 }

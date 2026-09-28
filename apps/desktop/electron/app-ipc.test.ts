@@ -18,6 +18,7 @@ function fixture() {
       logRoot: '/fixture/logs',
     })),
     quit: vi.fn(),
+    copyText: vi.fn(),
     openExternal: vi.fn<(url: string) => Promise<void>>().mockResolvedValue(undefined),
   }
   return { ...options, handlers: createAppHandlers(options) }
@@ -79,4 +80,19 @@ describe('application shell IPC', () => {
       message: 'COMMAND_FAILED',
     })
   })
+})
+
+it('copies only the Main-owned path selected by a validated key', () => {
+  const f = fixture()
+  expect(f.handlers['app:copy-path']('dataRoot')).toEqual({ ok: true, data: true })
+  expect(f.copyText).toHaveBeenCalledWith(f.getPaths().dataRoot)
+  f.copyText.mockClear()
+  for (const input of ['/private/file', { key: 'dataRoot' }, undefined, '__proto__']) {
+    expect(f.handlers['app:copy-path'](input)).toMatchObject({ ok: false })
+  }
+  expect(f.copyText).not.toHaveBeenCalled()
+  f.copyText.mockImplementation(() => {
+    throw new Error('private OS detail')
+  })
+  expect(f.handlers['app:copy-path']('dataRoot')).toMatchObject({ ok: false })
 })

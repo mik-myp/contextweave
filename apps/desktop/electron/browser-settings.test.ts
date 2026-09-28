@@ -571,3 +571,206 @@ it('does not turn an explicit cancellation into a last-page-close callback', asy
     close()
   }
 })
+
+it('queues multi-tab request bursts below the control bridge admission limit', async () => {
+  mockCdp()
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(access, settings, failure)
+  const socket = MockSocket.instance
+  const original = MockSocket.prototype.send
+  const replies: number[] = []
+  let acknowledged = 0
+  let highWater = 0
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method !== 'Fetch.continueRequest') return original.call(this, text)
+    replies.push(command.id)
+    highWater = Math.max(highWater, replies.length)
+  })
+  try {
+    for (let index = 0; index < 300; index++)
+      socket.emit({
+        method: 'Fetch.requestPaused',
+        sessionId: 'page-1',
+        params: { requestId: `resource-${index}` },
+      })
+    expect(replies.length).toBeGreaterThan(0)
+    expect(replies.length).toBeLessThan(128)
+    while (acknowledged < 300) {
+      expect(replies.length).toBeGreaterThan(0)
+      for (const id of replies.splice(0)) {
+        socket.emit({ id, result: {} })
+        acknowledged++
+      }
+      await Promise.resolve()
+    }
+    expect(highWater).toBeLessThan(128)
+    expect(failure).not.toHaveBeenCalled()
+  } finally {
+    close()
+  }
+})
+
+it('discards a detached tab backlog without failing other tabs or leaking timers', async () => {
+  mockCdp()
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(access, settings, failure)
+  const socket = MockSocket.instance
+  const original = MockSocket.prototype.send
+  let sent = 0
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    if (JSON.parse(text).method === 'Fetch.continueRequest') {
+      sent++
+      return
+    }
+    return original.call(this, text)
+  })
+  vi.useFakeTimers()
+  for (let index = 0; index < 300; index++)
+    socket.emit({
+      method: 'Fetch.requestPaused',
+      sessionId: 'page-1',
+      params: { requestId: `resource-${index}` },
+    })
+  const beforeDetach = sent
+  socket.emit({ method: 'Target.detachedFromTarget', params: { sessionId: 'page-1' } })
+  await vi.advanceTimersByTimeAsync(31000)
+  expect(sent).toBe(beforeDetach)
+  expect(failure).not.toHaveBeenCalled()
+  close()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+it('arms browser-level authentication before any target can navigate, without page attachment for system locale', async () => {
+  mockCdp()
+  const close = await connectBrowserSettings(
+    access,
+    { ...settings, language: 'system', timezone: 'system' },
+    vi.fn(),
+    {
+      username: 'local',
+      password: 'ephemeral',
+      host: '127.0.0.1',
+      port: 8080,
+    },
+  )
+  const socket = MockSocket.instance
+  expect(socket.commands.map((command) => command.method)).toEqual(['Fetch.enable'])
+  expect(socket.commands[0].sessionId).toBeUndefined()
+  socket.emit({
+    method: 'Fetch.authRequired',
+    params: {
+      requestId: 'first-navigation',
+      authChallenge: { source: 'Proxy', origin: 'http://127.0.0.1:8080' },
+    },
+  })
+  await Promise.resolve()
+  expect(socket.commands.at(-1)).toMatchObject({
+    method: 'Fetch.continueWithAuth',
+    params: {
+      requestId: 'first-navigation',
+      authChallengeResponse: {
+        response: 'ProvideCredentials',
+        username: 'local',
+        password: 'ephemeral',
+      },
+    },
+  })
+  expect(socket.commands.at(-1)?.sessionId).toBeUndefined()
+  close()
+})
+
+it.each([
+  ['Emulation.setLocaleOverride', 'Another locale override is already in effect'],
+  ['Emulation.setTimezoneOverride', 'Timezone override is already in effect'],
+])(
+  'accepts only the precise shared-renderer duplicate response for %s',
+  async (method, message) => {
+    mockCdp()
+    const original = MockSocket.prototype.send
+    vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+      this: MockSocket,
+      text: string,
+    ) {
+      const command: Command = JSON.parse(text)
+      if (command.method === method) {
+        this.commands.push(command)
+        queueMicrotask(() => this.emit({ id: command.id, error: { message } }))
+      } else original.call(this, text)
+    })
+    const failure = vi.fn()
+    const close = await connectBrowserSettings(access, settings, failure)
+    expect(
+      MockSocket.instance.commands.some(
+        (command) => command.method === 'Runtime.runIfWaitingForDebugger',
+      ),
+    ).toBe(true)
+    expect(failure).not.toHaveBeenCalled()
+    close()
+  },
+)
+
+it('attaches tab containers before configuring and resuming their page renderer', async () => {
+  mockCdp()
+  const original = MockSocket.prototype.send
+  vi.spyOn(MockSocket.prototype, 'send').mockImplementation(function (
+    this: MockSocket,
+    text: string,
+  ) {
+    const command: Command = JSON.parse(text)
+    if (command.method === 'Target.setAutoAttach' && !command.sessionId) {
+      this.commands.push(command)
+      queueMicrotask(() => {
+        this.emit({
+          method: 'Target.attachedToTarget',
+          params: { sessionId: 'tab-1', targetInfo: { type: 'tab' } },
+        })
+        this.emit({ id: command.id, result: {} })
+      })
+    } else if (command.method === 'Target.setAutoAttach' && command.sessionId === 'tab-1') {
+      this.commands.push(command)
+      queueMicrotask(() => {
+        this.emit({
+          method: 'Target.attachedToTarget',
+          sessionId: 'tab-1',
+          params: { sessionId: 'page-1', targetInfo: { type: 'page' } },
+        })
+        this.emit({ id: command.id, result: {} })
+      })
+    } else original.call(this, text)
+  })
+  const failure = vi.fn()
+  const close = await connectBrowserSettings(access, settings, failure)
+  const commands = MockSocket.instance.commands
+  expect(commands[0].params.filter).toEqual([{ type: 'tab' }, { exclude: true }])
+  expect(
+    commands.filter((command) => command.sessionId === 'tab-1').map((command) => command.method),
+  ).toEqual(['Target.setAutoAttach'])
+  expect(
+    commands.filter((command) => command.sessionId === 'page-1').map((command) => command.method),
+  ).toEqual([
+    'Target.setAutoAttach',
+    'Emulation.setTimezoneOverride',
+    'Emulation.setLocaleOverride',
+    'Runtime.runIfWaitingForDebugger',
+  ])
+  // A parent detach must also retire queued work for its nested page session.
+  const socket = MockSocket.instance
+  socket.emit({ method: 'Target.detachedFromTarget', params: { sessionId: 'tab-1' } })
+  const before = commands.length
+  socket.emit({
+    method: 'Fetch.requestPaused',
+    sessionId: 'page-1',
+    params: { requestId: 'late-cancelled' },
+  })
+  await Promise.resolve()
+  expect(commands).toHaveLength(before)
+  expect(failure).not.toHaveBeenCalled()
+  close()
+})

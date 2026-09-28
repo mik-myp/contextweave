@@ -5,11 +5,12 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import {
-  environmentConfigSchema, historyCleanupReceiptSchema,
+  environmentConfigSchema, historyCleanupReceiptSchema, kernelManifestSchema, kernelDisplayNameSchema,
   workspaceCredentialReferenceSchema, assertWorkspaceContext,
 } from '@contextweave/contracts'
 import type {
   EnvironmentConfig,
+  KernelManifest,
   HistoryCleanupPreview,
   HistoryCleanupReceipt,
   HistoryCleanupResult,
@@ -759,6 +760,25 @@ export class EnvironmentRepository {
     const row = this.getKernelInstallationStatement.get(kernelId, version, platform, arch) as
       Row | undefined
     return row ? this.kernelInstallation(row) : undefined
+  }
+
+  /** Commit the trusted manifest, installation and optional display name as one unit. */
+  commitKernelInstallation(
+    input: Omit<KernelInstallationRecord, 'id' | 'createdAt' | 'updatedAt' | 'workspaceId'>,
+    manifest: KernelManifest,
+    name?: string,
+  ): KernelInstallationRecord {
+    const parsed = kernelManifestSchema.parse(manifest)
+    const displayName = kernelDisplayNameSchema.optional().parse(name)
+    if (parsed.id !== input.kernelId || parsed.version !== input.version ||
+        parsed.platform !== input.platform || parsed.arch !== input.arch)
+      throw new Error('KERNEL_MANIFEST_MISMATCH')
+    return this.transaction(() => {
+      this.setSetting(`kernel-manifest:${input.kernelId}`, parsed)
+      const record = this.recordKernelInstallation(input)
+      if (displayName !== undefined) this.setSetting(`kernel-name:${input.kernelId}`, displayName)
+      return record
+    })
   }
 
   recordKernelInstallation(

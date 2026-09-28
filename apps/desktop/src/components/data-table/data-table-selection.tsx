@@ -12,7 +12,7 @@ export function selectionColumn<TData extends RowData>(
     header: ({ table }) => (
       <Checkbox
         aria-label={t('table.selectPage')}
-        disabled={!table.getRowModel().rows.length}
+        disabled={!table.getRowModel().rows.some((row) => row.getCanSelect())}
         checked={table.getIsAllPageRowsSelected()}
         indeterminate={!table.getIsAllPageRowsSelected() && table.getIsSomePageRowsSelected()}
         onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked)}

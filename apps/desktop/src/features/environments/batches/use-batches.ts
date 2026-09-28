@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { BatchAction, BatchPreview, IpcResult } from '@contextweave/contracts'
+import {
+  isBatchActive,
+  type BatchAction,
+  type BatchPreview,
+  type IpcResult,
+  type BatchPage,
+  type BatchTask,
+} from '@contextweave/contracts'
 import { useWorkspaceSession, workspaceKey } from '@/features/workspaces/workspace-session-context'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
@@ -69,8 +76,10 @@ export function useBatchPreview(request: BatchRequest) {
 }
 export function useBatchPage(beforeId: string | null) {
   const { api, context } = useWorkspaceSession()
-  return useQuery({
+  return useQuery<BatchPage>({
     queryKey: workspaceKey(context, 'batches', 'page', beforeId),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((task) => isBatchActive(task.status)) ? 1000 : false,
     queryFn: async ({ signal }) => {
       signal.throwIfAborted()
       const page = await unwrapIpc(api.batch.page({ beforeId, limit: 20 }))
@@ -81,8 +90,10 @@ export function useBatchPage(beforeId: string | null) {
 }
 export function useBatchTask(id: string) {
   const { api, context } = useWorkspaceSession()
-  return useQuery({
+  return useQuery<BatchTask>({
     queryKey: workspaceKey(context, 'batches', 'detail', id),
+    refetchInterval: (query) =>
+      query.state.data && isBatchActive(query.state.data.status) ? 1000 : false,
     queryFn: async ({ signal }) => {
       signal.throwIfAborted()
       const task = await unwrapIpc(api.batch.get(id))

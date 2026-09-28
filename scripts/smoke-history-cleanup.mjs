@@ -1,4 +1,4 @@
-// Explicit cleanup through the real sandboxed Renderer, with isolated old history and restart.
+// Internal cleanup contract regression through sandboxed Preload; maintenance UI is intentionally absent.
 import { createRequire } from 'node:module'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -25,14 +25,6 @@ async function launch() {
     { timeout: 10000 },
   )
   return page
-}
-async function settings(page) {
-  await page.getByRole('link', { name: '系统设置', exact: true }).click()
-  await page.getByRole('link', { name: '本地存储', exact: true }).click()
-  await page.getByRole('button', { name: '查看清理选项', exact: true }).click()
-  const section = page.getByRole('region', { name: '历史记录清理', exact: true })
-  await section.getByRole('button', { name: '预览清理范围', exact: true }).waitFor()
-  return section
 }
 try {
   let page = await launch()
@@ -97,30 +89,17 @@ try {
     return first
   })
   assert(before.ok && before.data.nextCursor)
-  let section = await settings(page)
-  assert.equal(
-    await section.getByRole('button', { name: '90 天', exact: true }).getAttribute('aria-pressed'),
-    'true',
-  )
-  await section.getByRole('button', { name: '预览清理范围', exact: true }).click()
-  await section
-    .getByText('本批最多清理 500 条会话记录和 500 条操作记录。', { exact: true })
-    .waitFor()
-  assert((await section.innerText()).includes('本页数量不是全库总数'))
-  await section.getByRole('button', { name: '确认本批清理…', exact: true }).click()
-  await page.getByRole('alertdialog').getByRole('button', { name: '取消', exact: true }).click()
+  // Preview alone never mutates history; no maintenance control is exposed in the UI.
+  const preview = await page.evaluate(async () => window.contextweave.storage.previewHistoryCleanup(
+    { workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { retentionDays: 90 }))
+  assert(preview.ok)
   assert.deepEqual(
     await page.evaluate(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId })),
     { ok: true, data: null },
   )
-  await section.getByRole('button', { name: '确认本批清理…', exact: true }).click()
-  await page
-    .getByRole('alertdialog')
-    .getByRole('button', { name: '永久删除本批', exact: true })
-    .click()
-  await section
-    .getByText('本批清理已提交，详情见最近回执。状态变化或已不存在的候选已跳过。', { exact: true })
-    .waitFor()
+  const confirmed = await page.evaluate(async (previewId) => window.contextweave.storage.confirmHistoryCleanup(
+    { workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }), preview.data.previewId)
+  assert(confirmed.ok)
   const receipt = await page.evaluate(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(receipt.ok && receipt.data)
   for (const kind of ['sessions', 'operations'])
@@ -154,18 +133,20 @@ try {
   await desktop.close()
   desktop = undefined
   page = await launch()
-  section = await settings(page)
-  assert.equal(await section.getByText(receipt.data.previewId, { exact: true }).isVisible(), false)
-  await section.locator('summary').filter({ hasText: '诊断详情' }).click()
-  await section.getByText(receipt.data.previewId, { exact: true }).waitFor()
+  const restartedReceipt = await page.evaluate(async () => window.contextweave.storage.getHistoryCleanupReceipt({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
+  assert.deepEqual(restartedReceipt, receipt)
   const afterRestart = await page.evaluate(
     async (previewId) => window.contextweave.storage.confirmHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }),
     receipt.data.previewId,
   )
   assert(afterRestart.ok && afterRestart.data.replayed)
-  await section.getByRole('button', { name: '预览清理范围', exact: true }).click()
-  await section.getByText('本批最多清理 4 条会话记录和 5 条操作记录。', { exact: true }).waitFor()
-  await section.getByRole('button', { name: '放弃本批预览', exact: true }).click()
+  // A second preview is left unconfirmed: verify below that it deletes nothing.
+  const remaining = await page.evaluate(async () => window.contextweave.storage.previewHistoryCleanup(
+    { workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { retentionDays: 90 }))
+  assert(remaining.ok)
+  await page.getByRole('link', { name: '系统设置', exact: true }).click()
+  assert.equal(await page.getByRole('link', { name: '帮助与故障排查', exact: true }).count(), 0)
+  assert.equal(await page.getByRole('button', { name: '查看清理选项', exact: true }).count(), 0)
   await desktop.close()
   desktop = undefined
   const check = new DatabaseSync(file)
@@ -201,7 +182,7 @@ try {
   }
   console.log(
     JSON.stringify({
-      historyCleanup: 'passed-preview-cancel-confirm-bounded-protected',
+      historyCleanup: 'passed-preview-nonmutating-confirm-bounded-protected',
       historyCleanupReplay: 'passed-after-main-restart-no-new-batch',
       historyCleanupCursor: 'passed-invalidation-stale-first-page',
       platform: process.platform,

@@ -1,6 +1,7 @@
 import { FilterIcon, RotateCcwIcon } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Input } from '@/components/ui/input'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -39,7 +40,7 @@ export function AppLogToolbar({
   onChange: (filters: LogFilters) => void
   methods: string[]
 }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const setFilter = <Key extends keyof LogFilters>(key: Key, value: LogFilters[Key]) =>
     onChange({ ...filters, [key]: value })
   const invalidTime = hasInvalidLogTimeRange(filters)
@@ -130,25 +131,19 @@ export function AppLogToolbar({
             </PopoverHeader>
             <FieldGroup>
               <Field data-invalid={invalidTime || undefined}>
-                <FieldLabel htmlFor="log-from">{t('logs.from')}</FieldLabel>
-                <Input
-                  id="log-from"
-                  type="datetime-local"
-                  value={filters.from}
-                  max={filters.to || undefined}
-                  aria-invalid={invalidTime || undefined}
-                  onChange={(event) => setFilter('from', event.target.value)}
-                />
-              </Field>
-              <Field data-invalid={invalidTime || undefined}>
-                <FieldLabel htmlFor="log-to">{t('logs.to')}</FieldLabel>
-                <Input
-                  id="log-to"
-                  type="datetime-local"
-                  value={filters.to}
-                  min={filters.from || undefined}
-                  aria-invalid={invalidTime || undefined}
-                  onChange={(event) => setFilter('to', event.target.value)}
+                <FieldLabel htmlFor="log-range">{t('logs.dateRange')}</FieldLabel>
+                <DateRangePicker
+                  id="log-range"
+                  from={filters.from}
+                  to={filters.to}
+                  label={t('logs.dateRange')}
+                  placeholder={t('logs.pickRange')}
+                  fromLabel={t('logs.from')}
+                  toLabel={t('logs.to')}
+                  clearLabel={t('logs.clearDate')}
+                  locale={locale}
+                  invalid={invalidTime}
+                  onChange={(range) => onChange({ ...filters, ...range })}
                 />
                 {invalidTime && <FieldError>{t('logs.invalidTime')}</FieldError>}
               </Field>

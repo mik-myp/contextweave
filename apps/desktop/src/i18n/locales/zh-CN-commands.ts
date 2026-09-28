@@ -5,7 +5,7 @@ export const commandMessages = {
     '查看环境操作的结果，或恢复结果未确认的操作。记录在关闭页面和重启应用后仍然保留。',
   'commands.pendingTitle': '有待查证的请求',
   'commands.pendingHelp':
-    '有操作结果尚未确认，请先核对记录，不要重复提交。关闭页面不会中断已接受的操作。',
+    '有操作尚未确认完成。请查看并处理，暂时不要重复操作；切换页面不会取消正在执行的操作。',
   'commands.none': '尚无操作记录',
   'commands.requestId': '请求编号',
   'commands.target': '环境',

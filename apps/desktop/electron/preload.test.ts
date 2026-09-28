@@ -642,3 +642,44 @@ it('validates scoped bookmark requests and refuses malformed or foreign success 
   })
   await expect(api.bookmarks.get(workspace)).rejects.toThrow()
 })
+
+it('exposes validated path-key copying without exposing arbitrary clipboard text', async () => {
+  bridge.invoke.mockResolvedValue({ ok: true, data: true })
+  expect(await api.app.copyPath('dataRoot')).toEqual({ ok: true, data: true })
+  expect(bridge.invoke).toHaveBeenCalledWith('app:copy-path', 'dataRoot')
+  bridge.invoke.mockClear()
+  // Reflect invokes the runtime boundary with deliberately untyped Renderer input.
+  await expect(Reflect.apply(api.app.copyPath, undefined, ['/private/secret'])).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({ ok: true, data: 'not-a-boolean' })
+  await expect(api.app.copyPath('logRoot')).rejects.toThrow()
+})
+
+it('validates bounded management APIs on both sides of the sandbox bridge', async () => {
+  await expect(api.kernel.rename(workspace, { id: '../outside', name: 'x' })).rejects.toThrow()
+  await expect(api.kernel.removeMany(workspace, ['one', 'one'])).rejects.toThrow()
+  await expect(api.organization.deleteTags(workspace, [])).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({ ok: true, data: [{ id: 'one', ok: true }] })
+  expect(await api.kernel.removeMany(workspace, ['one'])).toEqual({
+    ok: true,
+    data: [{ id: 'one', ok: true }],
+  })
+  expect(bridge.invoke).toHaveBeenCalledWith('kernel:remove-many', {
+    ...workspace,
+    payload: ['one'],
+  })
+  bridge.invoke.mockResolvedValue({ ok: true, data: [{ id: 'one', ok: false, code: '/secret' }] })
+  await expect(api.kernel.removeMany(workspace, ['one'])).rejects.toThrow()
+})
+
+it('validates and forwards the installation name in the scoped request', async () => {
+  await expect(api.kernel.install(workspace, 'managed-one', 'x'.repeat(81))).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({ ok: false, code: 'RELEASE_UNREVIEWED', message: 'Refused' })
+  await api.kernel.install(workspace, 'managed-one', ' Work browser ')
+  expect(bridge.invoke).toHaveBeenCalledExactlyOnceWith('kernel:install', {
+    ...workspace,
+    payload: { id: 'managed-one', name: 'Work browser' },
+  })
+})

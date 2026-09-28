@@ -57,6 +57,7 @@ jobs:
         run: |
           pnpm test:desktop --require-native
           pnpm test:app-update
+          pnpm test:user-workflows
 
       - name: Verify source-reviewed fingerprint provider
         run: pnpm test:fingerprint --reviewed-provider --require-provider

@@ -59,6 +59,10 @@ jobs:
         run: |
           pnpm --filter @contextweave/desktop exec electron-vite build
           pnpm test:desktop --require-native
+          pnpm test:app-update
+
+      - name: Verify source-reviewed fingerprint provider on all three platforms
+        run: pnpm test:fingerprint --reviewed-provider --require-provider
 
       - name: Verify official fingerprint browser lifecycle
         if: matrix.name != 'macos-x64'

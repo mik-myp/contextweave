@@ -1,6 +1,7 @@
 import { useI18n } from '@/i18n'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -107,22 +108,20 @@ export function ArtifactInventory() {
                 </EmptyHeader>
               </Empty>
             )}
-            <nav className="flex flex-wrap gap-2" aria-label={t('artifacts.pagination')}>
-              <Button
-                variant="outline"
-                disabled={query.isFetching || !page.previousCursor}
-                onClick={() => setCursor(page.previousCursor)}
-              >
-                {t('artifacts.previous')}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={query.isFetching || !page.nextCursor}
-                onClick={() => setCursor(page.nextCursor)}
-              >
-                {t('artifacts.next')}
-              </Button>
-            </nav>
+            <DataTablePaginationControls
+              label={t('artifacts.pagination')}
+              disabled={query.isFetching}
+              previous={{
+                label: t('artifacts.previous'),
+                disabled: !page.previousCursor,
+                onClick: () => setCursor(page.previousCursor),
+              }}
+              next={{
+                label: t('artifacts.next'),
+                disabled: !page.nextCursor,
+                onClick: () => setCursor(page.nextCursor),
+              }}
+            />
           </>
         )
       )}

@@ -1,12 +1,12 @@
 export const commandMessages = {
   'commands.details': '诊断详情',
-  'commands.title': '命令回执',
+  'commands.title': '操作记录',
   'commands.help':
-    '回执跨页面和重启保留。启动按顺序执行，不限制已运行浏览器的数量；结果未知时不会自动重试。',
+    '查看环境操作的结果，或恢复结果未确认的操作。记录在关闭页面和重启应用后仍然保留。',
   'commands.pendingTitle': '有待查证的请求',
   'commands.pendingHelp':
-    '原请求编号已保留。请先查证，不要重复提交；关闭页面不会停止 Main 中已经接收的任务。',
-  'commands.none': '尚无命令回执',
+    '有操作结果尚未确认，请先核对记录，不要重复提交。关闭页面不会中断已接受的操作。',
+  'commands.none': '尚无操作记录',
   'commands.requestId': '请求编号',
   'commands.target': '环境',
   'commands.created': '提交时间',
@@ -46,7 +46,7 @@ export const commandMessages = {
     '当前工作空间：{workspace}；回收站共 {count} 个环境。配置、凭据引用、历史和浏览器资料仍保留，可能是唯一副本；还原不是从备份恢复。',
   'commands.orphanScope':
     '当前工作空间：{workspace}；发现 {count} 个未关联目录。这只说明缺少环境记录，不代表目录无用或可安全删除；其中的浏览器资料可能是唯一副本。此处不执行删除或自动恢复。',
-  'error.COMMAND_UNCONFIRMED': '请求已保留原编号，结果尚未确认。请在命令回执中查证，不要重复提交。',
+  'error.COMMAND_UNCONFIRMED': '请求已保留原编号，结果尚未确认。请在操作记录中查证，不要重复提交。',
   'error.COMMAND_TRACKING_UNAVAILABLE':
     '无法可靠保存或读取本地请求索引，已禁止后续提交。这不代表已提交的请求没有执行；请先核对权威回执并恢复本地存储。',
   'error.COMMAND_TRACKING_LIMIT': '待查证请求已达上限，请先核对并结束已完成请求的本地跟踪。',

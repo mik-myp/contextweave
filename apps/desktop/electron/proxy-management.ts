@@ -12,6 +12,7 @@ import {
 } from '@contextweave/contracts'
 import type { EnvironmentRepository, ProxyRecord } from '@contextweave/storage'
 import { assertProxyMutable } from './environment-management'
+import { redactProxyImportLine } from './proxy-import'
 
 type Credentials = {
   save: (reference: WorkspaceCredentialReference, password: string) => void
@@ -146,23 +147,37 @@ export function importProxyConfigurations(
     if (!line.trim()) continue
     let config: ReturnType<typeof parseProxyLine>
     try {
-      config = parseProxyLine(line, parsed.defaultType)
+      config = parseProxyLine(line)
     } catch {
-      results.push({ line: index + 1, status: 'error', code: 'INVALID_PROXY_LINE' })
+      results.push({
+        line: index + 1,
+        proxy: redactProxyImportLine(line),
+        status: 'error',
+        code: 'INVALID_PROXY_LINE',
+      })
       continue
+    }
+    const row = {
+      line: index + 1,
+      proxy: {
+        type: config.config.type,
+        host: config.config.host,
+        port: config.config.port,
+        hasCredentials: Boolean(config.config.username),
+      },
     }
     const key = identity(config.config)
     if (existing.has(key)) {
-      results.push({ line: index + 1, status: 'skipped', code: 'PROXY_ALREADY_EXISTS' })
+      results.push({ ...row, status: 'skipped', code: 'PROXY_ALREADY_EXISTS' })
       continue
     }
     try {
       const saved = saveProxyConfiguration(repository, config, credentials)
       existing.add(key)
-      results.push({ line: index + 1, status: 'created', proxyId: saved.proxyId })
+      results.push({ ...row, status: 'created', proxyId: saved.proxyId })
     } catch (error) {
       results.push({
-        line: index + 1,
+        ...row,
         status: 'error',
         code:
           error instanceof Error && error.message === 'CREDENTIAL_UNAVAILABLE'

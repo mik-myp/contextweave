@@ -1,4 +1,9 @@
 import {
+  defaultBookmarksSchema,
+  saveDefaultBookmarksSchema,
+  type SaveDefaultBookmarks,
+} from '@contextweave/contracts'
+import {
   environmentCommandRequestSchema,
   environmentCommandReceiptSchema,
   environmentRecoveryInspectionSchema,
@@ -21,6 +26,10 @@ import {
 } from '@contextweave/contracts'
 import {
   organizationSnapshotSchema,
+  environmentTagSchema,
+  createTagSchema,
+  updateTagSchema,
+  deleteTagSchema,
   createGroupSchema,
   updateGroupSchema,
   reviseOrganizationItemSchema,
@@ -194,6 +203,18 @@ const api = {
       ipcResultSchema(organizationSnapshotSchema).parse(
         await invokeWorkspace(context, 'organization:list'),
       ),
+    createTag: async (context: WorkspaceContext, input: z.input<typeof createTagSchema>) =>
+      ipcResultSchema(environmentTagSchema).parse(
+        await invokeWorkspace(context, 'organization:tag-create', createTagSchema.parse(input)),
+      ),
+    updateTag: async (context: WorkspaceContext, input: z.input<typeof updateTagSchema>) =>
+      ipcResultSchema(environmentTagSchema).parse(
+        await invokeWorkspace(context, 'organization:tag-update', updateTagSchema.parse(input)),
+      ),
+    deleteTag: async (context: WorkspaceContext, input: z.input<typeof deleteTagSchema>) =>
+      ipcResultSchema(z.boolean()).parse(
+        await invokeWorkspace(context, 'organization:tag-delete', deleteTagSchema.parse(input)),
+      ),
     createGroup: async (context: WorkspaceContext, input: z.input<typeof createGroupSchema>) =>
       ipcResultSchema(environmentGroupSchema).parse(
         await invokeWorkspace(context, 'organization:group-create', createGroupSchema.parse(input)),
@@ -305,6 +326,16 @@ const api = {
       ),
     openRelease: async () =>
       ipcResultSchema(z.boolean()).parse(await ipcRenderer.invoke('update:open-release')),
+  },
+  bookmarks: {
+    get: async (context: WorkspaceContext) =>
+      ipcResultSchema(defaultBookmarksSchema).parse(
+        await invokeWorkspace(context, 'bookmarks:get'),
+      ),
+    save: async (context: WorkspaceContext, input: SaveDefaultBookmarks) =>
+      ipcResultSchema(defaultBookmarksSchema).parse(
+        await invokeWorkspace(context, 'bookmarks:save', saveDefaultBookmarksSchema.parse(input)),
+      ),
   },
   settings: {
     getTheme: async () =>

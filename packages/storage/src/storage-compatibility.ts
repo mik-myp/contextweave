@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { migrationCatalog } from './migration-catalog'
 
 /** Physical SQLite schema, independent of the application SemVer and external formats. */
-export const databaseVersion = 13
+export const databaseVersion = 14
 export type DatabaseMigrationPlan = Readonly<{
   fromVersion: number
   toVersion: number

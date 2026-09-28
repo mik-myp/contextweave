@@ -103,6 +103,16 @@ describe('server history table', () => {
     )
     await flush()
   }
+  function button(label: string) {
+    const target = [...container.querySelectorAll('button')].find(
+      (node) => node.getAttribute('aria-label') === label || node.textContent === label,
+    )
+    if (!target) throw new Error(`Missing button ${label}`)
+    return target
+  }
+  async function click(label: string) {
+    await change(() => button(label).click())
+  }
   async function change(fn: () => void) {
     await act(async () => fn())
     await flush()
@@ -137,8 +147,14 @@ describe('server history table', () => {
       expect.objectContaining({ limit: 20, cursor: null, sortBy: 'startedAt', direction: 'desc' }),
     )
     expect(container.textContent).toContain('本页 1 条（未统计全部历史）')
+    expect(container.querySelector('[data-slot="data-table-pagination"]')).not.toBeNull()
+    expect(container.querySelector('nav')?.getAttribute('aria-label')).toBe('表格分页')
+    expect(container.querySelector('[aria-current="page"]')).toBeNull()
+    expect(container.querySelector('button[aria-label="末页"]')).toBeNull()
+    expect(container.textContent).not.toMatch(/第 \d+ \/ \d+ 页|共 \d+ 条/)
+    expect(button('上一页').disabled).toBe(true)
     const next = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === '下一页',
+      (button) => button.getAttribute('aria-label') === '下一页',
     )!
     expect(next.disabled).toBe(false)
     await change(() => next.click())
@@ -147,9 +163,9 @@ describe('server history table', () => {
     expect(history.hasNext).toBe(false)
     await flush()
     expect(client.getQueryCache().getAll()).toHaveLength(1)
-    await change(history.previous)
+    await click('上一页')
     expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'previous' }))
-    await change(history.first)
+    await click('返回首段')
     expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: null }))
   })
   it('sends global search, column sort, filters and page size to the server and resets the cursor', async () => {
@@ -239,7 +255,10 @@ describe('server history table', () => {
     expect(history.table.getRowModel().rows).toHaveLength(0)
     expect(history.hasPrevious).toBe(false)
     expect(history.hasNext).toBe(false)
-    await change(history.first)
+    expect(button('上一页').disabled).toBe(true)
+    expect(button('下一页').disabled).toBe(true)
+    expect(button('返回首段').disabled).toBe(false)
+    await click('返回首段')
     expect(history.table.getRowModel().rows[0]?.id).toBe('first')
     expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: null }))
   })
@@ -251,5 +270,78 @@ describe('server history table', () => {
     await change(history.first)
     expect(history.error).toBeUndefined()
     expect(history.table.getRowModel().rows).toHaveLength(1)
+  })
+  it('keeps an empty cursor page honest and lets the user reload its first page', async () => {
+    loadPage.mockResolvedValue({
+      ok: true,
+      data: { items: [], previousCursor: null, nextCursor: null },
+    })
+    await render()
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      '本页 0 条（未统计全部历史）',
+    )
+    expect(container.querySelectorAll('nav button')).toHaveLength(3)
+    expect(button('上一页').disabled).toBe(true)
+    expect(button('下一页').disabled).toBe(true)
+    await click('返回首段')
+    expect(loadPage).toHaveBeenCalledTimes(2)
+    expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: null }))
+  })
+
+  it('blocks repeat page clicks during a request but retains cancel and first-page recovery', async () => {
+    await render()
+    const slow = deferred<IpcResult<HistoryPage<OperationSummary>>>()
+    loadPage.mockReturnValueOnce(slow.promise)
+    await click('下一页')
+    const calls = loadPage.mock.calls.length
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('正在读取历史…')
+    for (const label of ['返回首段', '上一页', '下一页']) {
+      expect(button(label).disabled).toBe(true)
+      await click(label)
+    }
+    expect(loadPage).toHaveBeenCalledTimes(calls)
+    await click('取消等待')
+    expect(history.loading).toBe(false)
+    expect(history.error).toContain('已取消等待')
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('读取失败')
+    expect(button('上一页').disabled).toBe(true)
+    expect(button('下一页').disabled).toBe(true)
+    await click('返回首段')
+    expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: null }))
+    await act(async () => slow.resolve(page('cancelled-page')))
+    await flush()
+    expect(history.table.getRowModel().rows[0]?.id).toBe('first')
+  })
+
+  it('changes page size through Base UI, resets the query-bound cursor and ignores the old page', async () => {
+    await render()
+    const slow = deferred<IpcResult<HistoryPage<OperationSummary>>>()
+    loadPage.mockReturnValueOnce(slow.promise)
+    await click('下一页')
+    const trigger = container.querySelector<HTMLButtonElement>('[role="combobox"]')!
+    // Changing the query remains available while waiting, as before the visual unification.
+    expect(trigger.disabled).toBe(false)
+    expect(container.querySelector('label')?.htmlFor).toBe(trigger.id)
+    await change(() => {
+      trigger.focus()
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    expect(options.map((option) => option.textContent)).toEqual([
+      '10',
+      '20',
+      '30',
+      '40',
+      '50',
+      '100',
+    ])
+    await change(() => options.find((option) => option.textContent === '100')!.click())
+    expect(loadPage).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 100, cursor: null }))
+    expect(history.table.state.pagination).toEqual({ pageIndex: 0, pageSize: 100 })
+    await act(async () => slow.resolve(page('obsolete-size-page')))
+    await flush()
+    expect(history.table.getRowModel().rows[0]?.id).toBe('first')
+    expect(container.querySelector('[aria-current="page"]')).toBeNull()
+    expect(client.getQueryCache().getAll()).toHaveLength(1)
   })
 })

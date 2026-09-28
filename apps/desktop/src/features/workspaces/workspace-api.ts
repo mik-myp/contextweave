@@ -13,6 +13,10 @@ export function createWorkspaceApi(input: WorkspaceContext) {
     return (...args: Args) => method()(context, ...args)
   }
   return {
+    bookmarks: {
+      get: bindWorkspace(() => window.contextweave.bookmarks.get),
+      save: bindWorkspace(() => window.contextweave.bookmarks.save),
+    },
     batch: {
       preview: bindWorkspace(() => window.contextweave.batch.preview),
       confirm: bindWorkspace(() => window.contextweave.batch.confirm),
@@ -22,6 +26,9 @@ export function createWorkspaceApi(input: WorkspaceContext) {
       retryPreview: bindWorkspace(() => window.contextweave.batch.retryPreview),
     },
     organization: {
+      createTag: bindWorkspace(() => window.contextweave.organization.createTag),
+      updateTag: bindWorkspace(() => window.contextweave.organization.updateTag),
+      deleteTag: bindWorkspace(() => window.contextweave.organization.deleteTag),
       list: bindWorkspace(() => window.contextweave.organization.list),
       createGroup: bindWorkspace(() => window.contextweave.organization.createGroup),
       updateGroup: bindWorkspace(() => window.contextweave.organization.updateGroup),

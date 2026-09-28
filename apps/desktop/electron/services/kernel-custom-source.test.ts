@@ -31,7 +31,9 @@ describe('custom kernel source boundary', () => {
         'arm64',
         root,
       )
-      const official = (await service.catalog()).releases.find((item) => item.installable)!
+      const official = (await service.catalog()).releases.find(
+        (item) => item.provider === 'fingerprint-chromium' && item.installable,
+      )!
       const matched = await service.prepareCustom({
         providerId: input.providerId,
         url: bundledRelease('darwin', 'arm64').manifest!.package!.url!,

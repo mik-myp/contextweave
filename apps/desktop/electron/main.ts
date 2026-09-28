@@ -20,7 +20,8 @@ import { dataChangedSchema, platformSchema, architectureSchema } from '@contextw
 import { ArtifactRepository, EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { createApplication } from './application'
 import { createAppUpdateService } from './services/app-update-service'
-import { prepareAppInstaller, readInstallerFailure } from './services/app-update-installer'
+import { readInstallerFailure } from './services/app-update-installer'
+import { prepareElectronAppInstaller } from './services/app-update-electron'
 import { createAppUpdateHandlers } from './app-update-ipc'
 import { createAppLogService } from './services/app-log-service'
 import { createAppLogHandlers } from './app-log-ipc'
@@ -165,7 +166,7 @@ if (hasInstanceLock)
         root: join(dataRoot, 'updates'),
         initialError: readInstallerFailure(join(dataRoot, 'updates')),
         installPackage: async (path, release, signal) => {
-          const prepared = await prepareAppInstaller({
+          const prepared = await prepareElectronAppInstaller({
             platform: targetPlatform,
             arch: targetArch,
             isPackaged: app.isPackaged,

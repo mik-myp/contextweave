@@ -116,6 +116,7 @@ export const dataDomainSchema = z.enum([
   'activity',
   'operations',
   'storage',
+  'bookmarks',
 ])
 export type DataDomain = z.infer<typeof dataDomainSchema>
 export const dataChangedSchema = workspaceContextSchema.extend({ domains: z.array(dataDomainSchema).min(1) })

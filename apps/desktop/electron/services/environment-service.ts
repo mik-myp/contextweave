@@ -1,4 +1,9 @@
-import { isFingerprintKernel } from '@contextweave/kernel-fingerprint-chromium'
+import { cpus } from 'node:os'
+import { BookmarkSettingsRepository } from '@contextweave/storage'
+import {
+  isFingerprintKernel,
+  fingerprintKernelProviderId,
+} from '@contextweave/kernel-fingerprint-chromium'
 import { randomInt, randomUUID } from 'node:crypto'
 import { mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -34,7 +39,11 @@ export function createEnvironmentService(
         ? {
             seed: randomInt(1, 4294967296),
             platform: platform === 'win32' ? 'windows' : platform === 'darwin' ? 'macos' : 'linux',
-            hardwareConcurrency: 8,
+            // Choose only a new identity's default; persisted identities are never clamped.
+            hardwareConcurrency:
+              fingerprintKernelProviderId(kernel.id) === 'fingerprint-chromium-apostate'
+                ? Math.min(8, Math.max(1, cpus().length))
+                : 8,
           }
         : parsed.kernelConfig
       if (!kernels.registry.get(kernel.id).validateConfig(kernelConfig).ok)
@@ -51,7 +60,10 @@ export function createEnvironmentService(
       })
       const dataDir = join(root, environmentId)
       mkdirSync(dataDir, { recursive: true })
-      return repository.create({ config, dataDir, platform, arch })
+      const record = repository.create({ config, dataDir, platform, arch })
+      // Proven new here, even if a later startup fails/cancels before acquiring its lock.
+      new BookmarkSettingsRepository(repository).setProfileState(environmentId, 'eligible')
+      return record
     },
     restore(id: string) {
       const record = repository.get(id)

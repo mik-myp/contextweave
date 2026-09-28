@@ -137,7 +137,7 @@ describe('trusted Mac ZIP layout', () => {
       const f = await fixture(packageEntries, wrapper)
       const manifest = candidate()
       expect(fingerprintArchiveFormat(manifest)).toBe('zip')
-      expect(fingerprintProvider(manifest.providerId!)?.admission).toBe('audit-only')
+      expect(fingerprintProvider(manifest.providerId!)?.admission).toBe('source-reviewed')
       const root = await extractBrowserArchive(f.archive, f.stage, manifest, signal())
       expect(root).toBe(join(f.payload, wrapper.replace(/\/$/, '')))
       expect((await readdir(root)).sort()).toEqual([

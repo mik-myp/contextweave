@@ -23,7 +23,7 @@ export function AppShell() {
       const pathname = state.location.pathname.replace(/\/$/, '')
       return (
         pathname.startsWith('/settings') ||
-        ['/environments', '/proxies', '/kernels', '/activity'].includes(pathname)
+        ['/environments', '/proxies', '/tags', '/kernels', '/activity'].includes(pathname)
       )
     },
   })

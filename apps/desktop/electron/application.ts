@@ -1,3 +1,5 @@
+import { createBookmarkHandlers } from './bookmarks-ipc'
+import { BookmarkSettingsRepository } from '@contextweave/storage'
 import { createEnvironmentCommandDispatcher } from './services/environment-command-dispatcher'
 import { createBatchService } from './services/batch-service'
 import { dataChangedSchema, type DataChanged } from '@contextweave/contracts'
@@ -113,6 +115,7 @@ export function createApplication(options: {
   const locale = createIpLocaleService()
   const localePreview = createIpLocalePreview(repository, credentials, locale)
   const runtime = createRuntimeSupervisor({
+    paths,
     locale,
     repository,
     kernels,
@@ -160,6 +163,9 @@ export function createApplication(options: {
     string,
     (input?: unknown) => IpcResult<unknown> | Promise<IpcResult<unknown>>
   > = {
+    ...createBookmarkHandlers(new BookmarkSettingsRepository(repository), () =>
+      changed(['bookmarks']),
+    ),
     'batch:preview': (input) => ok(batches.preview(input)),
     'batch:confirm': (input) => ok(batches.confirm(input)),
     'batch:page': (input) => ok(batches.page(input)),
@@ -167,6 +173,21 @@ export function createApplication(options: {
     'batch:cancel': (input) => ok(batches.cancel(input)),
     'batch:retry-preview': (input) => ok(batches.retryPreview(input)),
     'organization:list': () => ok(repository.organization.snapshot()),
+    'organization:tag-create': (input) => {
+      const result = repository.organization.createTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:tag-update': (input) => {
+      const result = repository.organization.updateTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:tag-delete': (input) => {
+      const result = repository.organization.deleteTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
     'organization:group-create': (input) => {
       const result = repository.organization.createGroup(input)
       changed(['organization'])

@@ -65,3 +65,20 @@ it('keeps every queued item in a running batch under its creation-time owner', a
   ])
   expect(current).not.toHaveBeenCalled()
 })
+
+it('binds all tag mutations to their originating owner without resolving current workspace again', async () => {
+  const createTag = vi.fn(),
+    updateTag = vi.fn(),
+    deleteTag = vi.fn()
+  vi.stubGlobal('contextweave', { organization: { createTag, updateTag, deleteTag } })
+  const input = { ...a },
+    api = createWorkspaceApi(input)
+  input.workspaceId = b.workspaceId
+  const mutation = { id: '00000000-0000-4000-8000-000000000010', expectedRevision: 2 }
+  await api.organization.createTag({ name: 'Tag' })
+  await api.organization.updateTag({ ...mutation, name: 'New' })
+  await api.organization.deleteTag(mutation)
+  expect(createTag).toHaveBeenCalledExactlyOnceWith(a, { name: 'Tag' })
+  expect(updateTag).toHaveBeenCalledExactlyOnceWith(a, { ...mutation, name: 'New' })
+  expect(deleteTag).toHaveBeenCalledExactlyOnceWith(a, mutation)
+})

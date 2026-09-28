@@ -32,6 +32,16 @@ export const environmentGroupSchema = workspaceContextSchema.extend({
   revision,
   updatedAt: z.string().datetime(),
 })
+export const environmentTagSchema = workspaceContextSchema.extend({
+  id,
+  name: tagSchema,
+  revision,
+  updatedAt: z.string().datetime(),
+})
+export type EnvironmentTag = z.infer<typeof environmentTagSchema>
+export const createTagSchema = z.strictObject({ name: tagSchema })
+export const updateTagSchema = z.strictObject({ id, name: tagSchema, expectedRevision: revision })
+export const deleteTagSchema = z.strictObject({ id, expectedRevision: revision })
 export type EnvironmentGroup = z.infer<typeof environmentGroupSchema>
 export const environmentOrganizationSchema = workspaceContextSchema.extend({
   environmentId: z.string().min(1),
@@ -102,12 +112,13 @@ export const updateEnvironmentViewSchema = reviseOrganizationItemSchema.extend({
 export const organizationSnapshotSchema = workspaceContextSchema
   .extend({
     groups: z.array(environmentGroupSchema),
+    tags: z.array(environmentTagSchema),
     environments: z.array(environmentOrganizationSchema),
     views: z.array(savedEnvironmentViewSchema),
   })
   .refine(
     (snapshot) =>
-      [...snapshot.groups, ...snapshot.environments, ...snapshot.views].every(
+      [...snapshot.groups, ...snapshot.tags, ...snapshot.environments, ...snapshot.views].every(
         (item) => item.workspaceId === snapshot.workspaceId,
       ),
     'Workspace mismatch',

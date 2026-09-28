@@ -1,3 +1,4 @@
+import type { LaunchPlan } from '@contextweave/kernel-core'
 import type { BrowserControl } from './browser-control'
 import { createIpLocaleService, parseIpLocale } from './ip-locale'
 import { ChildProcess } from 'node:child_process'
@@ -13,6 +14,7 @@ import {
 import {
   openLocalDatabase,
   EnvironmentRepository,
+  WorkspacePaths,
   acquireRuntimeLock,
   runtimeLockPath,
   readProcessIdentity,
@@ -57,8 +59,8 @@ function fixture(
   automatic = false,
   proxyType?: 'http' | 'https' | 'socks5',
 ) {
-  const dir = join(root, 'env-a')
-  mkdirSync(dir)
+  const dir = join(root, 'environments', 'env-a')
+  mkdirSync(dir, { recursive: true })
   const repository = new EnvironmentRepository(db.sqlite)
   repository.create({
     config: environmentConfigSchema.parse({
@@ -111,7 +113,7 @@ function fixture(
       async (pid) => readProcessIdentity(pid),
     ),
     openControl: vi.fn(async () => control),
-    launch: vi.fn(() => child),
+    launch: vi.fn<(plan: LaunchPlan) => ChildProcess>(() => child),
     ready: vi
       .fn<
         (
@@ -142,6 +144,7 @@ function fixture(
     ),
   )
   const runtime = createRuntimeSupervisor({
+    paths: new WorkspacePaths(repository.context, root),
     locale,
     repository,
     kernels,
@@ -751,4 +754,71 @@ describe('read-only recovery inspection', () => {
     expect(f.child.kill).not.toHaveBeenCalled()
     expect(f.repository.get('env-a')?.status).toBe('running')
   })
+})
+
+it('initializes default bookmarks under the exclusive lock before Preferences and spawn, without opening URLs', async () => {
+  const { BookmarkSettingsRepository } = await import('@contextweave/storage')
+  const f = fixture()
+  const items = [
+    {
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Default',
+      url: 'https://never-open.example.test/',
+    },
+  ]
+  new BookmarkSettingsRepository(f.repository).save({ expectedRevision: 0, items })
+  f.driver.launch.mockImplementationOnce((plan) => {
+    expect(existsSync(runtimeLockPath(f.dir))).toBe(true)
+    expect(
+      JSON.parse(readFileSync(join(f.dir, 'Default', 'Bookmarks'), 'utf8')).roots.bookmark_bar
+        .children,
+    ).toMatchObject(items.map(({ name, url }) => ({ name, url })))
+    expect(existsSync(join(f.dir, 'Default', 'Preferences'))).toBe(true)
+    expect(plan.args).not.toContain(items[0]!.url)
+    return f.child
+  })
+  expect((await f.runtime.start('env-a')).ok).toBe(true)
+  expect(f.driver.launch).toHaveBeenCalledOnce()
+  expect(f.repository.listRuntimeSessions()).toHaveLength(1)
+})
+
+it('does not touch browser files while another owner holds the runtime lock', async () => {
+  const f = fixture()
+  acquireRuntimeLock(f.dir, {
+    pid: process.pid,
+    sessionId: 'other',
+    controlPort: 9001,
+    startedAt: new Date().toISOString(),
+  })
+  expect(await f.runtime.start('env-a')).toMatchObject({ ok: false, code: 'RUNTIME_BUSY' })
+  expect(existsSync(join(f.dir, 'Default'))).toBe(false)
+  expect(f.driver.launch).not.toHaveBeenCalled()
+  expect(f.repository.getSetting('bookmarks:profile:v1:env-a')).toBeUndefined()
+})
+
+it('does not spawn or create Preferences after an ambiguous bookmark initialization', async () => {
+  const f = fixture()
+  f.repository.setSetting('bookmarks:profile:v1:env-a', 'pending')
+  expect(await f.runtime.start('env-a')).toMatchObject({
+    ok: false,
+    code: 'BOOKMARKS_PROFILE_RECOVERY_REQUIRED',
+  })
+  expect(existsSync(join(f.dir, 'Default'))).toBe(false)
+  expect(f.driver.launch).not.toHaveBeenCalled()
+  expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+})
+
+it('surfaces a provider CPU limit without spawning or rewriting the saved identity', async () => {
+  const f = fixture()
+  const before = f.repository.get('env-a')!.configJson
+  vi.mocked(f.kernels.buildLaunchPlan).mockImplementation(() => {
+    throw new Error('FINGERPRINT_CPU_UNSUPPORTED')
+  })
+  expect(await f.runtime.start('env-a')).toMatchObject({
+    ok: false,
+    code: 'FINGERPRINT_CPU_UNSUPPORTED',
+  })
+  expect(f.driver.launch).not.toHaveBeenCalled()
+  expect(f.repository.get('env-a')!.configJson).toEqual(before)
+  expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
 })

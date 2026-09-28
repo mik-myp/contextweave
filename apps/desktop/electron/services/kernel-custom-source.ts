@@ -19,6 +19,8 @@ export function createCustomKernelEntry(
   arch: TargetArchitecture,
 ): CatalogEntry {
   const parsed = customKernelSourceSchema.parse(input)
+  // New publishers are admitted only as exact source-reviewed releases, never arbitrary mirrors.
+  if (parsed.providerId !== 'fingerprint-chromium') throw new Error('PROVIDER_UNVERIFIED')
   const base = providerManifest(parsed.providerId, platform, arch)
   if (!parsed.trustedSource || !parsed.version || !parsed.sha256)
     throw new Error('CUSTOM_SOURCE_DETAILS_REQUIRED')

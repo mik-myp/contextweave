@@ -6,6 +6,7 @@ import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
@@ -21,7 +22,7 @@ import { PendingCommands } from './pending-commands'
 import { EnvironmentRecoveryDialog } from './recovery-dialog'
 import { errorMessage } from '@/shared/lib/error-message'
 
-export function EnvironmentCommands() {
+export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean }) {
   const { context, api } = useWorkspaceSession(),
     { t, locale } = useI18n(),
     cache = useQueryClient()
@@ -59,11 +60,15 @@ export function EnvironmentCommands() {
   }
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={t('commands.title')}>
-      <Alert>
-        <AlertDescription>
-          {t('commands.help')} {t('commands.cancelHelp')}
-        </AlertDescription>
-      </Alert>
+      {showHelp ? (
+        <Alert>
+          <AlertDescription>
+            {t('commands.help')} {t('commands.cancelHelp')}
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t('commands.cancelHelp')}</p>
+      )}
       <PendingCommands />
       {(error || query.error) && (
         <Alert variant="destructive">
@@ -170,27 +175,22 @@ export function EnvironmentCommands() {
           </Empty>
         )
       )}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!cursors.length || query.isFetching}
-          onClick={() => setCursors((value) => value.slice(0, -1))}
-        >
-          {t('commands.previous')}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!query.data?.nextBeforeId || query.isFetching}
-          onClick={() => {
+      <DataTablePaginationControls
+        disabled={query.isFetching}
+        previous={{
+          label: t('commands.previous'),
+          disabled: !cursors.length,
+          onClick: () => setCursors((value) => value.slice(0, -1)),
+        }}
+        next={{
+          label: t('commands.next'),
+          disabled: !query.data?.nextBeforeId,
+          onClick: () => {
             const next = query.data?.nextBeforeId
             if (next) setCursors((value) => [...value, next])
-          }}
-        >
-          {t('commands.next')}
-        </Button>
-      </div>
+          },
+        }}
+      />
       {recover && (
         <EnvironmentRecoveryDialog environmentId={recover} onClose={() => setRecover(undefined)} />
       )}

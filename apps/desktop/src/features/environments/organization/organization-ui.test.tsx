@@ -102,6 +102,7 @@ beforeEach(() => {
   snapshot = {
     ...fixtureWorkspace,
     groups: [],
+    tags: [],
     environments: [
       {
         ...fixtureWorkspace,

@@ -58,7 +58,9 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 const button = (name: string) =>
-  [...container.querySelectorAll('button')].find((b) => b.textContent === name)!
+  [...container.querySelectorAll('button')].find(
+    (b) => b.getAttribute('aria-label') === name || b.textContent === name,
+  )!
 async function flush() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -101,6 +103,10 @@ it('renders loading, explicit registered-only caveats and an empty read-only sta
   expect(container.textContent).toContain('不是全盘用量')
   expect(container.textContent).toContain('不代表当前文件仍然存在')
   expect(container.querySelectorAll('button')).toHaveLength(3)
+  expect(container.querySelector('[data-slot="data-table-pagination"]')).not.toBeNull()
+  expect(container.querySelectorAll('nav button')).toHaveLength(2)
+  expect(container.querySelector('[role="combobox"]')).toBeNull()
+  expect(container.querySelector('[aria-current="page"]')).toBeNull()
   expect(button('下一页').disabled).toBe(true)
   expect(call).toHaveBeenCalledWith({ limit: 20, cursor: null })
 })

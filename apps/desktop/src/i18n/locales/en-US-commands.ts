@@ -1,13 +1,13 @@
 import type { commandMessages as zh } from './zh-CN-commands'
 export const commandMessages: Record<keyof typeof zh, string> = {
   'commands.details': 'Diagnostic details',
-  'commands.title': 'Command receipts',
+  'commands.title': 'Operation history',
   'commands.help':
-    'Receipts survive navigation and restart. Starts run sequentially without limiting running browsers. Unknown outcomes are never retried automatically.',
+    'Review environment operation results or recover an unconfirmed operation. Records remain available after closing the page or restarting the app.',
   'commands.pendingTitle': 'Requests awaiting verification',
   'commands.pendingHelp':
-    'Original request IDs are retained. Verify before another attempt. Closing this page does not stop tasks already accepted by Main.',
-  'commands.none': 'No command receipts yet',
+    'Some operation results are unconfirmed. Review them before submitting again. Closing this page does not interrupt accepted operations.',
+  'commands.none': 'No operations yet',
   'commands.requestId': 'Request ID',
   'commands.target': 'Environment',
   'commands.created': 'Submitted',

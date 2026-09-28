@@ -1,5 +1,5 @@
 import { StorageDiagnostics } from '../components/storage-diagnostics'
-import { HistoryCleanup } from '../components/history-cleanup'
+import { StorageMaintenance } from '../components/storage-maintenance'
 import { OrphanDirectories } from '../components/orphan-directories'
 import { Separator } from '@/components/ui/separator'
 import { CopyIcon } from 'lucide-react'
@@ -83,8 +83,7 @@ export function SettingsStoragePage() {
             ))}
           </dl>
           <Separator />
-          <HistoryCleanup />
-          <Separator />
+          <StorageMaintenance />
           <OrphanDirectories />
           <Separator />
           <StorageDiagnostics />

@@ -4,11 +4,14 @@ import {
   fingerprintKernelId,
   fingerprintManifestProvider,
   fingerprintProviders,
+  fingerprintArchiveFormat,
+  reviewedFingerprintManifests,
 } from '@contextweave/kernel-fingerprint-chromium'
 
 // Downloadable provider registrations. Native browser discovery remains separate.
 export const kernelProviders = fingerprintProviders.filter(
-  (provider) => provider.admission === 'legacy-candidate',
+  (provider) =>
+    provider.admission === 'legacy-candidate' || provider.admission === 'source-reviewed',
 )
 export function requireKernelProvider(id: string) {
   const provider = kernelProviders.find((provider) => provider.id === id)
@@ -21,7 +24,12 @@ export function providerManifest(
   arch: TargetArchitecture,
 ): KernelManifest {
   requireKernelProvider(id)
-  return createFingerprintChromiumManifest(platform, arch)
+  if (id === 'fingerprint-chromium') return createFingerprintChromiumManifest(platform, arch)
+  const manifest = reviewedFingerprintManifests(platform, arch).find(
+    (item) => item.providerId === id,
+  )
+  if (!manifest) throw new Error('PLATFORM_UNSUPPORTED')
+  return manifest
 }
 
 export function supportsFingerprintVersion(version: string): boolean {
@@ -34,7 +42,23 @@ export function supportsFingerprintVersion(version: string): boolean {
 // Adapter compatibility is not a source, signature, or fingerprint verification claim.
 export function isCompatibleFingerprintManifest(manifest: KernelManifest): boolean {
   const provider = fingerprintManifestProvider(manifest)
-  if (!provider || provider.admission !== 'legacy-candidate') return false
+  if (!provider) return false
+  if (provider.admission === 'source-reviewed') {
+    const pinned = reviewedFingerprintManifests(manifest.platform, manifest.arch).find(
+      (item) => item.id === manifest.id,
+    )
+    return Boolean(
+      pinned &&
+      fingerprintArchiveFormat(manifest) &&
+      manifest.family === pinned.family &&
+      manifest.executable === pinned.executable &&
+      manifest.controlProtocol === pinned.controlProtocol &&
+      manifest.configSchema === pinned.configSchema &&
+      manifest.dataDirCompatibility.length === 1 &&
+      manifest.dataDirCompatibility[0] === pinned.version,
+    )
+  }
+  if (provider.admission !== 'legacy-candidate') return false
   const base = createFingerprintChromiumManifest(manifest.platform, manifest.arch)
   if (
     !base.package ||

@@ -3,7 +3,14 @@ import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { BatchPreview, BatchTask, IpcResult } from '@contextweave/contracts'
+import type {
+  BatchPreview,
+  BatchTask,
+  IpcResult,
+  BatchPage,
+  BatchPageInput,
+} from '@contextweave/contracts'
+import { batchSummarySchema } from '@contextweave/contracts'
 import { I18nProvider } from '@/i18n'
 import { workspaceKey } from '@/features/workspaces/workspace-session-context'
 import { TestWorkspaceProvider } from '../../../../test-support/workspace-renderer'
@@ -25,6 +32,7 @@ const preview: BatchPreview = {
   ],
 }
 let task: BatchTask, root: Root, client: QueryClient, container: HTMLDivElement
+const readPage = vi.fn<(query: BatchPageInput) => Promise<IpcResult<BatchPage>>>()
 const createPreview = vi.fn(),
   confirm = vi.fn(),
   cancel = vi.fn(),
@@ -50,7 +58,9 @@ async function render(element: React.ReactNode) {
   await flush()
 }
 function button(label: string) {
-  const target = [...document.querySelectorAll('button')].find((node) => node.textContent === label)
+  const target = [...document.querySelectorAll('button')].find(
+    (node) => node.getAttribute('aria-label') === label || node.textContent === label,
+  )
   if (!target) throw new Error(`Missing ${label}`)
   return target
 }
@@ -98,6 +108,13 @@ beforeEach(() => {
       },
     ],
   }
+  readPage.mockReset().mockImplementation(async () => {
+    // The page summary intentionally omits task details, just like the real boundary.
+    const summary = batchSummarySchema.parse(
+      Object.fromEntries(Object.entries(task).filter(([key]) => key !== 'items')),
+    )
+    return { ok: true, data: { ...fixtureWorkspace, items: [summary], nextCursor: null } }
+  })
   createPreview.mockResolvedValue({ ok: true, data: preview })
   confirm.mockResolvedValue({ ok: true, data: task })
   cancel.mockResolvedValue({ ok: true, data: task })
@@ -110,12 +127,7 @@ beforeEach(() => {
         confirm,
         cancel,
         retryPreview: retry,
-        page: async () => {
-          const summary = Object.fromEntries(
-            Object.entries(task).filter(([key]) => key !== 'items'),
-          )
-          return { ok: true, data: { ...fixtureWorkspace, items: [summary], nextCursor: null } }
-        },
+        page: readPage,
         get: async () => ({ ok: true, data: task }),
       },
     }),
@@ -254,4 +266,64 @@ it('asks for a failed-only retry preview instead of resubmitting all original ID
   expect(retry).toHaveBeenCalledExactlyOnceWith(id)
   expect(confirm).not.toHaveBeenCalled()
   expect(createPreview).not.toHaveBeenCalled()
+})
+
+it('uses shared controls without losing owned batch cursors, fixed bounds, or loading guards', async () => {
+  const olderId = '00000000-0000-4000-8000-000000000011'
+  readPage.mockImplementation(async ({ beforeId }) => ({
+    ok: true,
+    data: {
+      ...fixtureWorkspace,
+      items: [{ ...task, id: beforeId ? olderId : id }],
+      nextCursor: beforeId ? null : id,
+    },
+  }))
+  await render(<BatchTasks onSelect={onCreated} />)
+  expect(readPage).toHaveBeenCalledWith({ beforeId: null, limit: 20 })
+  expect(container.querySelector('[data-slot="data-table-pagination"]')).not.toBeNull()
+  expect(container.querySelectorAll('nav button')).toHaveLength(2)
+  expect(container.querySelector('[role="combobox"]')).toBeNull()
+  expect(container.querySelector('[aria-current="page"]')).toBeNull()
+  expect(button('上一页').disabled).toBe(true)
+  let resolve!: (page: IpcResult<BatchPage>) => void
+  readPage.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }),
+  )
+  await act(async () => button('下一页').click())
+  await flush()
+  expect(readPage).toHaveBeenLastCalledWith({ beforeId: id, limit: 20 })
+  expect(button('上一页').disabled).toBe(true)
+  expect(button('下一页').disabled).toBe(true)
+  const calls = readPage.mock.calls.length
+  await act(async () => button('下一页').click())
+  expect(readPage).toHaveBeenCalledTimes(calls)
+  await act(async () =>
+    resolve({
+      ok: true,
+      data: { ...fixtureWorkspace, items: [{ ...task, id: olderId }], nextCursor: null },
+    }),
+  )
+  await flush()
+  expect(container.textContent).toContain(olderId)
+  expect(button('下一页').disabled).toBe(true)
+  expect(button('上一页').disabled).toBe(false)
+  await act(async () => button('上一页').click())
+  await flush()
+  expect(container.textContent).not.toContain(olderId)
+  expect(container.textContent).toContain(id)
+  expect(button('上一页').disabled).toBe(true)
+  expect(button('下一页').disabled).toBe(false)
+})
+
+it('does not advance a failed batch page through the shared pagination controls', async () => {
+  readPage.mockResolvedValue({ ok: false, code: 'COMMAND_FAILED', message: 'failed' })
+  await render(<BatchTasks onSelect={onCreated} />)
+  expect(button('上一页').disabled).toBe(true)
+  expect(button('下一页').disabled).toBe(true)
+  const calls = readPage.mock.calls.length
+  await act(async () => button('下一页').click())
+  expect(readPage).toHaveBeenCalledTimes(calls)
 })

@@ -1,4 +1,10 @@
 export const lifecycleMessages = {
+  'storage.maintenanceHelp':
+    'Clean up completed history only. Environments, sign-in sessions and browser data are not deleted.',
+  'storage.showMaintenance': 'Show cleanup options',
+  'storage.hideMaintenance': 'Hide cleanup options',
+  'storage.orphansNotice':
+    'Found {count} unlinked directories. Missing records do not make these safe to delete; browser data may be the only copy. Nothing is deleted or automatically recovered here.',
   'storage.diagnostics': 'Advanced diagnostics: screenshots and task outputs',
   'storage.diagnosticsHelp':
     'For development tests and troubleshooting, not everyday environment management or total disk cleanup. Collapsing this section does not delete files, change budgets or stop tasks.',
@@ -87,17 +93,25 @@ export const lifecycleMessages = {
   'proxy.httpOnly': 'HTTP reachable; HTTPS is not verified',
   'proxy.ipUnavailable': 'Exit IP lookup unavailable; connectivity was verified separately',
   'proxy.import.title': 'Import proxies',
-  'proxy.import.description': 'One proxy per line. Supports HTTP, HTTPS and SOCKS5.',
-  'proxy.import.defaultType': 'Default protocol',
+  'proxy.import.description':
+    'One proxy per line. Supports HTTP, HTTPS and SOCKS5. Missing schemes always use HTTP.',
   'proxy.import.lines': 'Proxy list',
-  'proxy.import.help':
-    'Use scheme://user:password@host:port or host:port:username:password. Up to 200 lines; percent-encode special characters such as @, # and % in URI credentials. Existing protocol/host/port/username combinations are skipped without replacing passwords.',
-  'proxy.import.limit': 'Enter up to 200 lines and 65,536 characters.',
+  'proxy.import.help': 'Up to 200 non-empty lines per import; blank lines are ignored.',
+  'proxy.import.formatDetails': 'Format details',
+  'proxy.import.formats':
+    'Use host:port, [scheme://]user:password@host:port or [scheme://]host:port:username:password; bracket IPv6 addresses.',
+  'proxy.import.credentials':
+    'Percent-encode special characters such as @, :, #, % and / in URI credentials. Colon-separated credentials stay literal, including colons in passwords; credentials containing @ must use an encoded URI instead. Ambiguous formats are rejected, never guessed.',
+  'proxy.import.duplicates':
+    'Existing protocol/host/port/username combinations are skipped without replacing passwords.',
+  'proxy.import.limit': 'Enter up to 200 non-empty lines and 65,536 characters.',
   'proxy.import.summary':
-    'Created {created}, skipped {skipped}, failed {failed}. Failed lines are retained for correction and retry.',
+    'Succeeded {created}, failed {failed}, duplicates skipped {skipped}. Input cleared to protect credentials; failed proxies are redacted. Correct and paste them again to retry.',
+  'proxy.import.failures': 'Failed proxies (credentials redacted)',
+  'proxy.import.hidden': 'Proxy cannot be safely identified; source hidden',
   'proxy.import.line': 'Line {line}',
   'proxy.import.duplicate': 'Connection already exists; skipped',
-  'proxy.import.invalid': 'Invalid protocol, host, port or credentials',
+  'proxy.import.invalid': 'Invalid or ambiguous format; check protocol, host, port or credentials',
   'proxy.import.secureUnavailable': 'System secure storage is unavailable; password was not saved',
   'proxy.import.saveFailed': 'Save failed; retry the remaining lines',
   'proxy.import.submit': 'Import proxies',
@@ -117,6 +131,12 @@ export const lifecycleMessages = {
   'error.UPDATE_TIMEOUT': 'The update request timed out. Check your connection and retry.',
   'error.UPDATE_FAILED':
     'The update operation failed. Check the connection, disk space and directory permissions, then retry.',
+  'error.UPDATE_MOUNT_FAILED':
+    'Could not mount the update. Quit the app and eject open installer images for this version, then reopen and retry, or install manually from the release page.',
+  'error.UPDATE_COPY_FAILED':
+    'Could not stage the update. Check free space and write access in the installation folder. The current app has not been replaced.',
+  'error.UPDATE_CLEANUP_FAILED':
+    'Could not clean the update staging folder. The current app has not been replaced. Quit the app and retry.',
   'error.UPDATE_NOT_AVAILABLE': 'Check for updates first to find a compatible installer.',
   'error.UPDATE_NOT_READY':
     'The installer is not ready. Finish downloading and verification first.',
@@ -219,6 +239,8 @@ export const lifecycleMessages = {
   'life.phase.running': 'Running',
   'life.phase.starting': 'Starting',
   'life.phase.stopping': 'Stopping',
+  'error.FINGERPRINT_CPU_UNSUPPORTED':
+    'This kernel requires the identity’s logical core count not to exceed this device. The saved identity is unchanged; use this environment on a device with enough logical cores.',
   'error.CONFIG_INVALID': 'The environment configuration is invalid. Review and save it again.',
   'error.ENVIRONMENT_TRASHED': 'Restore this environment from trash first.',
   'error.KERNEL_UNAVAILABLE':

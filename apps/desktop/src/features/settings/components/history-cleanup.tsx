@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useHistoryCleanup } from '../hooks/use-history-cleanup'
 
-export function HistoryCleanup() {
+export function HistoryCleanup({ showHeading = true }: { showHeading?: boolean }) {
   const { t, locale } = useI18n()
   const state = useHistoryCleanup()
   const label = useId()
@@ -36,7 +36,7 @@ export function HistoryCleanup() {
   const saved = state.receipt.data
   return (
     <section className="flex flex-col gap-3" aria-label={t('cleanup.title')} aria-busy={busy}>
-      <h3 className="font-medium">{t('cleanup.title')}</h3>
+      {showHeading && <h3 className="font-medium">{t('cleanup.title')}</h3>}
       <p className="text-sm text-muted-foreground">{t('cleanup.help')}</p>
       <p className="text-sm text-muted-foreground">{t('cleanup.protected')}</p>
       <FieldGroup>

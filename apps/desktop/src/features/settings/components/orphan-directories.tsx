@@ -14,16 +14,16 @@ export function OrphanDirectories() {
     queryKey: workspaceKey(workspaceContext, 'storage', 'orphans'),
     queryFn: () => unwrapIpc(workspaceApi.storage.orphans()),
   })
+  // This is an exception notice, not a permanent zero-count dashboard.
+  if (query.data?.length === 0 && !query.error) return null
   return (
     <section className="flex flex-col gap-3" aria-label={t('life.orphans')}>
       <h3 className="font-medium">{t('life.orphans')}</h3>
       <p className="text-sm text-muted-foreground">{t('life.orphansHelp')}</p>
-      {query.data && (
+      {query.data && query.data.length > 0 && (
         <Alert>
           <AlertDescription>
-            {t('commands.orphanScope')
-              .replace('{workspace}', workspaceContext.workspaceId)
-              .replace('{count}', String(query.data.length))}
+            {t('storage.orphansNotice').replace('{count}', String(query.data.length))}
           </AlertDescription>
         </Alert>
       )}

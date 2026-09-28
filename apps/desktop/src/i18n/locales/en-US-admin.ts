@@ -37,8 +37,10 @@ export const adminMessages: Record<keyof typeof zhMessages, string> = {
     'Checking does not force a restart. Once you confirm an update, download, verification, shutdown, installation and restart are automatic. Stop all environments first. Supports writable macOS app locations and Windows installed editions; development and Windows portable editions use the release downloads.',
 
   'kernel.backgroundDownloads': 'Background downloads',
+  'kernel.publisher': 'Publisher',
+  'kernel.publisherLicense': 'Kernel license',
   'kernel.versionInstallHelp':
-    'Choose a Fingerprint Chromium release. Package integrity and executable architecture are verified after download.',
+    'Choose a registered publisher’s release. Package integrity and executable architecture are verified after download. Existing environments never switch publishers automatically.',
   'kernel.refreshVersions': 'Refresh releases',
   'kernel.loadingVersions': 'Loading official releases…',
   'kernel.cachedCatalog':

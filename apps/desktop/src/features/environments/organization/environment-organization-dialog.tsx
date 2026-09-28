@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { TagCatalogPicker } from '../tags/tag-catalog-picker'
 import { saveEnvironmentOrganizationSchema } from '@contextweave/contracts'
 import { useWorkspaceApi } from '@/features/workspaces/workspace-session-context'
 import { useI18n } from '@/i18n'
@@ -143,6 +144,12 @@ export function EnvironmentOrganizationDialog({
                 </SelectContent>
               </Select>
             </Field>
+            <TagCatalogPicker
+              tags={query.data?.tags ?? []}
+              value={draft.tags}
+              onChange={(tags) => setDraft({ ...draft, tags })}
+              disabled={blocked}
+            />
             <Field data-invalid={invalid} data-disabled={blocked}>
               <FieldLabel htmlFor={`${id}-tags`}>{t('org.tags')}</FieldLabel>
               <Textarea

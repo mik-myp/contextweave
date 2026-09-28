@@ -4,7 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceSession, workspaceKey } from '@/features/workspaces/workspace-session-context'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { errorMessage } from '@/shared/lib/error-message'
-import type { EnvironmentSummary, IpcResult, OrganizationSnapshot } from '@contextweave/contracts'
+import {
+  organizationNameKey,
+  type EnvironmentSummary,
+  type IpcResult,
+  type OrganizationSnapshot,
+} from '@contextweave/contracts'
 
 export type OrganizedEnvironment = EnvironmentSummary & {
   groupId: string | null
@@ -19,13 +24,14 @@ export function organizeEnvironments(
 ): OrganizedEnvironment[] {
   const annotations = new Map(snapshot?.environments.map((item) => [item.environmentId, item]))
   const groups = new Map(snapshot?.groups.map((item) => [item.id, item.name]))
+  const tags = new Map(snapshot?.tags.map((item) => [organizationNameKey(item.name), item.name]))
   return environments.map((environment) => {
     const annotation = annotations.get(environment.id)
     return {
       ...environment,
       groupId: annotation?.groupId ?? null,
       groupName: groups.get(annotation?.groupId ?? '') ?? '',
-      tags: annotation?.tags ?? [],
+      tags: (annotation?.tags ?? []).map((name) => tags.get(organizationNameKey(name)) ?? name),
       note: annotation?.note ?? '',
       organizationRevision: annotation?.revision ?? 0,
     }

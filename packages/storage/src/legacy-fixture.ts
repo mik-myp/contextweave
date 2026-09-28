@@ -43,6 +43,18 @@ export function openVersion13Fixture(filePath: string) {
   return openPublishedFixture(filePath, 13)
 }
 
+/** Independently specified v14 addition to the immutable published v13 fixture. */
+export function openVersion14Fixture(filePath: string) {
+  const fixture = openVersion13Fixture(filePath)
+  try {
+    fixture.sqlite.exec(readFileSync(new URL('../test-fixtures/tags-v14.sql', import.meta.url), 'utf8'))
+    return fixture
+  } catch (error) {
+    fixture.close()
+    throw error
+  }
+}
+
 function openPublishedFixture(filePath: string, version: 4 | 8 | 9 | 10 | 11 | 12 | 13) {
   const sqlite = new DatabaseSync(filePath)
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
@@ -210,6 +222,7 @@ export function legacyRows(sqlite: DatabaseSync, table: string, order = 'rowid')
 export function removeWorkspaceScopeForLegacyFixture(sqlite: DatabaseSync) {
   sqlite.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE')
   try {
+    sqlite.exec('DROP TABLE IF EXISTS environment_tags')
     sqlite.exec(`DROP TABLE IF EXISTS ${commandTable}`)
     for (const table of batchTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
     for (const table of organizationTables) sqlite.exec(`DROP TABLE IF EXISTS ${table}`)

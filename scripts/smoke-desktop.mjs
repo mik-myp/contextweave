@@ -1,3 +1,4 @@
+import { verifyDefaultBookmarks } from './smoke-bookmarks.mjs'
 import { verifyEnvironmentCommands, seedInterruptedCommandFacts } from './smoke-commands.mjs'
 import { desktopStage, activateDesktopPage } from './smoke-desktop-stages.mjs'
 import { verifyBackendBatches } from './smoke-batches.mjs'
@@ -95,7 +96,6 @@ try {
         'http://127.0.0.1:18101',
         'invalid-proxy',
       ].join('\n'),
-      defaultType: 'http',
     }),
   )
   assert(imported.ok, 'Batch import must cross the validated bridge')
@@ -472,6 +472,7 @@ try {
       const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
+    await verifyDefaultBookmarks(desktop, page)
     commandEvidence = await verifyEnvironmentCommands(page)
     await verifyBackendBatches(page, () => desktopStage('batch-navigation-focus', () => activateDesktopPage(desktop, page), { timeoutMs: 5000 }))
     console.log(

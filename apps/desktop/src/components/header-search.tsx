@@ -20,6 +20,8 @@ type SearchItem = {
   labelKey:
     | 'nav.environments'
     | 'nav.proxies'
+    | 'nav.tags'
+    | 'bookmarks.title'
     | 'nav.kernels'
     | 'nav.activity'
     | 'nav.settings'
@@ -57,6 +59,18 @@ export function HeaderSearch() {
         url: appRoutes.proxies,
         labelKey: 'nav.proxies',
         keywords: 'proxy 代理',
+        icon: <SearchIcon />,
+      },
+      {
+        url: appRoutes.tags,
+        labelKey: 'nav.tags',
+        keywords: 'tags labels 标签 标签管理',
+        icon: <SearchIcon />,
+      },
+      {
+        url: appRoutes.bookmarks,
+        labelKey: 'bookmarks.title',
+        keywords: 'bookmarks favorites default 书签 默认书签 收藏',
         icon: <SearchIcon />,
       },
       {

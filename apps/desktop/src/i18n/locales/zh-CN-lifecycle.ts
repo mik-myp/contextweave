@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'storage.maintenanceHelp': '仅清理已完成的历史记录，不删除环境、登录状态或浏览器数据。',
+  'storage.showMaintenance': '查看清理选项',
+  'storage.hideMaintenance': '收起清理选项',
+  'storage.orphansNotice':
+    '发现 {count} 个未关联目录。不代表目录无用或可安全删除；其中的浏览器资料可能是唯一副本。此处不执行删除或自动恢复。',
   'storage.diagnostics': '高级诊断：截图与任务产物',
   'storage.diagnosticsHelp':
     '用于开发测试和故障排查，不是日常环境管理或全盘空间清理。折叠此处不会删除文件、修改预算或停止任务。',
@@ -70,17 +75,23 @@ export const lifecycleMessages = {
   'proxy.httpOnly': 'HTTP 连通；HTTPS 尚未验证',
   'proxy.ipUnavailable': '出口 IP 查询不可用，不影响本次连通结果',
   'proxy.import.title': '批量新增代理',
-  'proxy.import.description': '一行一个代理，支持 HTTP、HTTPS 和 SOCKS5。',
-  'proxy.import.defaultType': '无协议时使用',
+  'proxy.import.description': '一行一个代理，支持 HTTP、HTTPS 和 SOCKS5。未写协议时统一使用 HTTP。',
   'proxy.import.lines': '代理列表',
-  'proxy.import.help':
-    '支持 scheme://user:password@host:port 与 host:port:username:password。每次最多 200 行；URI 凭据中的 @、#、% 等特殊字符需百分号编码。相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖。',
-  'proxy.import.limit': '请填写代理，最多 200 行、65,536 个字符。',
+  'proxy.import.help': '每次最多 200 个非空行，空行忽略。',
+  'proxy.import.formatDetails': '格式说明',
+  'proxy.import.formats':
+    '支持 host:port、[scheme://]user:password@host:port 与 [scheme://]host:port:username:password；IPv6 地址需加方括号。',
+  'proxy.import.credentials':
+    'URI 凭据中的 @、:、#、%、/ 等特殊字符需百分号编码；冒号分隔格式的凭据按原文保存，密码可含冒号，但含 @ 时须改用编码后的 URI。有歧义的格式会被拒绝，不会猜测凭据。',
+  'proxy.import.duplicates': '相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖。',
+  'proxy.import.limit': '请填写代理，最多 200 个非空行、65,536 个字符。',
   'proxy.import.summary':
-    '新增 {created} 项，跳过 {skipped} 项，失败 {failed} 项。失败行已保留，可修正后重试。',
+    '成功 {created} 项，失败 {failed} 项，重复跳过 {skipped} 项。输入已清空以保护凭据；失败代理仅显示脱敏信息，请修正后重新粘贴。',
+  'proxy.import.failures': '失败代理（凭据已脱敏）',
+  'proxy.import.hidden': '无法安全识别代理，原文已隐藏',
   'proxy.import.line': '第 {line} 行',
   'proxy.import.duplicate': '该连接已存在，已跳过',
-  'proxy.import.invalid': '格式无效，请检查协议、主机、端口或凭据',
+  'proxy.import.invalid': '格式无效或有歧义，请检查协议、主机、端口或凭据',
   'proxy.import.secureUnavailable': '系统安全存储不可用，密码未保存',
   'proxy.import.saveFailed': '保存失败，未保存的行可以重试',
   'proxy.import.submit': '导入代理',
@@ -97,6 +108,11 @@ export const lifecycleMessages = {
   'error.UPDATE_CHECK_FAILED': '无法检查更新，请检查网络后重试。',
   'error.UPDATE_TIMEOUT': '更新请求超时，请检查网络后重试。',
   'error.UPDATE_FAILED': '更新操作未完成，请检查网络、存储空间及目录权限后重试。',
+  'error.UPDATE_MOUNT_FAILED':
+    '无法挂载更新安装包。请先退出应用并推出已打开的同版本安装镜像，再重新打开应用重试；也可从发行说明手动安装。',
+  'error.UPDATE_COPY_FAILED':
+    '无法准备新版本，请检查应用安装目录的剩余空间与写入权限。当前版本未被替换。',
+  'error.UPDATE_CLEANUP_FAILED': '更新暂存目录未能清理，当前版本未被替换。请退出应用后重试。',
   'error.UPDATE_NOT_AVAILABLE': '请先检查更新并选择可用的本机安装包。',
   'error.UPDATE_NOT_READY': '安装包尚未准备好，请先完成下载和校验。',
   'error.UPDATE_FILE_INVALID': '已下载的安装包丢失或被修改，请重新下载。',
@@ -186,6 +202,8 @@ export const lifecycleMessages = {
   'life.phase.running': '运行中',
   'life.phase.starting': '启动中',
   'life.phase.stopping': '停止中',
+  'error.FINGERPRINT_CPU_UNSUPPORTED':
+    '此内核要求身份中的逻辑核数不超过当前设备。配置未被修改，请在足够核数的设备上使用此环境。',
   'error.CONFIG_INVALID': '环境配置无效，请检查并重新保存。',
   'error.ENVIRONMENT_TRASHED': '环境已移入回收站，请先恢复。',
   'error.KERNEL_UNAVAILABLE':

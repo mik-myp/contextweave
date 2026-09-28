@@ -4,6 +4,7 @@ import * as React from 'react'
 import {
   ScrollTextIcon,
   BoxesIcon,
+  TagsIcon,
   Globe2Icon,
   SettingsIcon,
   SlidersHorizontalIcon,
@@ -25,17 +26,22 @@ export function AppSidebar({
     {
       title: t('nav.environments'),
       url: appRoutes.environments,
-      icon: <Globe2Icon className="text-sky-600 dark:text-sky-400" />,
+      icon: <Globe2Icon className="text-muted-foreground" />,
     },
     {
       title: t('nav.proxies'),
       url: appRoutes.proxies,
-      icon: <SlidersHorizontalIcon className="text-violet-600 dark:text-violet-400" />,
+      icon: <SlidersHorizontalIcon className="text-muted-foreground" />,
+    },
+    {
+      title: t('nav.tags'),
+      url: appRoutes.tags,
+      icon: <TagsIcon className="text-muted-foreground" />,
     },
     {
       title: t('nav.kernels'),
       url: appRoutes.kernels,
-      icon: <BoxesIcon className="text-amber-600 dark:text-amber-400" />,
+      icon: <BoxesIcon className="text-muted-foreground" />,
     },
   ]
   // Add system tools here; settings is appended separately to stay last.
@@ -43,7 +49,7 @@ export function AppSidebar({
     {
       title: t('nav.activity'),
       url: appRoutes.activity,
-      icon: <ScrollTextIcon className="text-emerald-600 dark:text-emerald-400" />,
+      icon: <ScrollTextIcon className="text-muted-foreground" />,
     },
   ]
   const collapsible = layout === 'offcanvas' ? 'offcanvas' : 'icon'
@@ -66,7 +72,7 @@ export function AppSidebar({
             {
               title: t('nav.settings'),
               url: appRoutes.settings,
-              icon: <SettingsIcon className="text-slate-500 dark:text-slate-400" />,
+              icon: <SettingsIcon className="text-muted-foreground" />,
             },
           ]}
           groupLabel={t('nav.system')}

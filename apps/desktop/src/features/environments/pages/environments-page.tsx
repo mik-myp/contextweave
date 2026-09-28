@@ -251,11 +251,10 @@ function ActiveEnvironmentsPage({ onCreated }: { onCreated: (id: string) => void
             <DataTableFilter
               column={table.getColumn('tags')}
               label={t('org.tags')}
-              options={[
-                ...new Map(
-                  rows.flatMap((row) => row.tags).map((tag) => [organizationNameKey(tag), tag]),
-                ).entries(),
-              ].map(([value, label]) => ({ value, label }))}
+              options={(organization.data?.tags ?? []).map((tag) => ({
+                value: organizationNameKey(tag.name),
+                label: tag.name,
+              }))}
               onFilterChange={() => table.setPageIndex(0)}
               showCounts={false}
             />

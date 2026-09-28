@@ -1,3 +1,4 @@
+import type { tagMessages } from './locales/zh-CN-tags'
 import type { commandMessages } from './locales/zh-CN-commands'
 import type { batchMessages } from './locales/zh-CN-batches'
 import type { organizationMessages } from './locales/zh-CN-organization'
@@ -8,6 +9,7 @@ import type { workspaceMessages } from './locales/zh-CN-workspace'
 export type Locale = 'zh-CN' | 'en-US'
 
 export type TranslationKey =
+  | keyof typeof tagMessages
   | keyof typeof commandMessages
   | keyof typeof batchMessages
   | keyof typeof organizationMessages

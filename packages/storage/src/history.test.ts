@@ -337,7 +337,7 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   const original = legacy.sqlite.prepare("SELECT * FROM operations").all();
   const tables = legacy.sqlite
     .prepare(
-      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views','batch_tasks','batch_items','environment_commands') ORDER BY name",
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views','batch_tasks','batch_items','environment_commands','environment_tags') ORDER BY name",
     )
     .all();
   const exec = legacy.sqlite.exec.bind(legacy.sqlite);
@@ -375,7 +375,7 @@ it("preserves genuine v5 tables/data across bounded indexes and later additive t
   expect(
     withoutWorkspaceColumn(migrated.sqlite
       .prepare(
-        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views','batch_tasks','batch_items','environment_commands') ORDER BY name",
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('screenshot_artifacts','screenshot_budget','screenshot_reservations','local_workspace','environment_groups','environment_organization','environment_views','batch_tasks','batch_items','environment_commands','environment_tags') ORDER BY name",
       )
       .all()),
   ).toEqual(tables);

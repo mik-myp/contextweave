@@ -1,0 +1,31 @@
+export const tagMessages = {
+  'nav.tags': '标签',
+  'tags.title': '标签管理',
+  'tags.description':
+    '统一管理环境标签，未使用的标签也会保留。环境引用数包含回收站；更改标签不会删除环境或浏览器数据。',
+  'tags.save': '保存标签',
+  'tags.actions': '操作',
+  'tags.name': '标签名称',
+  'tags.nameHelp': '1–40 个字符，忽略首尾空格、大小写和等价的 Unicode 写法，不可重名。',
+  'tags.invalid': '请输入 1–40 个字符的标签名称。',
+  'tags.create': '新建标签',
+  'tags.createHelp': '先创建标签，之后可在任意环境的组织信息中选择使用。',
+  'tags.rename': '重命名标签',
+  'tags.renameHelp': '所有环境关联（含回收站）和已保存筛选将同步更新。',
+  'tags.delete': '删除标签',
+  'tags.deleteHelp':
+    '将移除此标签及所有环境中的标签关联，并从已保存筛选中移除该条件（筛选范围可能扩大）。不会删除任何环境或浏览器数据。此操作不可撤销。',
+  'tags.created': '标签已创建。',
+  'tags.renamed': '标签及关联已更新。',
+  'tags.deleted': '标签及关联已移除，环境和浏览器数据保持不变。',
+  'tags.search': '搜索标签…',
+  'tags.environments': '环境引用',
+  'tags.views': '已保存筛选引用',
+  'tags.updatedAt': '更新时间',
+  'tags.empty': '没有标签',
+  'tags.emptyHelp': '创建第一个标签，或调整搜索条件。',
+  'tags.missing': '此标签已被删除。请关闭编辑器并刷新列表。',
+  'tags.chooseExisting': '选择已有标签',
+  'tags.chooseHelp':
+    '与标签管理页面共用词典，包含尚未使用的标签。下方手动输入的新名称将在保存时登记。',
+} as const

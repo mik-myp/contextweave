@@ -32,6 +32,7 @@ import {
   openVersion11Fixture,
   openVersion12Fixture,
   openVersion13Fixture,
+  openVersion14Fixture,
   legacyFixtureWriter,
 } from './legacy-fixture'
 
@@ -113,11 +114,11 @@ function schema(sqlite: DatabaseSync) {
 it('describes independent, continuous migration steps without exposing an executor or mutating a read-only database', () => {
   const fromEmpty = describeDatabaseMigration(0)
   expect(fromEmpty.state).toBe('initialize')
-  expect(fromEmpty.toVersion).toBe(13)
+  expect(fromEmpty.toVersion).toBe(14)
   expect(fromEmpty.steps.map((step) => step.version)).toEqual(
-    Array.from({ length: 13 }, (_, i) => i + 1),
+    Array.from({ length: 14 }, (_, i) => i + 1),
   )
-  expect(new Set(fromEmpty.steps.map((step) => step.id)).size).toBe(13)
+  expect(new Set(fromEmpty.steps.map((step) => step.id)).size).toBe(14)
   for (const step of fromEmpty.steps) {
     expect(Object.keys(step).sort()).toEqual(['id', 'version'])
     expect(Object.isFrozen(step)).toBe(true)
@@ -125,13 +126,16 @@ it('describes independent, continuous migration steps without exposing an execut
   expect(Object.isFrozen(fromEmpty.steps)).toBe(true)
   expect(describeDatabaseMigration(12)).toEqual({
     fromVersion: 12,
-    toVersion: 13,
+    toVersion: 14,
     state: 'upgrade',
-    steps: [{ version: 13, id: 'environment-commands' }],
+    steps: [
+      { version: 13, id: 'environment-commands' },
+      { version: 14, id: 'independent-environment-tags' },
+    ],
   })
   for (const bad of [-1, NaN, Infinity, 0.5])
     expect(() => describeDatabaseMigration(bad)).toThrow('DATABASE_VERSION_INVALID')
-  expect(() => describeDatabaseMigration(14)).toThrow('newer ContextWeave')
+  expect(() => describeDatabaseMigration(15)).toThrow('newer ContextWeave')
   const { file, root } = temporaryFile()
   openVersion12Fixture(file).close()
   const before = readFileSync(file)
@@ -225,7 +229,7 @@ it.each([
     } finally {
       old.close()
     }
-    const current = openVersion13Fixture(':memory:')
+    const current = openVersion14Fixture(':memory:')
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const opened = openLocalDatabase(file)
@@ -273,7 +277,7 @@ it.each([
   },
 )
 
-it.each(Array.from({ length: 13 }, (_, index) => index + 1))(
+it.each(Array.from({ length: 14 }, (_, index) => index + 1))(
   'rolls all earlier DDL back if advancing step %i fails, then supports an explicit retry',
   (version) => {
     const sqlite = new DatabaseSync(':memory:')

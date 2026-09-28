@@ -1,3 +1,4 @@
+import { tagMessages } from './en-US-tags'
 import { commandMessages } from './en-US-commands'
 import { batchMessages } from './en-US-batches'
 import { organizationMessages } from './en-US-organization'
@@ -8,6 +9,7 @@ import { workspaceMessages } from './en-US-workspace'
 import type { TranslationKey } from '../types'
 
 export const enUSMessages: Record<TranslationKey, string> = {
+  ...tagMessages,
   ...enLogMessages,
   ...lifecycleMessages,
   ...workspaceMessages,

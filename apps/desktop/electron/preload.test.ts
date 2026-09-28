@@ -360,7 +360,7 @@ it('rejects otherwise valid owned records from another workspace, including page
 it('validates named organization methods and rejects mixed-owner snapshots before Renderer state', async () => {
   bridge.invoke.mockResolvedValue({
     ok: true,
-    data: { ...workspace, groups: [], environments: [], views: [] },
+    data: { ...workspace, groups: [], tags: [], environments: [], views: [] },
   })
   await expect(api.organization.list(workspace)).resolves.toMatchObject({ ok: true })
   expect(bridge.invoke).toHaveBeenLastCalledWith('organization:list', {
@@ -386,6 +386,7 @@ it('validates named organization methods and rejects mixed-owner snapshots befor
     data: {
       ...workspace,
       groups: [],
+      tags: [],
       views: [],
       environments: [
         {
@@ -548,4 +549,63 @@ describe('durable command preload API', () => {
       await expect(api.environment.commandReceipt(workspace, requestId)).rejects.toThrow()
     }
   })
+})
+
+it('validates tag CRUD inputs, revisions and responses under the captured workspace', async () => {
+  const tag = {
+    ...workspace,
+    id: '00000000-0000-4000-8000-000000000010',
+    name: 'Review',
+    revision: 1,
+    updatedAt: '2026-09-28T00:00:00.000Z',
+  }
+  bridge.invoke.mockResolvedValue({ ok: true, data: tag })
+  expect(await api.organization.createTag(workspace, { name: ' Review ' })).toEqual({
+    ok: true,
+    data: tag,
+  })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('organization:tag-create', {
+    ...workspace,
+    payload: { name: 'Review' },
+  })
+  await api.organization.updateTag(workspace, { id: tag.id, name: 'New', expectedRevision: 1 })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('organization:tag-update', {
+    ...workspace,
+    payload: { id: tag.id, name: 'New', expectedRevision: 1 },
+  })
+  bridge.invoke.mockResolvedValue({ ok: true, data: true })
+  await api.organization.deleteTag(workspace, { id: tag.id, expectedRevision: 2 })
+  expect(bridge.invoke).toHaveBeenLastCalledWith('organization:tag-delete', {
+    ...workspace,
+    payload: { id: tag.id, expectedRevision: 2 },
+  })
+  bridge.invoke.mockClear()
+  await expect(api.organization.createTag(workspace, { name: '   ' })).rejects.toThrow()
+  await expect(
+    api.organization.updateTag(workspace, { id: tag.id, name: 'New', expectedRevision: 0 }),
+  ).rejects.toThrow()
+  await expect(
+    api.organization.deleteTag(workspace, { id: 'bad', expectedRevision: 1 }),
+  ).rejects.toThrow()
+  expect(bridge.invoke).not.toHaveBeenCalled()
+  bridge.invoke.mockResolvedValue({ ok: true, data: { ...tag, revision: 0 } })
+  await expect(api.organization.createTag(workspace, { name: 'Review' })).rejects.toThrow()
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: { ...tag, workspaceId: '00000000-0000-4000-8000-000000000002' },
+  })
+  await expect(
+    api.organization.updateTag(workspace, { id: tag.id, name: 'Review', expectedRevision: 1 }),
+  ).rejects.toThrow('WORKSPACE_MISMATCH')
+  bridge.invoke.mockResolvedValue({
+    ok: true,
+    data: {
+      ...workspace,
+      groups: [],
+      environments: [],
+      views: [],
+      tags: [{ ...tag, workspaceId: '00000000-0000-4000-8000-000000000002' }],
+    },
+  })
+  await expect(api.organization.list(workspace)).rejects.toThrow()
 })

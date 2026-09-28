@@ -636,3 +636,53 @@ describe('public durable environment command boundary', () => {
     expect(f.db.sqlite.prepare('SELECT count(*) AS n FROM environment_commands').get()?.n).toBe(2)
   })
 })
+
+it('enforces tag ownership/CAS/schema checks and emits scoped invalidation only after committed CRUD', async () => {
+  const f = fixture(),
+    other = fixture()
+  for (const channel of [
+    'organization:tag-create',
+    'organization:tag-update',
+    'organization:tag-delete',
+  ]) {
+    expect(await f.rawApp.invoke(channel, { name: 'missing envelope' })).toMatchObject({
+      ok: false,
+      code: 'WORKSPACE_CONTEXT_INVALID',
+    })
+    expect(
+      await f.rawApp.invoke(channel, { workspaceId: other.repository.workspaceId, payload: {} }),
+    ).toMatchObject({ ok: false, code: 'WORKSPACE_MISMATCH' })
+    expect(
+      await f.app.invoke(channel, { name: 'bad', expectedRevision: 0, extra: true }),
+    ).toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  }
+  expect(f.events).toEqual([])
+  const created = await f.app.invoke('organization:tag-create', { name: 'Unused' })
+  expect(created).toMatchObject({
+    ok: true,
+    data: { name: 'Unused', workspaceId: f.repository.workspaceId, revision: 1 },
+  })
+  const tag = f.repository.organization.snapshot().tags[0]!
+  expect(other.repository.organization.snapshot().tags).toEqual([])
+  expect(f.events).toEqual([{ workspaceId: f.repository.workspaceId, domains: ['organization'] }])
+  expect(await f.app.invoke('organization:tag-create', { name: 'UNUSED' })).toMatchObject({
+    ok: false,
+    code: 'ORGANIZATION_NAME_EXISTS',
+  })
+  expect(
+    await f.app.invoke('organization:tag-update', {
+      id: tag.id,
+      name: 'Next',
+      expectedRevision: 1,
+    }),
+  ).toMatchObject({ ok: true, data: { id: tag.id, name: 'Next', revision: 2 } })
+  expect(
+    await f.app.invoke('organization:tag-delete', { id: tag.id, expectedRevision: 1 }),
+  ).toMatchObject({ ok: false, code: 'ORGANIZATION_CONFLICT' })
+  expect(f.events).toHaveLength(2)
+  expect(
+    await f.app.invoke('organization:tag-delete', { id: tag.id, expectedRevision: 2 }),
+  ).toEqual({ ok: true, data: true })
+  expect(f.repository.organization.snapshot().tags).toEqual([])
+  expect(f.events).toHaveLength(3)
+})

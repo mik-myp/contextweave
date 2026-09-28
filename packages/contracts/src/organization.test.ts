@@ -76,6 +76,7 @@ describe('organization contracts', () => {
     const valid = {
       workspaceId,
       groups: [],
+      tags: [],
       environments: [
         { workspaceId, environmentId: 'same-id', groupId: null, tags: [], note: '', revision: 0 },
       ],

@@ -16,6 +16,7 @@ import {
 } from '@contextweave/contracts'
 import { WorkspaceRepository } from './workspaces'
 import { organizationTables } from './organization-schema'
+import { TagRepository } from './tags'
 
 type Row = Record<string, unknown>
 const group = (r: Row) =>
@@ -48,12 +49,26 @@ const metadata = (r: Row) =>
 /** Organizational preferences share the authoritative DB, not the browser config revision. */
 export class OrganizationRepository {
   readonly workspaceId: string
+  private readonly tags: TagRepository
   constructor(private readonly sqlite: DatabaseSync) {
     this.workspaceId = new WorkspaceRepository(sqlite).current().workspaceId
+    this.tags = new TagRepository(sqlite)
+  }
+  createTag(input: unknown) {
+    return this.tags.create(input)
+  }
+  updateTag(input: unknown) {
+    return this.tags.update(input)
+  }
+  deleteTag(input: unknown) {
+    return this.tags.delete(input)
   }
   snapshot(): OrganizationSnapshot {
+    const tags = this.tags.list()
+    const names = new Map(tags.map((tag) => [organizationNameKey(tag.name), tag.name]))
     return organizationSnapshotSchema.parse({
       workspaceId: this.workspaceId,
+      tags,
       groups: this.sqlite
         .prepare('SELECT * FROM environment_groups ORDER BY name_key, group_id')
         .all()
@@ -64,7 +79,11 @@ export class OrganizationRepository {
         FROM environments e LEFT JOIN environment_organization o USING(environment_id) ORDER BY e.environment_id`,
         )
         .all()
-        .map(metadata),
+        .map(metadata)
+        .map((item) => ({
+          ...item,
+          tags: item.tags.map((name) => names.get(organizationNameKey(name)) ?? name),
+        })),
       views: this.sqlite
         .prepare('SELECT * FROM environment_views ORDER BY name_key, view_id')
         .all()
@@ -178,7 +197,7 @@ export class OrganizationRepository {
           value.environmentId,
           this.workspaceId,
           value.groupId,
-          JSON.stringify(value.tags),
+          JSON.stringify(this.tags.register(value.tags)),
           value.note,
           value.expectedRevision + 1,
         )
@@ -193,6 +212,7 @@ export class OrganizationRepository {
     const value = createEnvironmentViewSchema.parse(input)
     return this.transaction(() => {
       this.uniqueName('environment_views', organizationNameKey(value.name))
+      this.tags.register(value.view.filters.tags)
       const id = randomUUID(),
         updatedAt = new Date().toISOString()
       this.sqlite
@@ -226,6 +246,7 @@ export class OrganizationRepository {
     return this.transaction(() => {
       this.current('environment_views', id, expectedRevision)
       this.uniqueName('environment_views', organizationNameKey(name), id)
+      this.tags.register(preferences.filters.tags)
       this.sqlite
         .prepare(
           'UPDATE environment_views SET name=?, name_key=?, view_json=?, revision=revision+1, updated_at=? WHERE view_id=?',

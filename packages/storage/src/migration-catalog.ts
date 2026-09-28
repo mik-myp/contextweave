@@ -5,6 +5,7 @@ import { migrateWorkspaceScope } from './workspace-scope'
 import { migrateOrganization } from './organization-schema'
 import { migrateBatches } from './batch-schema'
 import { migrateCommands } from './command-schema'
+import { migrateTags } from './tags-schema'
 
 const initialSchema = `
 CREATE TABLE IF NOT EXISTS environments (
@@ -225,5 +226,6 @@ export const migrationCatalog = Object.freeze(
         migrateCommands(sqlite)
       },
     },
+    { version: 14, id: 'independent-environment-tags', apply: migrateTags },
   ].map((step) => Object.freeze(step)),
 )

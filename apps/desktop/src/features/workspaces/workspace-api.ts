@@ -22,6 +22,9 @@ export function createWorkspaceApi(input: WorkspaceContext) {
       retryPreview: bindWorkspace(() => window.contextweave.batch.retryPreview),
     },
     organization: {
+      createTag: bindWorkspace(() => window.contextweave.organization.createTag),
+      updateTag: bindWorkspace(() => window.contextweave.organization.updateTag),
+      deleteTag: bindWorkspace(() => window.contextweave.organization.deleteTag),
       list: bindWorkspace(() => window.contextweave.organization.list),
       createGroup: bindWorkspace(() => window.contextweave.organization.createGroup),
       updateGroup: bindWorkspace(() => window.contextweave.organization.updateGroup),

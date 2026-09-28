@@ -167,6 +167,21 @@ export function createApplication(options: {
     'batch:cancel': (input) => ok(batches.cancel(input)),
     'batch:retry-preview': (input) => ok(batches.retryPreview(input)),
     'organization:list': () => ok(repository.organization.snapshot()),
+    'organization:tag-create': (input) => {
+      const result = repository.organization.createTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:tag-update': (input) => {
+      const result = repository.organization.updateTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
+    'organization:tag-delete': (input) => {
+      const result = repository.organization.deleteTag(input)
+      changed(['organization'])
+      return ok(result)
+    },
     'organization:group-create': (input) => {
       const result = repository.organization.createGroup(input)
       changed(['organization'])

@@ -1027,3 +1027,7 @@ v0.1.18 将桌面 Vitest 文件 worker 上限收敛到 2；v0.1.19 的后续 Win
 UI 继续使用现有 shadcn `base-nova` / Base UI、Public Sans、主题语义 token 和 DataTable。参考注册表只借鉴列表密度、次要操作和空态，不整套安装仪表盘、动画、图表或第二套组件基础。主页面保留用户高频动作；操作恢复、历史维护和开发诊断按需打开，并保留进行中的业务状态。
 
 应用更新的文件操作使用 Electron 内建 `original-fs`（不是新增 npm 依赖），避免普通 Node `fs` 在 Electron 中将 `.asar` 虚拟化和缓存归档句柄；其适用范围仅为安装包目录检查和清理。不全局修改 `process.noAsar`，不影响应用自身 ASAR 加载。共享 bundle 检查接受受控文件系统依赖，默认内核路径仍使用原行为。真实 Electron 回归使用临时 ASAR、明确的虚拟文件系统对照和模拟 OS 命令；额外实际 DMG 验收仅做准备阶段，绝不替换用户安装以“验证”修复。
+
+### v0.3.0 固定来源的适配边界（2026-09-28）
+
+沿用现有 `kernel-fingerprint-chromium` 包、Registry与Main安装服务。已核验Apostate/pocchian具体发行物的源码与notice后，静态 `source-reviewed` 注册只授权这些精确平台/版本/摘要，不扩大旧提供方的通用major版本白名单。Main提供宿主逻辑核数，Adapter解释各提供方参数；Renderer不拼接新参数、不提供任意profile JSON或CDP入口。提供方名称与许可各自展示，旧manifest缺provider字段只允许原namespace。进入原生验收不等于验收通过，最终矩阵与发布门禁记录在版本台账17.35；本次不增加库/服务端/内核构建工程。

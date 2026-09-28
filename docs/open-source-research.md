@@ -110,6 +110,14 @@ Camoufox 的源码可见语言/地区处理、指纹配置及按平台选包逻�
 - **明确适配差异：** 其文档声明语言由`--fingerprint-locale`控制，persona下`--lang`不生效；时区使用`--fingerprint-timezone`，核数不能超过宿主。不能把现有三个参数加上通用152白名单就称兼容。Mac ZIP也不适用当前按平台选DMG的提取器；须在受控包型/符号链接策略与原生回归完成后才可接入。
 - **证据边界：** 未执行浏览器、未完成Mac bundle输出树摘要重建、没有独立重现编译，也没有原生生命周期、代理、身份、扩展或profile兼容结果。tag源码中的npm包装层release-manifest仍指向上一v0.4.2，不能拿它核验本次v0.4.3；本次使用与实际v0.4.3二进制一同发布且摘要匹配的附件manifest和内置build manifest。
 
+**固定候选的包内许可与布局补证（2026-09-28，仅静态读取）。**
+
+- 两份 Apostate ZIP 的顶层 `LICENSE` 与固定源码全文一致；没有独立 `NOTICE` 不能被误写成缺少全部第三方声明。Windows 的根 `resources.pak` 与 Mac framework 内 `Resources/resources.pak` 均包含可静态解码的 Chromium Credits；Intel152 已提取 bundle 中也确认了同类载体。载体存在不是全部许可合规结论，也没有执行 `chrome://credits` 页面。
+- Apostate 两平台包根同有 `build/MANIFEST.lock` 与 `resources/profiles`（15 个 JSON），后者位于 `.app` 外。仅复制 `.app` 会丢失 profiles、顶层许可和构建记录。Mac ZIP 与已有静态提取目录的 349 个普通文件、317 个目录、5 个链接逐项无差异；仅比较路径、大小、内容摘要及链接目标，不把它当作权限、ACL 或启动验证。现有安装层可直接保留完整 payload，不需要另建资源管理平台。
+- Mac 包内 `build/MANIFEST.lock` 摘要 `fd38dfe094e1cb850cbe210aa891796688f6e16c3be6cfd28ce09c47fa00b046` 与发布附件相符；但其 app 目录摘要生成方式包含构建机绝对路径，且记录签名前输出，不能直接与已签名发行 bundle 的相对清单等同。manifest 根级 `chrome_crashpad_handler` 与实际 framework Helpers 内同名文件的位置/摘要亦不相同；未取得签名前树消除该差异，不能宣称 build outputs 逐项匹配，也不能据此称提取损坏。
+- Intel 的固定源码 BSD 许可已取得，bundle 内 Credits 已确认；DMG 根目录是否另附许可证本次没有重新挂载核对，不能称“没有许可”或“已被提取器丢弃”。Apostate 根许可为 GPLv3，npm/Python 包装器的 SPDX 后缀不一致；本项目不引入这些包装器，也不以其字段替代浏览器许可或决定项目根许可证。
+- 最低系统仍区分声明与实测：两 Mac 包先前的 Info.plist 声明为 macOS 13.0，并非最低系统设备验收；已查 Apostate 文档未明确 Windows 运行下限，Windows/macOS SDK 要求不能代替该结论。本次没有下载、浏览器执行、重签名或改变安全策略。
+
 **其他新增候选不自动采用。**
 
 - `pppi21/anti-fingerprint-browser`的153.0.8010.47-1确有Windows产物和补丁，但[发布源码LICENSE.txt](https://github.com/pppi21/anti-fingerprint-browser/blob/724ef061002feb8c5136cdffc2bd94332d241ba0/LICENSE.txt)是限制修改、再分发和竞品使用的EULA，不以GitHub API的BSD标签覆盖具体文件；本轮不下载/执行其浏览器或复制补丁。

@@ -18,13 +18,16 @@ export function CommandHistorySheet({
   const { t } = useI18n()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-4xl">
+      <SheetContent
+        className="data-[side=right]:w-full data-[side=right]:sm:max-w-4xl"
+        closeLabel={t('common.close')}
+      >
         <SheetHeader className="pe-12">
           <SheetTitle>{t('commands.title')}</SheetTitle>
           <SheetDescription>{t('commands.help')}</SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-          <EnvironmentCommands />
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 pb-4">
+          <EnvironmentCommands showHelp={false} />
         </div>
       </SheetContent>
     </Sheet>

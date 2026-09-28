@@ -22,7 +22,7 @@ import { PendingCommands } from './pending-commands'
 import { EnvironmentRecoveryDialog } from './recovery-dialog'
 import { errorMessage } from '@/shared/lib/error-message'
 
-export function EnvironmentCommands() {
+export function EnvironmentCommands({ showHelp = true }: { showHelp?: boolean }) {
   const { context, api } = useWorkspaceSession(),
     { t, locale } = useI18n(),
     cache = useQueryClient()
@@ -60,11 +60,15 @@ export function EnvironmentCommands() {
   }
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={t('commands.title')}>
-      <Alert>
-        <AlertDescription>
-          {t('commands.help')} {t('commands.cancelHelp')}
-        </AlertDescription>
-      </Alert>
+      {showHelp ? (
+        <Alert>
+          <AlertDescription>
+            {t('commands.help')} {t('commands.cancelHelp')}
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t('commands.cancelHelp')}</p>
+      )}
       <PendingCommands />
       {(error || query.error) && (
         <Alert variant="destructive">

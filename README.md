@@ -53,6 +53,20 @@ HTTP、HTTPS 与带用户名/密码的 SOCKS5 均通过每次会话独立的本�
 
 安装包目前未配置开发者签名和 macOS 公证。Windows、macOS 的系统安装提示与代码签名状态一致；这与浏览器内核包的 SHA-256 校验是两个独立事项。
 
+### macOS 提示“已损坏，无法打开”
+
+若启动时提示：
+
+> “ContextWeave”已损坏，无法打开。你应该将它移到废纸篓。
+
+请确认安装包来自[官方 Releases](https://github.com/mik-myp/contextweave/releases)，并在 **系统设置 → 隐私与安全性** 中选择 **仍要打开**。若没有该选项，请在终端执行：
+
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/ContextWeave.app
+```
+
+请仅对从官方 Releases 下载并放入 `/Applications` 的应用使用此命令。执行后重新打开 ContextWeave。
+
 ### 主题设置的设计参考
 
 ContextWeave 的主题设置在交互组织和视觉表达上参考了 [New API](https://github.com/QuantumNous/new-api) 项目，包括主题抽屉、分组设置、选项预览和即时切换等方向。ContextWeave 的主题实现代码、SVG 图形、CSS 样式和其他主题资源均由本项目独立编写，不复制 New API 的源代码、路径数据或资源。

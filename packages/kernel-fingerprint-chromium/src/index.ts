@@ -48,7 +48,7 @@ export function isFingerprintKernel(id: string): boolean {
 
 export {
   fingerprintArchiveFormat, fingerprintKernelId, fingerprintKernelProviderId, fingerprintProvider, fingerprintProviderRelease,
-  fingerprintProviderReleases, fingerprintProviders, fingerprintManifestProvider, fingerprintProviderNotice,
+  fingerprintProviderReleases, fingerprintProviders, fingerprintManifestProvider, fingerprintProviderNotice, reviewedFingerprintManifests,
 } from './providers'
 export type { FingerprintProviderRelease } from './providers'
 

@@ -218,6 +218,29 @@ describe('runtime provider admission is separate from verification labels', () =
       ).toThrow('PROVIDER_UNVERIFIED')
     },
   )
+  it('rejects a saved Apostate payload before download or environment creation', async () => {
+    const providerId = 'fingerprint-chromium-apostate'
+    const release = fingerprintProviderRelease(providerId, 'win32', 'x64', '152.0.7977.83')!
+    const manifest = {
+      ...bundledRelease('win32', 'x64').manifest!,
+      id: fingerprintKernelId(release.version, providerId),
+      providerId,
+      version: release.version,
+      package: { ...release.package },
+      source: fingerprintProvider(providerId)!.source,
+      dataDirCompatibility: [release.version],
+    }
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('UNEXPECTED_NETWORK'))
+    const { kernels, environments, repository } = fixture(manifest)
+    expect(kernels.hasCompatibleProvider({ kernelId: manifest.id })).toBe(false)
+    await expect(kernels.install(manifest.id)).rejects.toThrow('PROVIDER_UNVERIFIED')
+    expect(() =>
+      environments.create({ name: 'Audit only', kernelId: manifest.id, commonConfig: {} }),
+    ).toThrow('PROVIDER_UNVERIFIED')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(repository.listAll()).toHaveLength(0)
+    expect(repository.getSetting(`kernel-manifest:${manifest.id}`)).toEqual(manifest)
+  })
   it('refuses incompatible saved manifests and missing installed payloads', async () => {
     const manifest = {
       ...bundledRelease('win32', 'x64').manifest!,

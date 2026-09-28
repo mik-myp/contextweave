@@ -1,6 +1,8 @@
 export const appRoutes = {
   environments: '/environments',
   proxies: '/proxies',
+  tags: '/tags',
+  bookmarks: '/settings/bookmarks',
   kernels: '/kernels',
   activity: '/activity',
   settings: '/settings',
@@ -11,6 +13,8 @@ export const appRoutes = {
 export const pageLabels: Record<string, string> = {
   [appRoutes.environments]: '环境',
   [appRoutes.proxies]: '代理',
+  [appRoutes.tags]: '标签管理',
+  [appRoutes.bookmarks]: '默认书签',
   [appRoutes.kernels]: '内核',
   [appRoutes.activity]: '日志查看',
   [appRoutes.settings]: '设置',

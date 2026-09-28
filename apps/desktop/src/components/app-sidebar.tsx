@@ -4,6 +4,7 @@ import * as React from 'react'
 import {
   ScrollTextIcon,
   BoxesIcon,
+  TagsIcon,
   Globe2Icon,
   SettingsIcon,
   SlidersHorizontalIcon,
@@ -31,6 +32,11 @@ export function AppSidebar({
       title: t('nav.proxies'),
       url: appRoutes.proxies,
       icon: <SlidersHorizontalIcon className="text-muted-foreground" />,
+    },
+    {
+      title: t('nav.tags'),
+      url: appRoutes.tags,
+      icon: <TagsIcon className="text-muted-foreground" />,
     },
     {
       title: t('nav.kernels'),

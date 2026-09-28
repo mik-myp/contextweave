@@ -1,5 +1,6 @@
 import { desktopStage } from './smoke-desktop-stages.mjs'
-// Real migration/organization checks use isolated published v4/v8/v9/v10/v11/v12/v13 fixtures, never user data.
+// Isolated published v4–v13 fixtures plus the unreleased v14 schema; never user data.
+const currentSchemaVersion = 14
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,7 +22,7 @@ export async function assertWorkspaceIdentity(call) {
 }
 
 export async function verifyWorkspaceUpgrade(entry) {
-  for (const previousVersion of [4, 8, 9, 10, 11, 12, 13]) await verifyUpgradeFrom(entry, previousVersion)
+  for (const previousVersion of [4, 8, 9, 10, 11, 12, 13, 14]) await verifyUpgradeFrom(entry, previousVersion)
 }
 
 async function verifyUpgradeFrom(entry, previousVersion) {
@@ -36,7 +37,8 @@ async function verifyUpgradeFrom(entry, previousVersion) {
   let originalIdentity, originalRevisions
   try {
     sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;')
-    sqlite.exec(await readFile(new URL(`../packages/storage/test-fixtures/schema-v${previousVersion}.sql`, import.meta.url), 'utf8'))
+    sqlite.exec(await readFile(new URL(`../packages/storage/test-fixtures/schema-v${Math.min(previousVersion, 13)}.sql`, import.meta.url), 'utf8'))
+    if (previousVersion === 14) sqlite.exec(await readFile(new URL('../packages/storage/test-fixtures/tags-v14.sql', import.meta.url), 'utf8'))
     const config = JSON.stringify({ environmentId: 'old-environment', name: 'Existing workspace environment', kernelId: 'standard-chromium', kernelVersion: 'local', commonConfig: {} })
     const at = '2026-09-27T00:00:00.000Z'
     sqlite.prepare(`INSERT INTO environments(environment_id,name,status,kernel_id,kernel_version,proxy_id,config_json,data_dir,platform,arch,created_at,updated_at,revision,lifecycle,trashed_at) VALUES(?,?,'stopped','standard-chromium','local',NULL,?,?,?,?,?,?,1,'active',NULL)`).run('old-environment', 'Existing workspace environment', config, profile, process.platform, process.arch, at, at)
@@ -82,6 +84,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
         assert.equal(organization.data.groups[0].name,'Retained organization')
         assert.equal(organization.data.environments[0].note,'Retained note')
         assert.deepEqual(organization.data.environments[0].tags,['Review','中文'])
+        assert.deepEqual(organization.data.tags.map(tag => tag.name).sort(), ['Review','中文'].sort(), 'TAG_CATALOG_LOST_ON_RESTART')
         assert.equal(organization.data.views[0].name,'Retained view')
         const batch = await page.evaluate(async (run) => {
           const context = {workspaceId:(await window.contextweave.workspace.current()).data.workspaceId}
@@ -100,13 +103,13 @@ async function verifyUpgradeFrom(entry, previousVersion) {
       } finally { await desktopStage(`workspace-v${previousVersion}-close-${run}`, () => app.close(), { timeoutMs: 20000, app }) }
     }
     assert.equal(await readFile(marker, 'utf8'), 'existing browser directory: do not relocate')
-    const backups = (await readdir(dataRoot)).filter(name => name.includes('.before-v13-'))
-    assert.equal(backups.length, previousVersion === 13 ? 0 : 1, 'WORKSPACE_MIGRATION_REPEATED')
-    const before = previousVersion === 13 ? null : new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
+    const backups = (await readdir(dataRoot)).filter(name => name.includes(`.before-v${currentSchemaVersion}-`))
+    assert.equal(backups.length, previousVersion === currentSchemaVersion ? 0 : 1, 'WORKSPACE_MIGRATION_REPEATED')
+    const before = previousVersion === currentSchemaVersion ? null : new DatabaseSync(join(dataRoot, backups[0]), { readOnly: true })
     const after = new DatabaseSync(file, { readOnly: true })
     try {
       if (before) assert.equal(before.prepare('PRAGMA user_version').get().user_version, previousVersion)
-      assert.equal(after.prepare('PRAGMA user_version').get().user_version, 13)
+      assert.equal(after.prepare('PRAGMA user_version').get().user_version, currentSchemaVersion)
       assert.equal(after.prepare('SELECT workspace_id FROM local_workspace').get().workspace_id, identity.workspaceId)
       assert.equal(after.prepare('SELECT data_dir FROM environments').get().data_dir, profile)
       const revisions = after.prepare('SELECT environment_id,revision,config_json,created_at FROM environment_revisions').all()
@@ -115,7 +118,7 @@ async function verifyUpgradeFrom(entry, previousVersion) {
       assert.equal(after.prepare('SELECT revision FROM environments').get().revision, 1)
       for (const table of ['environments','environment_revisions','screenshot_budget']) assert.equal(after.prepare(`SELECT workspace_id FROM ${table}`).get().workspace_id, identity.workspaceId)
     } finally { before?.close(); after.close() }
-    console.log(JSON.stringify({ workspace: `published-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: previousVersion === 13 ? 'unchanged-current-schema-no-extra-backup' : 'single-consistent-pre-v13-backup', organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
+    console.log(JSON.stringify({ workspace: `${previousVersion === currentSchemaVersion ? 'development' : 'published'}-v${previousVersion}-upgrade-restart-persisted-identity-real-switcher`, profile: 'retained-in-place', migration: previousVersion === currentSchemaVersion ? 'unchanged-current-schema-no-extra-backup' : `single-consistent-pre-v${currentSchemaVersion}-backup`, organization: 'real-ipc-group-tags-note-view-retained-on-restart', batch: 'real-ipc-confirmed-receipt-retained-on-restart' }))
   } catch (error) {
     preserveFixture = error?.preserveSmokeDirectory === true
     throw error

@@ -95,7 +95,6 @@ try {
         'http://127.0.0.1:18101',
         'invalid-proxy',
       ].join('\n'),
-      defaultType: 'http',
     }),
   )
   assert(imported.ok, 'Batch import must cross the validated bridge')

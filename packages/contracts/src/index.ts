@@ -307,40 +307,100 @@ export const saveProxyInputSchema = z
   })
 export type SaveProxyInput = z.infer<typeof saveProxyInputSchema>
 
-export const importProxiesInputSchema = z.object({
-  text: z.string().min(1).max(65536).refine((text) => text.split(/\r?\n/).length <= 200),
-  defaultType: proxyTypeSchema.default('http'),
-}).strict()
+export const importProxiesInputSchema = z
+  .object({
+    text: z
+      .string()
+      .min(1)
+      .max(65536)
+      .refine((text) => {
+        const count = text.split(/\r?\n/).filter((line) => line.trim()).length
+        return count > 0 && count <= 200
+      }),
+  })
+  .strict()
 export type ImportProxiesInput = z.infer<typeof importProxiesInputSchema>
-export const importProxyRowSchema = z.object({
-  line: z.number().int().min(1).max(200),
-  status: z.enum(['created', 'skipped', 'error']),
-  proxyId: z.string().min(1).optional(),
-  code: z.enum(['INVALID_PROXY_LINE', 'PROXY_ALREADY_EXISTS', 'CREDENTIAL_UNAVAILABLE', 'PROXY_SAVE_FAILED']).optional(),
-}).strict()
+export const importProxyRowSchema = z
+  .object({
+    // Empty lines do not count towards the batch limit, but retain source line numbers.
+    line: z.number().int().min(1).max(65536),
+    status: z.enum(['created', 'skipped', 'error']),
+    proxyId: z.string().min(1).optional(),
+    code: z
+      .enum([
+        'INVALID_PROXY_LINE',
+        'PROXY_ALREADY_EXISTS',
+        'CREDENTIAL_UNAVAILABLE',
+        'PROXY_SAVE_FAILED',
+      ])
+      .optional(),
+    // Main supplies only an unambiguous endpoint, never source text or credential values.
+    proxy: z
+      .object({
+        type: proxyTypeSchema.optional(),
+        host: proxyHostSchema,
+        port: z.number().int().min(0).max(99999),
+        hasCredentials: z.boolean(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
 export const importProxiesResultSchema = z.array(importProxyRowSchema).max(200)
 export type ImportProxiesResult = z.infer<typeof importProxiesResultSchema>
 
-/** Parse one bounded import line. Callers must never expose raw parser errors or the source URI. */
-export function parseProxyLine(line: string, defaultType: ProxyType = 'http'): SaveProxyInput {
+/**
+ * Missing schemes always mean HTTP. Ambiguous credentials must be corrected, not guessed.
+ * Callers must never expose source text or raw parser errors.
+ */
+export function parseProxyLine(line: string): SaveProxyInput {
   const text = line.trim()
   if (!text || /[\s\u0000-\u001f\u007f]/.test(text)) throw new Error('INVALID_PROXY_LINE')
   const scheme = /^([a-z0-9]+):\/\//i.exec(text)
-  const protocol = (scheme?.[1] ?? defaultType).toLowerCase()
-  const type = proxyTypeSchema.parse(['socket5', 'socks5h'].includes(protocol) ? 'socks5' : protocol)
+  const protocol = (scheme?.[1] ?? 'http').toLowerCase()
+  const type = proxyTypeSchema.parse(
+    ['socket5', 'socks5h'].includes(protocol) ? 'socks5' : protocol,
+  )
   const address = scheme ? text.slice(scheme[0].length) : text
-  const legacy = /^(\[[^\]]+\]|[^:@/?#]+):(\d+)(?::([^:]+):(.+))?$/.exec(address)
-  if (legacy) return saveProxyInputSchema.parse({
-    config: { type, host: legacy[1], port: Number(legacy[2]), username: legacy[3] },
-    password: legacy[4],
-  })
-  const url = new URL(`${type}://${address}`)
-  const explicitPort = /:(\d+)\/?$/.exec(address.split('@').at(-1) ?? '')?.[1]
-  if (!explicitPort || !['', '/'].includes(url.pathname) || url.search || url.hash)
-    throw new Error('INVALID_PROXY_LINE')
+  const endpoint = /^(\[[^\]]+\]|[^:@/?#\\]+):(\d+)\/?$/.exec(address)
+  const legacy = /^(\[[^\]]+\]|[^:@/?#\\]+):(\d+):([^:]+):(.+)$/.exec(address)
+  const uri = /^([^@/?#\\]+)@(\[[^\]]+\]|[^:@/?#\\]+):(\d+)\/?$/.exec(address)
+  // Even a malformed URI can resemble legacy notation. Require an encoded URI
+  // for legacy credentials containing @, rather than treating a username as a host.
+  if (legacy && address.includes('@')) throw new Error('INVALID_PROXY_LINE')
+  if (legacy)
+    return saveProxyInputSchema.parse({
+      config: { type, host: legacy[1], port: Number(legacy[2]), username: legacy[3] },
+      password: legacy[4],
+    })
+  if (uri) {
+    const userInfo = uri[1] ?? ''
+    const separator = userInfo.indexOf(':')
+    const username = decodeURIComponent(separator < 0 ? userInfo : userInfo.slice(0, separator))
+    const password =
+      separator < 0 ? undefined : decodeURIComponent(userInfo.slice(separator + 1)) || undefined
+    // The shared config schema trims usernames; never silently change decoded credentials.
+    if (
+      !username ||
+      username !== username.trim() ||
+      /[\u0000-\u001f\u007f]/.test(username + (password ?? ''))
+    )
+      throw new Error('INVALID_PROXY_LINE')
+    return saveProxyInputSchema.parse({
+      config: {
+        type,
+        // Preserve URI host normalization (including IPv6 and IDNA), without feeding
+        // credentials to URL parsing or changing their literal/decoded representation.
+        host: new URL(`${type}://${uri[2]}:${uri[3]}`).hostname,
+        port: Number(uri[3]),
+        username,
+      },
+      password,
+    })
+  }
+  if (!endpoint) throw new Error('INVALID_PROXY_LINE')
   return saveProxyInputSchema.parse({
-    config: { type, host: url.hostname, port: Number(explicitPort), username: decodeURIComponent(url.username) || undefined },
-    password: decodeURIComponent(url.password) || undefined,
+    config: { type, host: endpoint[1], port: Number(endpoint[2]) },
   })
 }
 

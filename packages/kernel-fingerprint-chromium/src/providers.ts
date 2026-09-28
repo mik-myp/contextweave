@@ -11,6 +11,7 @@ export interface FingerprintProviderRelease {
   readonly sourceCommit: string
   readonly sourceStatus: 'patches-published' | 'patches-unavailable'
   readonly admission: 'legacy-candidate' | 'audit-only'
+  readonly archiveFormat: 'dmg' | 'zip'
   readonly package: Readonly<
     Required<Pick<NonNullable<KernelManifest['package']>, 'url' | 'sha256' | 'sizeBytes'>>
   >
@@ -18,6 +19,7 @@ export interface FingerprintProviderRelease {
 
 const upstreamSource = 'https://github.com/adryfish/fingerprint-chromium'
 const intelSource = 'https://github.com/pocchian/fingerprint-chromium-macos-x86_64'
+const apostateSource = 'https://github.com/heretic-tech/apostate'
 export const fingerprintProviders = [
   {
     id: 'fingerprint-chromium',
@@ -36,6 +38,16 @@ export const fingerprintProviders = [
     licenseText: undefined,
     admission: 'audit-only',
   },
+  {
+    id: 'fingerprint-chromium-apostate',
+    label: 'Apostate (heretic-tech)',
+    source: apostateSource,
+    // The browser ships the upstream GPLv3 text; wrapper SPDX fields disagree.
+    // Neither wrapper metadata nor archive inspection grants browser admission.
+    license: 'GPLv3 (upstream LICENSE)',
+    licenseText: undefined,
+    admission: 'audit-only',
+  },
 ] as const
 
 export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] = [
@@ -44,6 +56,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     version: '148.0.7778.215',
     platform: 'win32',
     arch: 'x64',
+    archiveFormat: 'zip',
     releaseTag: '148.0.7778.215',
     sourceCommit: '3f61b0dfa665e883da8824b1450601fc529dd006',
     sourceStatus: 'patches-unavailable',
@@ -59,6 +72,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     version: '148.0.7778.215',
     platform: 'darwin',
     arch: 'arm64',
+    archiveFormat: 'dmg',
     releaseTag: '148.0.7778.215',
     sourceCommit: '3f61b0dfa665e883da8824b1450601fc529dd006',
     sourceStatus: 'patches-unavailable',
@@ -74,6 +88,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     version: '152.0.7977.82',
     platform: 'darwin',
     arch: 'x64',
+    archiveFormat: 'dmg',
     releaseTag: 'v152.0.7977.82',
     sourceCommit: 'c1ab3abd0d29ad5871a0df1cdf93b666abe5f7a8',
     sourceStatus: 'patches-published',
@@ -82,6 +97,38 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
       url: `${intelSource}/releases/download/v152.0.7977.82/ungoogled-chromium_152.0.7977.82-1.1_x86_64-macos-adhoc-tellsfix.dmg`,
       sha256: '95177259f4f86ef09c5a8690230fce5c3de2c8f140f3128c94df06383ebf55e7',
       sizeBytes: 147123561,
+    },
+  },
+  {
+    providerId: 'fingerprint-chromium-apostate',
+    version: '152.0.7977.83',
+    platform: 'win32',
+    arch: 'x64',
+    archiveFormat: 'zip',
+    releaseTag: 'v0.4.3',
+    sourceCommit: '2d7e93aaea12b024ddedd65f5041a59ca5c6ecb4',
+    sourceStatus: 'patches-published',
+    admission: 'audit-only',
+    package: {
+      url: `${apostateSource}/releases/download/v0.4.3/apostate-152.0.7977.83-windows-x64.zip`,
+      sha256: '4c52f8b328c1760322f5ae9f1b6fda0edbc7dd6b388f56383ab9bac42aaa5b00',
+      sizeBytes: 185408775,
+    },
+  },
+  {
+    providerId: 'fingerprint-chromium-apostate',
+    version: '152.0.7977.83',
+    platform: 'darwin',
+    arch: 'arm64',
+    archiveFormat: 'zip',
+    releaseTag: 'v0.4.3',
+    sourceCommit: '2d7e93aaea12b024ddedd65f5041a59ca5c6ecb4',
+    sourceStatus: 'patches-published',
+    admission: 'audit-only',
+    package: {
+      url: `${apostateSource}/releases/download/v0.4.3/apostate-152.0.7977.83-macos-arm64.zip`,
+      sha256: 'b857553645740c974556bae02a8552aa025e65f174a634174292c08a104eb031',
+      sizeBytes: 154179972,
     },
   },
 ]
@@ -150,4 +197,29 @@ export function fingerprintProviderNotice(manifest: KernelManifest): string {
   if (!provider || provider.admission !== 'legacy-candidate' || !provider.licenseText)
     throw new Error('PROVIDER_UNVERIFIED')
   return provider.licenseText
+}
+
+/** Trusted byte/layout metadata only; this does not authorize installation or execution. */
+export function fingerprintArchiveFormat(manifest: KernelManifest): 'dmg' | 'zip' | undefined {
+  if (manifest.sourceType === 'custom') return undefined
+  const provider = fingerprintManifestProvider(manifest)
+  if (!provider) return undefined
+  const release = fingerprintProviderRelease(
+    provider.id,
+    manifest.platform,
+    manifest.arch,
+    manifest.version,
+  )
+  if (!release || !manifest.package) return undefined
+  const hasExpectedId =
+    manifest.id === fingerprintKernelId(release.version, provider.id) ||
+    (provider.id === 'fingerprint-chromium' && manifest.id === provider.id)
+  if (
+    !hasExpectedId ||
+    manifest.package.url !== release.package.url ||
+    manifest.package.sha256?.toLowerCase() !== release.package.sha256 ||
+    manifest.package.sizeBytes !== release.package.sizeBytes
+  )
+    return undefined
+  return release.archiveFormat
 }

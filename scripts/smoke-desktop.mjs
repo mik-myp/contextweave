@@ -1,3 +1,4 @@
+import { verifyDefaultBookmarks } from './smoke-bookmarks.mjs'
 import { verifyEnvironmentCommands, seedInterruptedCommandFacts } from './smoke-commands.mjs'
 import { desktopStage, activateDesktopPage } from './smoke-desktop-stages.mjs'
 import { verifyBackendBatches } from './smoke-batches.mjs'
@@ -471,6 +472,7 @@ try {
       const stopped = await page.evaluate(async (id) => window.contextweave.environment.stop({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), fresh.data.id)
       assert(stopped.ok && stopped.data.status === 'stopped', JSON.stringify({ sample, stopped, control: await readRuntimeDiagnostics(desktop) }))
     }
+    await verifyDefaultBookmarks(desktop, page)
     commandEvidence = await verifyEnvironmentCommands(page)
     await verifyBackendBatches(page, () => desktopStage('batch-navigation-focus', () => activateDesktopPage(desktop, page), { timeoutMs: 5000 }))
     console.log(

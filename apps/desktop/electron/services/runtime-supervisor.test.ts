@@ -807,3 +807,18 @@ it('does not spawn or create Preferences after an ambiguous bookmark initializat
   expect(f.driver.launch).not.toHaveBeenCalled()
   expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
 })
+
+it('surfaces a provider CPU limit without spawning or rewriting the saved identity', async () => {
+  const f = fixture()
+  const before = f.repository.get('env-a')!.configJson
+  vi.mocked(f.kernels.buildLaunchPlan).mockImplementation(() => {
+    throw new Error('FINGERPRINT_CPU_UNSUPPORTED')
+  })
+  expect(await f.runtime.start('env-a')).toMatchObject({
+    ok: false,
+    code: 'FINGERPRINT_CPU_UNSUPPORTED',
+  })
+  expect(f.driver.launch).not.toHaveBeenCalled()
+  expect(f.repository.get('env-a')!.configJson).toEqual(before)
+  expect(existsSync(runtimeLockPath(f.dir))).toBe(false)
+})

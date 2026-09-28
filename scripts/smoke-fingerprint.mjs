@@ -20,6 +20,8 @@ const { _electron } = require('playwright-core')
 const { Server } = require('proxy-chain')
 const appRoot = resolve(fileURLToPath(new URL('../apps/desktop/', import.meta.url)))
 const customSource = process.argv.includes('--custom-source')
+const reviewedProvider = process.argv.includes('--reviewed-provider')
+assert(!(customSource && reviewedProvider), 'Custom mirrors are not admitted for the reviewed providers')
 const suppliedProxy = process.env.CONTEXTWEAVE_SMOKE_PROXY
 const suppliedData = process.env.CONTEXTWEAVE_SMOKE_DATA
 const directory = suppliedData || (await mkdtemp(join(tmpdir(), 'cw-fingerprint-smoke-')))
@@ -80,7 +82,11 @@ try {
   assert(kernels.ok)
   const catalog = await page.evaluate(async () => window.contextweave.kernel.catalog({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }))
   assert(catalog.ok)
-  let provider = catalog.data.releases.find((item) => item.version === '148.0.7778.215')
+  const reviewedId = process.platform === 'darwin' && process.arch === 'x64'
+    ? 'fingerprint-chromium-pocchian-intel' : 'fingerprint-chromium-apostate'
+  let provider = catalog.data.releases.find((item) => reviewedProvider
+    ? item.provider === reviewedId
+    : item.provider === 'fingerprint-chromium' && item.version === '148.0.7778.215')
   if (!provider?.installable) {
     assert(
       !process.argv.includes('--require-provider'),
@@ -116,6 +122,8 @@ try {
     console.log(
       JSON.stringify({
         stage: customSource ? 'custom-package-install' : 'official-package-install',
+        provider: provider.provider, version: provider.version,
+        osVersion: (await import('node:os')).release(),
         platform: process.platform,
         arch: process.arch,
       }),
@@ -181,6 +189,8 @@ try {
         )
       }
       const diagnostic = await context.newPage()
+      // Exercise a foreground native tab, not an App-Nap/background renderer.
+      await diagnostic.bringToFront()
       await diagnostic.goto('chrome://version')
       const versionText = await diagnostic.locator('body').innerText()
       assert(
@@ -196,6 +206,7 @@ try {
       )
       await diagnostic.close()
       const tab = await context.newPage()
+      await tab.bringToFront()
       await tab.goto(fixtureUrl)
       if (run === 0) await verifyDetachedControlSession(desktop, id, browser)
       if (run === 0) {
@@ -241,14 +252,16 @@ try {
           platform: navigator.platform,
           cores: navigator.hardwareConcurrency,
           language: navigator.language,
+          languages: [...navigator.languages],
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           canvas: canvas.toDataURL(),
           retained: localStorage.getItem('cw-acceptance'),
         }
       })
       observations.push(observation)
-      assert.equal(observation.cores, 8)
+      assert.equal(observation.cores, detail.data.fingerprint.hardwareConcurrency)
       assert.equal(observation.language, 'en-US')
+      assert.deepEqual(observation.languages, ['en-US', 'en'])
       assert.equal(observation.timezone, 'Europe/London')
       if (run) {
         assert.equal(observation.retained, 'retained')
@@ -405,6 +418,7 @@ try {
 } catch (error) {
   console.error(JSON.stringify({
     persistenceCheckpoints,
+    authenticatedFixtureRequests: forwarded,
     runtimeEvidence: await readRuntimeFailureEvidence(desktop).catch(() => ({ unavailable: true })),
   }))
   console.error(JSON.stringify({ kernelInstallEvidence: await readKernelDiagnostics(desktop).catch(() => ['unavailable']) }))

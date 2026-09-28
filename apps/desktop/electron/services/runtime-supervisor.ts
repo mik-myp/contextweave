@@ -403,6 +403,7 @@ export function createRuntimeSupervisor(options: {
         'CONTROL_PIPE_UNAVAILABLE',
         'SPAWN_FAILED',
         'PROVIDER_UNVERIFIED',
+        'FINGERPRINT_CPU_UNSUPPORTED',
         'KERNEL_VERSION_MISMATCH',
         'OPERATION_IN_PROGRESS',
         'KERNEL_REMOVAL_PENDING',

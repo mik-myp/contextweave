@@ -27,7 +27,27 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   Object.defineProperty(window, 'contextweave', {
     configurable: true,
-    value: withWorkspaceFixture({ kernel: { install, cancelInstall } }),
+    value: withWorkspaceFixture({
+      kernel: {
+        install,
+        cancelInstall,
+        providers: vi.fn().mockResolvedValue({
+          ok: true,
+          data: [
+            {
+              id: 'fingerprint-chromium',
+              label: 'Fingerprint Chromium (adryfish)',
+              license: 'BSD-3-Clause',
+            },
+            {
+              id: 'fingerprint-chromium-apostate',
+              label: 'Apostate (heretic-tech)',
+              license: 'GPLv3 (upstream LICENSE)',
+            },
+          ],
+        }),
+      },
+    }),
   })
 })
 afterEach(async () => {
@@ -133,4 +153,27 @@ it('does not display declared but unverified fingerprint capabilities as verifie
   expect(rows[0].textContent).toContain('已验证')
   expect(rows[1].textContent).toContain('未验证')
   expect(rows[1].textContent).not.toContain('已验证')
+})
+
+it('identifies the selected publisher and its own license instead of relabeling it as the legacy kernel', async () => {
+  await render({
+    provider: 'fingerprint-chromium-apostate',
+    id: 'fingerprint-chromium-apostate-152-0-7977-83',
+    version: '152.0.7977.83',
+  })
+  await act(async () => {
+    await vi.waitFor(() =>
+      expect(
+        client.getQueryData([
+          'workspace',
+          '00000000-0000-4000-8000-000000000001',
+          'kernels',
+          'providers',
+        ]),
+      ).toHaveLength(2),
+    )
+  })
+  expect(document.body.textContent).toContain('Apostate (heretic-tech)')
+  expect(document.body.textContent).toContain('GPLv3 (upstream LICENSE)')
+  expect(document.body.textContent).not.toContain('BSD-3-Clause')
 })

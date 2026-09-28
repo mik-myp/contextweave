@@ -8,6 +8,10 @@ import type {
 import {
   createFingerprintChromiumManifest,
   fingerprintKernelId,
+  fingerprintArchiveFormat,
+  fingerprintProvider,
+  fingerprintProviderRelease,
+  reviewedFingerprintManifests,
 } from '@contextweave/kernel-fingerprint-chromium'
 
 import { isCompatibleFingerprintManifest, supportsFingerprintVersion } from './kernel-providers'
@@ -32,15 +36,7 @@ export type CatalogEntry = { release: KernelRelease; manifest?: KernelManifest }
 // Byte-level pinning is not an assertion of independent signing, licensing, or fingerprint capability.
 export function isPinnedOfficialPackage(manifest: KernelManifest): boolean {
   if (manifest.sourceType === 'custom' || !isCompatibleFingerprintManifest(manifest)) return false
-  const pinned = createFingerprintChromiumManifest(manifest.platform, manifest.arch)
-  return Boolean(
-    pinned.package &&
-    manifest.package &&
-    manifest.version === pinned.version &&
-    manifest.package.url === pinned.package.url &&
-    manifest.package.sha256?.toLowerCase() === pinned.package.sha256 &&
-    manifest.package.sizeBytes === pinned.package.sizeBytes,
-  )
+  return fingerprintArchiveFormat(manifest) !== undefined
 }
 export function parseOfficialReleases(
   value: unknown,
@@ -162,4 +158,30 @@ export async function fetchOfficialReleases(): Promise<unknown> {
     await reader.cancel()
     reader.releaseLock()
   }
+}
+
+/** Fixed source-reviewed releases never inherit another publisher's live API metadata. */
+export function reviewedReleases(
+  platform: TargetPlatform,
+  arch: TargetArchitecture,
+): CatalogEntry[] {
+  return reviewedFingerprintManifests(platform, arch).map((manifest) => {
+    const provider = fingerprintProvider(manifest.providerId!)!
+    const pinned = fingerprintProviderRelease(provider.id, platform, arch, manifest.version)!
+    return {
+      manifest,
+      release: {
+        id: manifest.id,
+        provider: provider.id,
+        version: manifest.version,
+        platform,
+        arch,
+        source: `${provider.source}/releases/tag/${pinned.releaseTag}`,
+        sizeBytes: manifest.package!.sizeBytes,
+        sha256: manifest.package!.sha256,
+        installable: true,
+        installed: false,
+      },
+    }
+  })
 }

@@ -1,3 +1,4 @@
+import { cpus } from 'node:os'
 import { KernelDmgCleanupError } from './kernel-dmg'
 import { validateKernelRemovalPath } from './kernel-removal'
 import { assertEnvironmentEditable } from '../environment-management'
@@ -13,6 +14,8 @@ import {
   createFingerprintChromiumManifest,
   FingerprintChromiumAdapter,
   isFingerprintKernel,
+  fingerprintKernelProviderId,
+  fingerprintProvider,
 } from '@contextweave/kernel-fingerprint-chromium'
 import {
   createStandardChromiumManifest,
@@ -32,6 +35,7 @@ import {
 import type { EnvironmentRecord, EnvironmentRepository } from '@contextweave/storage'
 import {
   bundledRelease,
+  reviewedReleases,
   isPinnedOfficialPackage,
   fetchOfficialReleases,
   parseOfficialReleases,
@@ -54,7 +58,8 @@ export function createKernelService(
     new FingerprintChromiumAdapter(createFingerprintChromiumManifest(platform, arch)),
   )
   const customEntries = new Map<string, CatalogEntry>()
-  let entries: CatalogEntry[] = [bundledRelease(platform, arch)]
+  const reviewed = reviewedReleases(platform, arch)
+  let entries: CatalogEntry[] = [...reviewed, bundledRelease(platform, arch)]
   let catalogSource: KernelCatalog['sourceStatus'] = 'bundled'
   let fetchedAt = 0
   let fetching: Promise<void> | undefined
@@ -63,7 +68,7 @@ export function createKernelService(
     try {
       const restored = parseOfficialReleases(cached, platform, arch)
       if (restored.length) {
-        entries = restored
+        entries = [...reviewed, ...restored]
         catalogSource = 'cached'
       }
     } catch {
@@ -111,7 +116,7 @@ export function createKernelService(
           const raw = await fetchOfficialReleases()
           const next = parseOfficialReleases(raw, platform, arch)
           if (!next.length) throw new Error('CATALOG_UNAVAILABLE')
-          entries = next
+          entries = [...reviewed, ...next]
           catalogSource = 'live'
           registerEntries()
           repository.setSetting('kernel-release-catalog', raw)
@@ -143,7 +148,7 @@ export function createKernelService(
         manifest,
         release: {
           id: manifest.id,
-          provider: 'fingerprint-chromium',
+          provider: fingerprintKernelProviderId(manifest.id) ?? 'fingerprint-chromium',
           version: manifest.version,
           platform,
           arch,
@@ -308,7 +313,7 @@ export function createKernelService(
           label:
             manifest.id === 'standard-chromium'
               ? 'Standard Chromium'
-              : `Fingerprint Chromium ${manifest.version}`,
+              : `${fingerprintProvider(fingerprintKernelProviderId(manifest.id) ?? '')?.label ?? 'Fingerprint Chromium'} ${manifest.version}`,
           family: manifest.family,
           platform,
           arch,
@@ -382,6 +387,7 @@ export function createKernelService(
         environmentId: record.environmentId,
         userDataDir: record.dataDir,
         executablePath,
+        hostLogicalCores: cpus().length,
         proxyArgs:
           proxyArgs ??
           (config.proxy
@@ -500,7 +506,10 @@ export function createKernelService(
   async function prepareCustom(input: CustomKernelSource) {
     requireKernelProvider(input.providerId)
     await catalog()
-    const official = entries.find((entry) => entry.manifest?.package?.url === input.url)
+    const official = entries.find(
+      (entry) =>
+        entry.release.provider === input.providerId && entry.manifest?.package?.url === input.url,
+    )
     if (official)
       return {
         ...official.release,

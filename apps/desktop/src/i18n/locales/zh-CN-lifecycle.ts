@@ -202,6 +202,8 @@ export const lifecycleMessages = {
   'life.phase.running': '运行中',
   'life.phase.starting': '启动中',
   'life.phase.stopping': '停止中',
+  'error.FINGERPRINT_CPU_UNSUPPORTED':
+    '此内核要求身份中的逻辑核数不超过当前设备。配置未被修改，请在足够核数的设备上使用此环境。',
   'error.CONFIG_INVALID': '环境配置无效，请检查并重新保存。',
   'error.ENVIRONMENT_TRASHED': '环境已移入回收站，请先恢复。',
   'error.KERNEL_UNAVAILABLE':

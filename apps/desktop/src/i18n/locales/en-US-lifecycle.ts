@@ -239,6 +239,8 @@ export const lifecycleMessages = {
   'life.phase.running': 'Running',
   'life.phase.starting': 'Starting',
   'life.phase.stopping': 'Stopping',
+  'error.FINGERPRINT_CPU_UNSUPPORTED':
+    'This kernel requires the identity’s logical core count not to exceed this device. The saved identity is unchanged; use this environment on a device with enough logical cores.',
   'error.CONFIG_INVALID': 'The environment configuration is invalid. Review and save it again.',
   'error.ENVIRONMENT_TRASHED': 'Restore this environment from trash first.',
   'error.KERNEL_UNAVAILABLE':

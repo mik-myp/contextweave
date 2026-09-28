@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
-import { bundledRelease, isPinnedOfficialPackage } from './kernel-catalog'
+import { bundledRelease, isPinnedOfficialPackage, reviewedReleases } from './kernel-catalog'
 import { createCustomKernelEntry } from './kernel-custom-source'
 import { createKernelService } from './kernel-service'
 import * as kernelService from './kernel-service'
@@ -188,21 +188,23 @@ describe('runtime provider admission is separate from verification labels', () =
     'does not open the generic whitelist or custom route for %s on %s/%s',
     (providerId, platform, arch, version) => {
       const release = fingerprintProviderRelease(providerId, platform, arch, version)!
-      const manifest = {
-        ...bundledRelease('win32', 'x64').manifest!,
-        id: fingerprintKernelId(release.version, providerId),
-        providerId,
-        version: release.version,
-        platform: release.platform,
-        arch: release.arch,
-        package: { ...release.package },
-        source: fingerprintProvider(providerId)!.source,
-        executable: platform === 'darwin' ? 'Chromium.app/Contents/MacOS/Chromium' : 'chrome.exe',
-      }
+      const manifest = reviewedReleases(platform, arch).find(
+        (entry) => entry.release.provider === providerId,
+      )!.manifest!
       expect(supportsFingerprintVersion(release.version)).toBe(false)
-      expect(isCompatibleFingerprintManifest(manifest)).toBe(false)
-      expect(isPinnedOfficialPackage(manifest)).toBe(false)
-      expect(() => requireKernelProvider(providerId)).toThrow('PROVIDER_UNVERIFIED')
+      expect(isCompatibleFingerprintManifest(manifest)).toBe(true)
+      expect(isPinnedOfficialPackage(manifest)).toBe(true)
+      expect(requireKernelProvider(providerId).id).toBe(providerId)
+      for (const change of [
+        { source: 'https://github.com/other/browser' },
+        { executable: '../outside' },
+        { version: '152.0.7977.999' },
+        { package: { ...manifest.package, sha256: 'a'.repeat(64) } },
+        { dataDirCompatibility: ['148.0.7778.215'] },
+      ]) {
+        expect(isCompatibleFingerprintManifest({ ...manifest, ...change })).toBe(false)
+        expect(isPinnedOfficialPackage({ ...manifest, ...change })).toBe(false)
+      }
       expect(() =>
         createCustomKernelEntry(
           {
@@ -218,14 +220,14 @@ describe('runtime provider admission is separate from verification labels', () =
       ).toThrow('PROVIDER_UNVERIFIED')
     },
   )
-  it('rejects a saved Apostate payload before download or environment creation', async () => {
+  it('rejects an unreviewed saved Apostate version before download or environment creation', async () => {
     const providerId = 'fingerprint-chromium-apostate'
     const release = fingerprintProviderRelease(providerId, 'win32', 'x64', '152.0.7977.83')!
     const manifest = {
       ...bundledRelease('win32', 'x64').manifest!,
-      id: fingerprintKernelId(release.version, providerId),
+      id: fingerprintKernelId('152.0.7977.999', providerId),
       providerId,
-      version: release.version,
+      version: '152.0.7977.999',
       package: { ...release.package },
       source: fingerprintProvider(providerId)!.source,
       dataDirCompatibility: [release.version],
@@ -235,7 +237,7 @@ describe('runtime provider admission is separate from verification labels', () =
     expect(kernels.hasCompatibleProvider({ kernelId: manifest.id })).toBe(false)
     await expect(kernels.install(manifest.id)).rejects.toThrow('PROVIDER_UNVERIFIED')
     expect(() =>
-      environments.create({ name: 'Audit only', kernelId: manifest.id, commonConfig: {} }),
+      environments.create({ name: 'Unreviewed version', kernelId: manifest.id, commonConfig: {} }),
     ).toThrow('PROVIDER_UNVERIFIED')
     expect(fetch).not.toHaveBeenCalled()
     expect(repository.listAll()).toHaveLength(0)

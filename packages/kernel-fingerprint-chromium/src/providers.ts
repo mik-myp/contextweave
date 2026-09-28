@@ -1,5 +1,6 @@
 import type { KernelManifest, TargetArchitecture, TargetPlatform } from '@contextweave/contracts'
 import { fingerprintChromiumLicense } from './provider-license'
+import { apostateLicense, pocchianIntelLicense } from './provider-notices'
 
 /** These records describe audited evidence, not a claim of formal platform support. */
 export interface FingerprintProviderRelease {
@@ -10,7 +11,7 @@ export interface FingerprintProviderRelease {
   readonly releaseTag: string
   readonly sourceCommit: string
   readonly sourceStatus: 'patches-published' | 'patches-unavailable'
-  readonly admission: 'legacy-candidate' | 'audit-only'
+  readonly admission: 'legacy-candidate' | 'audit-only' | 'source-reviewed'
   readonly archiveFormat: 'dmg' | 'zip'
   readonly package: Readonly<
     Required<Pick<NonNullable<KernelManifest['package']>, 'url' | 'sha256' | 'sizeBytes'>>
@@ -34,9 +35,8 @@ export const fingerprintProviders = [
     label: 'Fingerprint Chromium (pocchian Intel)',
     source: intelSource,
     license: 'BSD-3-Clause',
-    // A source-review candidate must not borrow the legacy provider's notice or execute.
-    licenseText: undefined,
-    admission: 'audit-only',
+    licenseText: pocchianIntelLicense,
+    admission: 'source-reviewed',
   },
   {
     id: 'fingerprint-chromium-apostate',
@@ -45,8 +45,8 @@ export const fingerprintProviders = [
     // The browser ships the upstream GPLv3 text; wrapper SPDX fields disagree.
     // Neither wrapper metadata nor archive inspection grants browser admission.
     license: 'GPLv3 (upstream LICENSE)',
-    licenseText: undefined,
-    admission: 'audit-only',
+    licenseText: apostateLicense,
+    admission: 'source-reviewed',
   },
 ] as const
 
@@ -92,7 +92,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     releaseTag: 'v152.0.7977.82',
     sourceCommit: 'c1ab3abd0d29ad5871a0df1cdf93b666abe5f7a8',
     sourceStatus: 'patches-published',
-    admission: 'audit-only',
+    admission: 'source-reviewed',
     package: {
       url: `${intelSource}/releases/download/v152.0.7977.82/ungoogled-chromium_152.0.7977.82-1.1_x86_64-macos-adhoc-tellsfix.dmg`,
       sha256: '95177259f4f86ef09c5a8690230fce5c3de2c8f140f3128c94df06383ebf55e7',
@@ -108,7 +108,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     releaseTag: 'v0.4.3',
     sourceCommit: '2d7e93aaea12b024ddedd65f5041a59ca5c6ecb4',
     sourceStatus: 'patches-published',
-    admission: 'audit-only',
+    admission: 'source-reviewed',
     package: {
       url: `${apostateSource}/releases/download/v0.4.3/apostate-152.0.7977.83-windows-x64.zip`,
       sha256: '4c52f8b328c1760322f5ae9f1b6fda0edbc7dd6b388f56383ab9bac42aaa5b00',
@@ -124,7 +124,7 @@ export const fingerprintProviderReleases: readonly FingerprintProviderRelease[] 
     releaseTag: 'v0.4.3',
     sourceCommit: '2d7e93aaea12b024ddedd65f5041a59ca5c6ecb4',
     sourceStatus: 'patches-published',
-    admission: 'audit-only',
+    admission: 'source-reviewed',
     package: {
       url: `${apostateSource}/releases/download/v0.4.3/apostate-152.0.7977.83-macos-arm64.zip`,
       sha256: 'b857553645740c974556bae02a8552aa025e65f174a634174292c08a104eb031',
@@ -194,7 +194,8 @@ export function fingerprintManifestProvider(manifest: KernelManifest) {
 // not an attestation that the mirror built an identical binary or has no other notices.
 export function fingerprintProviderNotice(manifest: KernelManifest): string {
   const provider = fingerprintManifestProvider(manifest)
-  if (!provider || provider.admission !== 'legacy-candidate' || !provider.licenseText)
+  if (!provider || !provider.licenseText) throw new Error('PROVIDER_UNVERIFIED')
+  if (provider.admission === 'source-reviewed' && !fingerprintArchiveFormat(manifest))
     throw new Error('PROVIDER_UNVERIFIED')
   return provider.licenseText
 }
@@ -222,4 +223,46 @@ export function fingerprintArchiveFormat(manifest: KernelManifest): 'dmg' | 'zip
   )
     return undefined
   return release.archiveFormat
+}
+
+/** Source-reviewed fixed releases entering native acceptance; no implicit profile migration. */
+export function reviewedFingerprintManifests(
+  platform: TargetPlatform,
+  arch: TargetArchitecture,
+): KernelManifest[] {
+  return fingerprintProviderReleases
+    .filter(
+      (release) =>
+        release.admission === 'source-reviewed' &&
+        release.platform === platform &&
+        release.arch === arch,
+    )
+    .map((release) => {
+      const provider = fingerprintProvider(release.providerId)!
+      return {
+        id: fingerprintKernelId(release.version, provider.id),
+        providerId: provider.id,
+        family: 'chromium',
+        version: release.version,
+        platform,
+        arch,
+        executable: platform === 'darwin' ? 'Chromium.app/Contents/MacOS/Chromium' : 'chrome.exe',
+        package: { ...release.package },
+        controlProtocol: 'cdp',
+        capabilities: {
+          cdp: true,
+          screenshot: true,
+          fileUpload: true,
+          elementScreenshot: true,
+          userAgent: true,
+          timezone: true,
+          proxy: true,
+          webRtcPolicy: true,
+        },
+        configSchema: 'fingerprint-chromium-v2',
+        dataDirCompatibility: [release.version],
+        source: provider.source,
+        license: `${provider.license}; Chromium third-party notices retained in the upstream package`,
+      }
+    })
 }

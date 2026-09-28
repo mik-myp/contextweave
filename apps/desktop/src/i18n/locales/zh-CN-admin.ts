@@ -33,8 +33,10 @@ export const adminMessages = {
   'proxy.unlinkBeforeDelete': '请先解除所有环境与此代理的关联，再删除。',
 
   'kernel.backgroundDownloads': '后台下载',
+  'kernel.publisher': '发行方',
+  'kernel.publisherLicense': '内核许可',
   'kernel.versionInstallHelp':
-    '选择 Fingerprint Chromium 的发行版本，下载后校验完整性和可执行架构。',
+    '选择已登记发行方的内核版本，下载后校验完整性和可执行架构；不同发行方不会自动互换环境。',
   'kernel.refreshVersions': '刷新发行版本',
   'kernel.loadingVersions': '正在读取项目发行版本…',
   'kernel.cachedCatalog': '暂未连接项目发行服务，正在显示本地保留的版本目录。',

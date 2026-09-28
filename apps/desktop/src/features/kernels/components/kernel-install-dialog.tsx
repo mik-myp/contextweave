@@ -53,6 +53,12 @@ export function KernelInstallDialog({
     queryFn: () => unwrapIpc(workspaceApi.kernel.catalog(providerId)),
     enabled: open,
   })
+  const providers = useQuery({
+    queryKey: workspaceKey(workspaceContext, 'kernels', 'providers'),
+    queryFn: () => unwrapIpc(workspaceApi.kernel.providers()),
+    enabled: open,
+  })
+  const providerLabel = (id: string) => providers.data?.find((item) => item.id === id)?.label ?? id
   const releases = (catalog.data?.releases ?? []).filter((item) => item.sourceType !== 'custom')
   const release =
     releases.find((item) => item.id === selected) ??
@@ -129,7 +135,7 @@ export function KernelInstallDialog({
                 <Select
                   items={releases.map((item) => ({
                     value: item.id,
-                    label: `${item.version}${item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
+                    label: `${providerLabel(item.provider)} · ${item.version}${item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}${item.installed ? ` · ${t('kernel.installed')}` : ''}`,
                   }))}
                   value={release.id}
                   disabled={!!pending}
@@ -147,7 +153,7 @@ export function KernelInstallDialog({
                     <SelectGroup>
                       {releases.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
-                          {item.version}
+                          {providerLabel(item.provider)} · {item.version}
                           {item.retained ? ` · ${t('kernel.pinnedVersion')}` : ''}
                           {item.installed ? ` · ${t('kernel.installed')}` : ''}
                         </SelectItem>
@@ -168,6 +174,16 @@ export function KernelInstallDialog({
         {release && (
           <>
             <dl className="grid grid-cols-2 gap-4 rounded-lg border bg-muted/30 p-4 text-sm">
+              <div className="col-span-2">
+                <dt className="text-muted-foreground">{t('kernel.publisher')}</dt>
+                <dd className="mt-1">{providerLabel(release.provider)}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-muted-foreground">{t('kernel.publisherLicense')}</dt>
+                <dd className="mt-1">
+                  {providers.data?.find((item) => item.id === release.provider)?.license ?? '—'}
+                </dd>
+              </div>
               <div>
                 <dt className="text-muted-foreground">{t('kernel.platform')}</dt>
                 <dd className="mt-1">

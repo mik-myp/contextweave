@@ -77,9 +77,12 @@ describe('platform-specific provider identities', () => {
     expect(fingerprintManifestProvider({ ...manifest, id: 'fingerprint-chromium' })).toBeUndefined()
     expect(fingerprintManifestProvider({ ...manifest, providerId: intel })).toBeUndefined()
   })
-  it('does not promote an audited Intel package to an executable or share legacy notices', () => {
+  it('binds source-reviewed Intel bytes to its own notice without offering them on other platforms', () => {
     const release = fingerprintProviderRelease(intel, 'darwin', 'x64', '152.0.7977.82')!
-    expect(release).toMatchObject({ admission: 'audit-only', sourceStatus: 'patches-published' })
+    expect(release).toMatchObject({
+      admission: 'source-reviewed',
+      sourceStatus: 'patches-published',
+    })
     expect(fingerprintProviderRelease(intel, 'darwin', 'arm64', '152.0.7977.82')).toBeUndefined()
     expect(fingerprintProviderRelease(intel, 'win32', 'x64', '152.0.7977.82')).toBeUndefined()
     const manifest = {
@@ -90,7 +93,8 @@ describe('platform-specific provider identities', () => {
       package: { ...release.package },
       source: fingerprintProvider(intel)!.source,
     }
-    expect(() => fingerprintProviderNotice(manifest)).toThrow('PROVIDER_UNVERIFIED')
+    expect(fingerprintProviderNotice(manifest)).toContain('Copyright (c) 2026 pocchian')
+    expect(fingerprintProviderNotice(manifest)).not.toBe(fingerprintProviderNotice(legacy()))
     expect(createFingerprintChromiumManifest('darwin', 'x64').package).toBeUndefined()
   })
   it('keeps existing downloads pinned and returns independent manifest package objects', () => {
@@ -119,7 +123,7 @@ describe('platform-specific provider identities', () => {
   })
 })
 
-describe('pinned archive layout does not grant candidate admission', () => {
+describe('fixed reviewed archive identity and notices', () => {
   const providerId = 'fingerprint-chromium-apostate'
   function candidate(platform: 'darwin' | 'win32' = 'darwin'): KernelManifest {
     const arch = platform === 'darwin' ? 'arm64' : 'x64'
@@ -135,20 +139,20 @@ describe('pinned archive layout does not grant candidate admission', () => {
     }
   }
   it.each(['darwin', 'win32'] as const)(
-    'identifies the fixed %s ZIP without granting notices or execution',
+    'identifies the fixed %s ZIP and its independently retained notice',
     (platform) => {
       const manifest = candidate(platform)
       expect(fingerprintArchiveFormat(manifest)).toBe('zip')
-      expect(fingerprintProvider(providerId)?.admission).toBe('audit-only')
+      expect(fingerprintProvider(providerId)?.admission).toBe('source-reviewed')
       const release = fingerprintProviderRelease(
         providerId,
         platform,
         manifest.arch,
         manifest.version,
       )!
-      expect(release).toMatchObject({ releaseTag: 'v0.4.3', admission: 'audit-only' })
+      expect(release).toMatchObject({ releaseTag: 'v0.4.3', admission: 'source-reviewed' })
       expect(release.version).not.toBe(release.releaseTag)
-      expect(() => fingerprintProviderNotice(manifest)).toThrow('PROVIDER_UNVERIFIED')
+      expect(fingerprintProviderNotice(manifest)).toContain('GNU GENERAL PUBLIC LICENSE')
     },
   )
   it.each([
@@ -174,6 +178,7 @@ describe('pinned archive layout does not grant candidate admission', () => {
     const manifest = candidate()
     manifest.package = { ...manifest.package, ...change }
     expect(fingerprintArchiveFormat(manifest)).toBeUndefined()
+    expect(() => fingerprintProviderNotice(manifest)).toThrow('PROVIDER_UNVERIFIED')
   })
   it('preserves legacy package layouts and accepts the same SHA-256 in upper case', () => {
     expect(fingerprintArchiveFormat(legacy())).toBe('zip')

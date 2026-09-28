@@ -92,6 +92,11 @@ function submitButton() {
   if (!element) throw new Error('Missing import button')
   return element
 }
+function formatTrigger() {
+  const element = document.querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')
+  if (!element) throw new Error('Missing format disclosure')
+  return element
+}
 async function change(value: string) {
   await act(async () => {
     const field = textarea()
@@ -123,12 +128,114 @@ describe('proxy import dialog', () => {
       expect(document.body.textContent).toContain(
         locale === 'zh-CN' ? '未写协议时统一使用 HTTP' : 'Missing schemes always use HTTP',
       )
+      expect(document.querySelector('#proxy-import-help')?.textContent).toBe(
+        locale === 'zh-CN'
+          ? '每次最多 200 个非空行，空行忽略。'
+          : 'Up to 200 non-empty lines per import; blank lines are ignored.',
+      )
+      expect(document.body.textContent).not.toContain('IPv6')
+      expect(document.querySelector('[data-slot="dialog-close"]')).toBeNull()
+      const close = [...document.querySelectorAll('button')].find(
+        (button) => button.textContent === (locale === 'zh-CN' ? '关闭' : 'Close'),
+      )
+      expect(close?.disabled).toBe(false)
       expect(textarea().getAttribute('aria-describedby')).toBe('proxy-import-help')
       expect(submitButton().disabled).toBe(true)
       await change(' \n\r\n')
       expect(submitButton().disabled).toBe(true)
       await change('host:80')
       expect(submitButton().disabled).toBe(false)
+      await act(async () => close?.click())
+      expect(onClose).toHaveBeenCalledOnce()
+    },
+  )
+  it.each(['zh-CN', 'en-US'])(
+    'preserves all safety notes in a focusable, non-submit format disclosure in %s',
+    async (locale) => {
+      window.localStorage.setItem('contextweave:locale', locale)
+      await render()
+      await change('host:80')
+      const trigger = formatTrigger()
+      expect(trigger.textContent).toBe(locale === 'zh-CN' ? '格式说明' : 'Format details')
+      expect(trigger.tagName).toBe('BUTTON')
+      expect(trigger.type).toBe('button')
+      expect(trigger.tabIndex).toBe(0)
+      expect(trigger.getAttribute('aria-expanded')).toBe('false')
+      await act(async () => trigger.focus())
+      expect(document.activeElement).toBe(trigger)
+      await act(async () => trigger.click())
+      expect(trigger.getAttribute('aria-expanded')).toBe('true')
+      const panel = document.getElementById(trigger.getAttribute('aria-controls') ?? '')
+      expect(panel?.getAttribute('data-slot')).toBe('collapsible-content')
+      expect(panel?.closest('[hidden]')).toBeNull()
+      const notes =
+        locale === 'zh-CN'
+          ? [
+              'IPv6 地址需加方括号',
+              'URI 凭据中的 @、:、#、%、/ 等特殊字符需百分号编码',
+              '冒号分隔格式的凭据按原文保存，密码可含冒号，但含 @ 时须改用编码后的 URI',
+              '有歧义的格式会被拒绝，不会猜测凭据',
+              '相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖',
+            ]
+          : [
+              'bracket IPv6 addresses',
+              'Percent-encode special characters such as @, :, #, % and / in URI credentials',
+              'Colon-separated credentials stay literal, including colons in passwords; credentials containing @ must use an encoded URI instead',
+              'Ambiguous formats are rejected, never guessed',
+              'Existing protocol/host/port/username combinations are skipped without replacing passwords',
+            ]
+      for (const note of [
+        'host:port',
+        '[scheme://]user:password@host:port',
+        '[scheme://]host:port:username:password',
+        ...notes,
+      ]) {
+        expect(panel?.textContent).toContain(note)
+      }
+      await act(async () => trigger.click())
+      expect(trigger.getAttribute('aria-expanded')).toBe('false')
+      await eventually(() => expect(document.body.textContent).not.toContain('IPv6'))
+      expect(document.activeElement).toBe(trigger)
+      expect(importProxies).not.toHaveBeenCalled()
+      expect(textarea().value).toBe('host:80')
+      expect(onClose).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['zh-CN', 'en-US'])(
+    'keeps redacted results visible outside collapsed help in %s',
+    async (locale) => {
+      window.localStorage.setItem('contextweave:locale', locale)
+      await render()
+      await change(source)
+      await submit()
+      await eventually(() =>
+        expect(document.querySelector('[role="status"]')?.textContent).toContain(
+          locale === 'zh-CN'
+            ? '成功 1 项，失败 4 项，重复跳过 1 项'
+            : 'Succeeded 1, failed 4, duplicates skipped 1',
+        ),
+      )
+      const status = document.querySelector('[role="status"]')
+      const list = document.querySelector('ul')
+      expect(list?.querySelectorAll('li')).toHaveLength(4)
+      expect(list?.getAttribute('aria-label')).toBe(
+        locale === 'zh-CN' ? '失败代理（凭据已脱敏）' : 'Failed proxies (credentials redacted)',
+      )
+      expect(status?.textContent).toContain(
+        locale === 'zh-CN'
+          ? '输入已清空以保护凭据；失败代理仅显示脱敏信息，请修正后重新粘贴'
+          : 'Input cleared to protect credentials; failed proxies are redacted. Correct and paste them again to retry',
+      )
+      for (const expanded of ['true', 'false']) {
+        await act(async () => formatTrigger().click())
+        expect(formatTrigger().getAttribute('aria-expanded')).toBe(expanded)
+        expect(status?.isConnected).toBe(true)
+        expect(list?.isConnected).toBe(true)
+        expect(status?.closest('[data-slot="collapsible"], [hidden]')).toBeNull()
+        expect(list?.closest('[data-slot="collapsible"], [hidden]')).toBeNull()
+      }
+      expect(textarea().value).toBe('')
+      expect(document.body.innerHTML).not.toMatch(/private-user|private-password|unrecognized/)
     },
   )
   it('sends only text, shows all counts and failures with source line numbers, and clears credentials', async () => {
@@ -215,7 +322,7 @@ describe('proxy import dialog', () => {
     )
     expect(close?.disabled).toBe(true)
     await act(async () => {
-      document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')?.click()
+      close?.click()
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
     expect(onClose).not.toHaveBeenCalled()

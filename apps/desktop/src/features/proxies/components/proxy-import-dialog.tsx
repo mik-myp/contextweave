@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import { importProxiesInputSchema } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import {
@@ -10,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Field, FieldGroup, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -49,7 +51,10 @@ export function ProxyImportDialog({ onClose }: { onClose(): void }) {
         if (!open && !submitting.current) onClose()
       }}
     >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+      >
         <DialogHeader>
           <DialogTitle>{t('proxy.import.title')}</DialogTitle>
           <DialogDescription>{t('proxy.import.description')}</DialogDescription>
@@ -86,6 +91,19 @@ export function ProxyImportDialog({ onClose }: { onClose(): void }) {
               {invalid && (
                 <FieldError id="proxy-import-error">{t('proxy.import.limit')}</FieldError>
               )}
+              <Collapsible className="flex flex-col gap-2">
+                <CollapsibleTrigger
+                  render={<Button type="button" variant="ghost" size="sm" className="w-fit" />}
+                >
+                  {t('proxy.import.formatDetails')}
+                  <ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="flex flex-col gap-2">
+                  <FieldDescription>{t('proxy.import.formats')}</FieldDescription>
+                  <FieldDescription>{t('proxy.import.credentials')}</FieldDescription>
+                  <FieldDescription>{t('proxy.import.duplicates')}</FieldDescription>
+                </CollapsibleContent>
+              </Collapsible>
             </Field>
           </FieldGroup>
           {command.error && (

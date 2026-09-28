@@ -96,8 +96,14 @@ export const lifecycleMessages = {
   'proxy.import.description':
     'One proxy per line. Supports HTTP, HTTPS and SOCKS5. Missing schemes always use HTTP.',
   'proxy.import.lines': 'Proxy list',
-  'proxy.import.help':
-    'Use host:port, [scheme://]user:password@host:port or [scheme://]host:port:username:password; bracket IPv6 addresses. Up to 200 non-empty lines; blank lines are ignored. Percent-encode special characters such as @, :, #, % and / in URI credentials. Colon-separated credentials stay literal, including colons in passwords; credentials containing @ must use an encoded URI instead. Ambiguous formats are rejected, never guessed. Existing protocol/host/port/username combinations are skipped without replacing passwords.',
+  'proxy.import.help': 'Up to 200 non-empty lines per import; blank lines are ignored.',
+  'proxy.import.formatDetails': 'Format details',
+  'proxy.import.formats':
+    'Use host:port, [scheme://]user:password@host:port or [scheme://]host:port:username:password; bracket IPv6 addresses.',
+  'proxy.import.credentials':
+    'Percent-encode special characters such as @, :, #, % and / in URI credentials. Colon-separated credentials stay literal, including colons in passwords; credentials containing @ must use an encoded URI instead. Ambiguous formats are rejected, never guessed.',
+  'proxy.import.duplicates':
+    'Existing protocol/host/port/username combinations are skipped without replacing passwords.',
   'proxy.import.limit': 'Enter up to 200 non-empty lines and 65,536 characters.',
   'proxy.import.summary':
     'Succeeded {created}, failed {failed}, duplicates skipped {skipped}. Input cleared to protect credentials; failed proxies are redacted. Correct and paste them again to retry.',

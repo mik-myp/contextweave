@@ -77,8 +77,13 @@ export const lifecycleMessages = {
   'proxy.import.title': '批量新增代理',
   'proxy.import.description': '一行一个代理，支持 HTTP、HTTPS 和 SOCKS5。未写协议时统一使用 HTTP。',
   'proxy.import.lines': '代理列表',
-  'proxy.import.help':
-    '支持 host:port、[scheme://]user:password@host:port 与 [scheme://]host:port:username:password；IPv6 地址需加方括号。每次最多 200 个非空行，空行忽略。URI 凭据中的 @、:、#、%、/ 等特殊字符需百分号编码；冒号分隔格式的凭据按原文保存，密码可含冒号，但含 @ 时须改用编码后的 URI。有歧义的格式会被拒绝，不会猜测凭据。相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖。',
+  'proxy.import.help': '每次最多 200 个非空行，空行忽略。',
+  'proxy.import.formatDetails': '格式说明',
+  'proxy.import.formats':
+    '支持 host:port、[scheme://]user:password@host:port 与 [scheme://]host:port:username:password；IPv6 地址需加方括号。',
+  'proxy.import.credentials':
+    'URI 凭据中的 @、:、#、%、/ 等特殊字符需百分号编码；冒号分隔格式的凭据按原文保存，密码可含冒号，但含 @ 时须改用编码后的 URI。有歧义的格式会被拒绝，不会猜测凭据。',
+  'proxy.import.duplicates': '相同协议、地址、端口和用户名会跳过，已有密码不会被覆盖。',
   'proxy.import.limit': '请填写代理，最多 200 个非空行、65,536 个字符。',
   'proxy.import.summary':
     '成功 {created} 项，失败 {failed} 项，重复跳过 {skipped} 项。输入已清空以保护凭据；失败代理仅显示脱敏信息，请修正后重新粘贴。',

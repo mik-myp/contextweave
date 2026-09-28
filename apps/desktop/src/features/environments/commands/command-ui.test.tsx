@@ -89,7 +89,9 @@ async function render(element: ReactNode, context: WorkspaceContext = fixtureWor
   await flush()
 }
 function button(text: string, scope: ParentNode = document) {
-  const found = [...scope.querySelectorAll('button')].find((node) => node.textContent === text)
+  const found = [...scope.querySelectorAll('button')].find(
+    (node) => node.getAttribute('aria-label') === text || node.textContent === text,
+  )
   if (!found) throw new Error(`Missing button ${text}`)
   return found
 }
@@ -316,6 +318,11 @@ describe('pending identity verification and command receipts', () => {
     }))
     await render(<EnvironmentCommands />)
     expect(page).toHaveBeenCalledWith({ beforeId: null, limit: 20 })
+    expect(container.querySelector('[data-slot="data-table-pagination"]')).not.toBeNull()
+    expect(container.querySelectorAll('nav button')).toHaveLength(2)
+    expect(container.querySelector('[role="combobox"]')).toBeNull()
+    expect(container.querySelector('[aria-current="page"]')).toBeNull()
+    expect(button('上一页').disabled).toBe(true)
     await click('下一页')
     expect(page).toHaveBeenLastCalledWith({ beforeId: id, limit: 20 })
     expect(document.body.textContent).toContain(otherId)

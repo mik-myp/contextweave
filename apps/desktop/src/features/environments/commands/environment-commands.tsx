@@ -6,6 +6,7 @@ import { useI18n } from '@/i18n'
 import { unwrapIpc } from '@/shared/lib/ipc'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
@@ -170,27 +171,22 @@ export function EnvironmentCommands() {
           </Empty>
         )
       )}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!cursors.length || query.isFetching}
-          onClick={() => setCursors((value) => value.slice(0, -1))}
-        >
-          {t('commands.previous')}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!query.data?.nextBeforeId || query.isFetching}
-          onClick={() => {
+      <DataTablePaginationControls
+        disabled={query.isFetching}
+        previous={{
+          label: t('commands.previous'),
+          disabled: !cursors.length,
+          onClick: () => setCursors((value) => value.slice(0, -1)),
+        }}
+        next={{
+          label: t('commands.next'),
+          disabled: !query.data?.nextBeforeId,
+          onClick: () => {
             const next = query.data?.nextBeforeId
             if (next) setCursors((value) => [...value, next])
-          }}
-        >
-          {t('commands.next')}
-        </Button>
-      </div>
+          },
+        }}
+      />
       {recover && (
         <EnvironmentRecoveryDialog environmentId={recover} onClose={() => setRecover(undefined)} />
       )}

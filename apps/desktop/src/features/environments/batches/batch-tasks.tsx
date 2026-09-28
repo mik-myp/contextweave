@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n'
 import { errorMessage } from '@/shared/lib/error-message'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { DataTablePaginationControls } from '@/components/data-table/data-table-pagination'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -140,27 +141,23 @@ export function BatchTasks({
           </Empty>
         )
       )}
-      <nav aria-label={t('batch.pagination')} className="flex items-center justify-end gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={cursors.length === 1 || query.isFetching}
-          onClick={() => setCursors((current) => current.slice(0, -1))}
-        >
-          {t('batch.previous')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!query.data?.nextCursor || query.isFetching || Boolean(query.error)}
-          onClick={() => {
+      <DataTablePaginationControls
+        label={t('batch.pagination')}
+        disabled={query.isFetching}
+        previous={{
+          label: t('batch.previous'),
+          disabled: cursors.length === 1,
+          onClick: () => setCursors((current) => current.slice(0, -1)),
+        }}
+        next={{
+          label: t('batch.next'),
+          disabled: !query.data?.nextCursor || Boolean(query.error),
+          onClick: () => {
             const next = query.data?.nextCursor
             if (next) setCursors((current) => [...current, next])
-          }}
-        >
-          {t('batch.next')}
-        </Button>
-      </nav>
+          },
+        }}
+      />
       {selectedId && (
         <BatchTaskDialog
           key={selectedId}

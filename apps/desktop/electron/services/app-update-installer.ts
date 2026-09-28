@@ -1,17 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { readFileSync, statSync, rmSync } from 'node:fs'
 import { promisify } from 'node:util'
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  open,
-  readFile,
-  realpath,
-  rm,
-  rmdir,
-  writeFile,
-} from 'node:fs/promises'
+import * as nodeFileSystem from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { AppUpdateRelease, TargetArchitecture, TargetPlatform } from '@contextweave/contracts'
 import { assertBundleLinks } from './kernel-archive'
@@ -81,7 +71,12 @@ async function bundleValue(bundle: string, key: string, signal: AbortSignal, exe
   )
   return result.stdout.trim()
 }
-async function assertMacExecutable(path: string, arch: TargetArchitecture, signal: AbortSignal) {
+async function assertMacExecutable(
+  path: string,
+  arch: TargetArchitecture,
+  signal: AbortSignal,
+  { lstat, open }: typeof nodeFileSystem,
+) {
   signal.throwIfAborted()
   if (!(await lstat(path)).isFile()) throw new Error('UPDATE_INSTALL_INVALID')
   const file = await open(path, 'r')
@@ -136,6 +131,7 @@ export async function prepareAppInstaller(
     path: string
     release: AppUpdateRelease
     signal: AbortSignal
+    fileSystem?: typeof nodeFileSystem
   },
   dependencies: { execute: Execute; launch: typeof launchDetached } = {
     execute,
@@ -144,6 +140,10 @@ export async function prepareAppInstaller(
 ): Promise<{ launch(): Promise<void>; cleanup(): Promise<void> }> {
   const { execute, launch } = dependencies
   const { signal } = options
+  // Electron virtualizes .asar paths; callers in Main must use original-fs here.
+  // Never toggle process.noAsar globally while unrelated app operations are running.
+  const fileSystem = options.fileSystem ?? nodeFileSystem
+  const { lstat, mkdir, mkdtemp, readFile, realpath, rm, rmdir, writeFile } = fileSystem
   if (!options.isPackaged) throw new Error('UPDATE_DEVELOPMENT_MODE')
   if (options.portable) throw new Error('UPDATE_PORTABLE_UNSUPPORTED')
   signal.throwIfAborted()
@@ -180,15 +180,20 @@ export async function prepareAppInstaller(
   try {
     mount = await mkdtemp(join(options.root, '.install-mount-'))
     // Only a verified official DMG reaches this boundary; never execute anything from the mount.
-    await execute(
-      '/usr/bin/hdiutil',
-      ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, options.path],
-      { signal, timeout: 60000 },
-    )
+    try {
+      await execute(
+        '/usr/bin/hdiutil',
+        ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, options.path],
+        { signal, timeout: 60000 },
+      )
+    } catch {
+      signal.throwIfAborted()
+      throw new Error('UPDATE_MOUNT_FAILED')
+    }
     const candidate = join(mount, 'ContextWeave.app')
     const info = await lstat(candidate)
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('UPDATE_INSTALL_INVALID')
-    await assertBundleLinks(candidate, signal)
+    await assertBundleLinks(candidate, signal, fileSystem)
     if (
       (await bundleValue(candidate, 'CFBundleIdentifier', signal, execute)) !==
         'com.mikmyp.contextweave' ||
@@ -201,6 +206,7 @@ export async function prepareAppInstaller(
       join(candidate, 'Contents', 'MacOS', 'ContextWeave'),
       options.arch,
       signal,
+      fileSystem,
     )
     const team = await signingTeam(current, signal, execute)
     if (team) {
@@ -212,11 +218,16 @@ export async function prepareAppInstaller(
       })
     }
     // ditto preserves bundle modes, symlinks and extended attributes. No quarantine removal.
-    await execute('/usr/bin/ditto', [candidate, join(stage, 'ContextWeave.app')], {
-      signal,
-      timeout: 120000,
-    })
-    await assertBundleLinks(join(stage, 'ContextWeave.app'), signal)
+    try {
+      await execute('/usr/bin/ditto', [candidate, join(stage, 'ContextWeave.app')], {
+        signal,
+        timeout: 120000,
+      })
+    } catch {
+      signal.throwIfAborted()
+      throw new Error('UPDATE_COPY_FAILED')
+    }
+    await assertBundleLinks(join(stage, 'ContextWeave.app'), signal, fileSystem)
     const helper = join(stage, 'install.sh'),
       ready = join(stage, 'ready')
     await writeFile(helper, macUpdateScript, { mode: 0o700, flag: 'wx' })
@@ -255,7 +266,9 @@ export async function prepareAppInstaller(
     failure ??= new Error('UPDATE_UNMOUNT_FAILED')
   }
   if (failure || !prepared) {
-    await cleanup()
+    await cleanup().catch(() => {
+      failure ??= new Error('UPDATE_CLEANUP_FAILED')
+    })
     throw failure ?? new Error('UPDATE_INSTALL_INVALID')
   }
   return prepared

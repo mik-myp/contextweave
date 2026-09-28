@@ -1,4 +1,10 @@
 export const lifecycleMessages = {
+  'storage.maintenanceHelp':
+    'Clean up completed history only. Environments, sign-in sessions and browser data are not deleted.',
+  'storage.showMaintenance': 'Show cleanup options',
+  'storage.hideMaintenance': 'Hide cleanup options',
+  'storage.orphansNotice':
+    'Found {count} unlinked directories. Missing records do not make these safe to delete; browser data may be the only copy. Nothing is deleted or automatically recovered here.',
   'storage.diagnostics': 'Advanced diagnostics: screenshots and task outputs',
   'storage.diagnosticsHelp':
     'For development tests and troubleshooting, not everyday environment management or total disk cleanup. Collapsing this section does not delete files, change budgets or stop tasks.',
@@ -117,6 +123,12 @@ export const lifecycleMessages = {
   'error.UPDATE_TIMEOUT': 'The update request timed out. Check your connection and retry.',
   'error.UPDATE_FAILED':
     'The update operation failed. Check the connection, disk space and directory permissions, then retry.',
+  'error.UPDATE_MOUNT_FAILED':
+    'Could not mount the update. Quit the app and eject open installer images for this version, then reopen and retry, or install manually from the release page.',
+  'error.UPDATE_COPY_FAILED':
+    'Could not stage the update. Check free space and write access in the installation folder. The current app has not been replaced.',
+  'error.UPDATE_CLEANUP_FAILED':
+    'Could not clean the update staging folder. The current app has not been replaced. Quit the app and retry.',
   'error.UPDATE_NOT_AVAILABLE': 'Check for updates first to find a compatible installer.',
   'error.UPDATE_NOT_READY':
     'The installer is not ready. Finish downloading and verification first.',

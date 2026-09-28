@@ -1,4 +1,4 @@
-import { EnvironmentCommands } from '../commands/environment-commands'
+import { CommandHistorySheet } from '../commands/command-history-sheet'
 import { useCommandTracking } from '../commands/use-commands'
 import { BatchPreviewDialog } from '../batches/batch-preview-dialog'
 import { BatchTasks } from '../batches/batch-tasks'
@@ -17,7 +17,7 @@ import { EnvironmentTrash } from '../components/environment-trash'
 import { DataTableBulkActions } from '@/components/data-table/data-table-bulk-actions'
 import { useMemo, useState, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
-import { PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
+import { Clock3Icon, PlayIcon, PlusIcon, SquareIcon, Trash2Icon } from 'lucide-react'
 import { environmentStatusSchema, type EnvironmentSummary } from '@contextweave/contracts'
 import { useI18n } from '@/i18n'
 import { useAppData } from '@/app/use-app-data'
@@ -36,6 +36,7 @@ const getRowId = (row: EnvironmentSummary) => row.id
 export function EnvironmentsPage() {
   const { t } = useI18n()
   const tracking = useCommandTracking()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [tab, setTab] = useState('active'),
     [selectedTask, setSelectedTask] = useState<string>()
   const onCreated = useCallback((id: string) => {
@@ -48,23 +49,26 @@ export function EnvironmentsPage() {
       onValueChange={(value) => setTab(String(value))}
       className="min-h-0 flex-1 gap-4"
     >
-      <TabsList className="shrink-0">
-        <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
-        <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
-        <TabsTrigger value="commands">{t('commands.title')}</TabsTrigger>
-        <TabsTrigger value="batches">{t('batch.tasks')}</TabsTrigger>
-      </TabsList>
-      {(tracking.problem || tracking.entries.length > 0) && tab !== 'commands' && (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <TabsList className="shrink-0">
+          <TabsTrigger value="active">{t('life.active')}</TabsTrigger>
+          <TabsTrigger value="trash">{t('life.trash')}</TabsTrigger>
+          <TabsTrigger value="batches">{t('batch.tasks')}</TabsTrigger>
+        </TabsList>
+        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+          <Clock3Icon data-icon="inline-start" />
+          {t('commands.title')}
+        </Button>
+      </div>
+      {(tracking.problem || tracking.entries.length > 0) && !historyOpen && (
         <Alert>
           <AlertDescription>{t('commands.pendingHelp')}</AlertDescription>
-          <Button type="button" size="sm" variant="outline" onClick={() => setTab('commands')}>
+          <Button type="button" size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
             {t('commands.title')} ({tracking.entries.length})
           </Button>
         </Alert>
       )}
-      <TabsContent value="commands" className="flex min-h-0 flex-col gap-4">
-        <EnvironmentCommands />
-      </TabsContent>
+      <CommandHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
       <TabsContent value="active" className="flex min-h-0 flex-col gap-4">
         <ActiveEnvironmentsPage onCreated={onCreated} />
       </TabsContent>

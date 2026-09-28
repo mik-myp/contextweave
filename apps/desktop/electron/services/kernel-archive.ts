@@ -113,7 +113,12 @@ export async function extractZip(archive: string, destination: string, signal: A
     else zip.readEntry()
   })
 }
-export async function assertBundleLinks(root: string, signal?: AbortSignal): Promise<void> {
+export async function assertBundleLinks(
+  root: string,
+  signal?: AbortSignal,
+  fileSystem = { readdir, readlink, realpath, lstat },
+): Promise<void> {
+  const { readdir, readlink, realpath, lstat } = fileSystem
   const canonicalRoot = await realpath(root)
   let count = 0,
     size = 0

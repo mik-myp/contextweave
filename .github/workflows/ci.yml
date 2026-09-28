@@ -54,4 +54,6 @@ jobs:
         run: pnpm --filter @contextweave/desktop exec electron-vite build
 
       - name: Verify sandboxed desktop lifecycle
-        run: pnpm test:desktop --require-native
+        run: |
+          pnpm test:desktop --require-native
+          pnpm test:app-update

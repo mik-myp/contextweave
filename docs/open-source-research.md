@@ -205,3 +205,21 @@ CloakBrowser 的管理端/包装代码与实际浏览器二进制不是同一授
 - 四份变更 Markdown 另做 Prettier 检查；本地文件/标题链接及固定 GitHub 源码路径已核对。
 - `git diff --check` 通过；原有 `README.md` 与未跟踪的 `BUGS.md` 内容校验值不变，已发布版本的实施台账未改写。
 - 未修改应用代码、依赖或版本；未提交/推送、创建 tag 或发布。没有运行第三方产品或重新进行三平台浏览器验收。
+
+## 6. 维护者追加的个人体验调研（2026-09-28）
+
+范围来自本轮明确反馈，不新增整条版本线。只读检查以下固定源码，没有复制、安装或执行上游实现；GitHub 页面存在不自动代表可自由复用其代码。当前个人用户的核心任务是组织环境、准备常用网址、导入代理和判断操作结果。
+
+| 参考与固定快照 | 观察 | 本项目取舍 |
+| --- | --- | --- |
+| [Ant 标签页](https://github.com/black-ant/Ant-Browser/blob/61feab721f71d65301dfa45397cb9e15e28e8fd8/frontend/src/modules/browser/pages/TagManagementPage.tsx)、[后端关联](https://github.com/black-ant/Ant-Browser/blob/61feab721f71d65301dfa45397cb9e15e28e8fd8/backend/app_profile_tags.go) | 独立管理入口、计数与移除；未分配的标签只在前端 `pendingTags` | 采纳入口与影响计数，但本项目零引用标签必须持久化；改名/删除同步已有环境和保存筛选，不删除环境 |
+| [Ant 默认书签](https://github.com/black-ant/Ant-Browser/blob/61feab721f71d65301dfa45397cb9e15e28e8fd8/backend/app_bookmark.go)、[启动调用](https://github.com/black-ant/Ant-Browser/blob/61feab721f71d65301dfa45397cb9e15e28e8fd8/backend/app_instance_start_prepare.go)、[设置保存](https://github.com/black-ant/Ant-Browser/blob/61feab721f71d65301dfa45397cb9e15e28e8fd8/frontend/src/modules/browser/pages/BookmarkSettingsPage.tsx) | 启动时追加缺失默认项，保存设置后应用到已有非运行实例 | 只采纳常用网址模板；不持续追写，不覆盖/合并旧资料和克隆资料 |
+| [Donut Browser 组书签与测试](https://github.com/zhom/donutbrowser/blob/130cfda7919d35e873d9f0245c94d213788035eb/src-tauri/src/group_bookmarks.rs) | 损坏 JSON 拒绝重写、保留用户书签、未变化不写 | 采纳保护数据的测试思路，不引入组书签同步或新数据管理层 |
+| [Camoufox Profile Manager 环境列表](https://github.com/polyackiy/camoufox-profile-manager/blob/f0bf3048887855c86fdaf3492beb757fa4fe7ab5/web/src/app/page.tsx) | 本页选择、筛选重置分页与末页收敛 | 与现有 DataTable 对齐；“最近使用”排序仍是未来候选，不自动加入本批 |
+| [shadcn 官方 Base 表格](https://github.com/shadcn-ui/ui/blob/98a1fe67b439324ddc857f47fbdce056600a4329/apps/v4/registry/bases/base/blocks/dashboard-01/components/data-table.tsx) | 已选数、每页条数、翻页禁用态和可访问名称 | 复用本地分页底座，游标列表不伪造总页数，不整包引入 Dashboard/图表 |
+| [coss 多选交互](https://github.com/cosscom/coss/blob/8423f18a8b4830e875def4a7400730f29cae1147/apps/ui/registry/default/particles/p-combobox-9.tsx)、[Base UI 实现](https://github.com/cosscom/coss/blob/8423f18a8b4830e875def4a7400730f29cae1147/apps/ui/registry/default/ui/combobox.tsx) | 搜索已有项、已选标签块和逐项移除 | 以本地现有 Base UI 组件实现必要交互，不覆盖组件或增加第二套基础库 |
+| 本项目 `v0.2.7` 基线 | 已有分组、标签、备注、命名视图、批次预览/进度/取消/失败重试 | 保留并改善入口；不重新建设同类平台，不因开源产品列出某项功能就重复开发 |
+
+许可记录仅陈述文件：Ant 此固定树未发现独立许可证；[Donut](https://github.com/zhom/donutbrowser/blob/130cfda7919d35e873d9f0245c94d213788035eb/LICENSE) 为 AGPL-3.0 文本，[Camoufox Profile Manager](https://github.com/polyackiy/camoufox-profile-manager/blob/f0bf3048887855c86fdaf3492beb757fa4fe7ab5/LICENSE) 与 [shadcn](https://github.com/shadcn-ui/ui/blob/98a1fe67b439324ddc857f47fbdce056600a4329/LICENSE.md) 为 MIT 文本。coss [根 LICENSE](https://github.com/cosscom/coss/blob/8423f18a8b4830e875def4a7400730f29cae1147/LICENSE) 为 AGPLv3，但 [UI package](https://github.com/cosscom/coss/blob/8423f18a8b4830e875def4a7400730f29cae1147/apps/ui/package.json) 声明 MIT；本轮只借鉴交互，不解释其授权作用域、不复制源码，也不代维护者决定本项目根许可证。
+
+注册表核对：项目现有 `base-nova` 经 shadcn CLI `info` 确认为 Base UI；官方 `@shadcn` 搜索与组件文档已检查。社区 `@coss` 的入口可由[官方 directory 固定快照](https://github.com/shadcn-ui/ui/blob/98a1fe67b439324ddc857f47fbdce056600a4329/apps/v4/registry/directory.json)核对。这只证明注册表格式与源码基础，不代表能够不经评审直接替换本地组件。颜色、字体、圆角和密度继续使用已交付主题 token，不用装饰动画代替可理解的状态反馈。

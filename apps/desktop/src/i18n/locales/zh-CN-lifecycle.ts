@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'storage.maintenanceHelp': '仅清理已完成的历史记录，不删除环境、登录状态或浏览器数据。',
+  'storage.showMaintenance': '查看清理选项',
+  'storage.hideMaintenance': '收起清理选项',
+  'storage.orphansNotice':
+    '发现 {count} 个未关联目录。不代表目录无用或可安全删除；其中的浏览器资料可能是唯一副本。此处不执行删除或自动恢复。',
   'storage.diagnostics': '高级诊断：截图与任务产物',
   'storage.diagnosticsHelp':
     '用于开发测试和故障排查，不是日常环境管理或全盘空间清理。折叠此处不会删除文件、修改预算或停止任务。',
@@ -97,6 +102,11 @@ export const lifecycleMessages = {
   'error.UPDATE_CHECK_FAILED': '无法检查更新，请检查网络后重试。',
   'error.UPDATE_TIMEOUT': '更新请求超时，请检查网络后重试。',
   'error.UPDATE_FAILED': '更新操作未完成，请检查网络、存储空间及目录权限后重试。',
+  'error.UPDATE_MOUNT_FAILED':
+    '无法挂载更新安装包。请先退出应用并推出已打开的同版本安装镜像，再重新打开应用重试；也可从发行说明手动安装。',
+  'error.UPDATE_COPY_FAILED':
+    '无法准备新版本，请检查应用安装目录的剩余空间与写入权限。当前版本未被替换。',
+  'error.UPDATE_CLEANUP_FAILED': '更新暂存目录未能清理，当前版本未被替换。请退出应用后重试。',
   'error.UPDATE_NOT_AVAILABLE': '请先检查更新并选择可用的本机安装包。',
   'error.UPDATE_NOT_READY': '安装包尚未准备好，请先完成下载和校验。',
   'error.UPDATE_FILE_INVALID': '已下载的安装包丢失或被修改，请重新下载。',

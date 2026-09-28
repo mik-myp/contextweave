@@ -113,7 +113,7 @@ describe('automatic installer boundary', () => {
     })
     await expect(
       prepareAppInstaller(f.options, { execute: f.run, launch: f.launch }),
-    ).rejects.toThrow('ATTACH_FAILED')
+    ).rejects.toThrow('UPDATE_MOUNT_FAILED')
     expect(await readFile(join(mount, 'ContextWeave.app', 'must-not-delete'), 'utf8')).toBe(
       'mounted-content',
     )
@@ -128,8 +128,24 @@ describe('automatic installer boundary', () => {
     })
     await expect(
       prepareAppInstaller(f.options, { execute: f.run, launch: f.launch }),
-    ).rejects.toThrow('ATTACH_FAILED')
+    ).rejects.toThrow('UPDATE_MOUNT_FAILED')
     expect(await readdir(f.options.root)).toEqual([])
+    expect(await readFile(join(f.current, 'old-version'), 'utf8')).toBe('keep')
+  })
+  it('preserves a safe primary error when staging cleanup also fails', async () => {
+    const f = await fixture()
+    const fs = await import('node:fs/promises')
+    const fileSystem = {
+      ...fs,
+      rm: vi.fn(async () => {
+        throw new Error('private staging path')
+      }),
+    }
+    f.run.mockRejectedValue(new Error('private mount path'))
+    await expect(
+      prepareAppInstaller({ ...f.options, fileSystem }, { execute: f.run, launch: f.launch }),
+    ).rejects.toThrow('UPDATE_MOUNT_FAILED')
+    expect(f.launch).not.toHaveBeenCalled()
     expect(await readFile(join(f.current, 'old-version'), 'utf8')).toBe('keep')
   })
   it('refuses to launch if the staged image cannot be safely unmounted', async () => {

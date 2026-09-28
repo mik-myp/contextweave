@@ -29,6 +29,7 @@ async function launch() {
 async function settings(page) {
   await page.getByRole('link', { name: '系统设置', exact: true }).click()
   await page.getByRole('link', { name: '本地存储', exact: true }).click()
+  await page.getByRole('button', { name: '查看清理选项', exact: true }).click()
   const section = page.getByRole('region', { name: '历史记录清理', exact: true })
   await section.getByRole('button', { name: '预览清理范围', exact: true }).waitFor()
   return section

@@ -18,6 +18,7 @@ export default defineConfig({
     build: {
       outDir: resolve(__dirname, 'dist-electron'),
       rollupOptions: {
+        external: ['original-fs'],
         input: {
           main: resolve(__dirname, 'electron/main.ts'),
           worker: resolve(__dirname, 'electron/worker.ts'),

@@ -1,10 +1,12 @@
 import { createWriteStream } from 'node:fs'
-import { cp, lstat, mkdir, open, readdir, readlink, realpath } from 'node:fs/promises'
+import { cp, lstat, mkdir, open, readdir, readlink, realpath, symlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { withKernelDmg } from './kernel-dmg'
 import { open as openZip, type Entry, type ZipFile } from 'yauzl'
 import type { KernelManifest } from '@contextweave/contracts'
+import { fingerprintArchiveFormat } from '@contextweave/kernel-fingerprint-chromium'
 
 export function safeArchivePath(root: string, name: string): string {
   const segments = name.replace(/\/$/, '').split('/')
@@ -28,7 +30,91 @@ export function safeArchivePath(root: string, name: string): string {
   if (!target.startsWith(resolve(root) + sep)) throw new Error('ARCHIVE_UNSAFE')
   return target
 }
+type ZipPathKind = 'directory' | 'file' | 'link'
+interface ZipPath {
+  name: string
+  kind: ZipPathKind
+  explicit: boolean
+}
+interface ZipLink {
+  name: string
+  target: string
+}
+const zipPathKey = (name: string) => name.normalize('NFC').toLowerCase()
+
+function registerZipPath(paths: Map<string, ZipPath>, name: string, kind: ZipPathKind): void {
+  const parts = name.split('/')
+  for (let index = 0; index < parts.length; index++) {
+    const prefix = parts.slice(0, index + 1).join('/')
+    const key = zipPathKey(prefix)
+    const existing = paths.get(key)
+    const explicit = index === parts.length - 1
+    const type = explicit ? kind : 'directory'
+    // Track implicit parents too: a link/file cannot become a directory, in either order.
+    if (
+      existing &&
+      (existing.name !== prefix ||
+        existing.kind !== 'directory' ||
+        type !== 'directory' ||
+        (explicit && existing.explicit))
+    )
+      throw new Error('ARCHIVE_UNSAFE')
+    paths.set(key, { name: prefix, kind: type, explicit: explicit || !!existing?.explicit })
+    if (paths.size > 50000) throw new Error('ARCHIVE_UNSAFE')
+  }
+}
+
+async function readZipLink(source: import('node:stream').Readable, signal: AbortSignal) {
+  const chunks: Buffer[] = []
+  let size = 0
+  await pipeline(
+    source,
+    new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        size += chunk.length
+        if (size > 4096) callback(new Error('ARCHIVE_UNSAFE'))
+        else {
+          chunks.push(chunk)
+          callback()
+        }
+      },
+    }),
+    { signal },
+  )
+  let target: string
+  try {
+    target = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      Buffer.concat(chunks),
+    )
+  } catch {
+    throw new Error('ARCHIVE_UNSAFE')
+  }
+  if (
+    !target ||
+    isAbsolute(target) ||
+    target.includes('\\') ||
+    target.includes(':') ||
+    [...target].some(
+      (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+    ) ||
+    target.split('/').some((part) => !part)
+  )
+    throw new Error('ARCHIVE_UNSAFE')
+  return target
+}
+
 export async function extractZip(archive: string, destination: string, signal: AbortSignal) {
+  await extractZipContents(archive, destination, signal, false)
+}
+
+async function extractZipContents(
+  archive: string,
+  destination: string,
+  signal: AbortSignal,
+  macPackage: boolean,
+) {
+  const paths = new Map<string, ZipPath>()
+  const links: ZipLink[] = []
   const zip = await new Promise<ZipFile>((resolveZip, reject) =>
     openZip(
       archive,
@@ -48,7 +134,6 @@ export async function extractZip(archive: string, destination: string, signal: A
       processing = false,
       ended = false
     let failure: unknown
-    const paths = new Set<string>()
     const finish = (error?: unknown) => {
       if (finished) return
       failure ??= error
@@ -69,21 +154,36 @@ export async function extractZip(archive: string, destination: string, signal: A
       processing = true
       void (async () => {
         signal.throwIfAborted()
+        if (
+          Buffer.byteLength(entry.fileName) > 4096 ||
+          entry.fileName.split('/').some((part) => Buffer.byteLength(part) > 255)
+        )
+          throw new Error('ARCHIVE_UNSAFE')
         const target = safeArchivePath(destination, entry.fileName)
         const fileType = (entry.externalFileAttributes >>> 16) & 0xf000
+        const isLink = fileType === 0xa000
+        const isDirectory = entry.fileName.endsWith('/')
         size += entry.uncompressedSize
         if (
           ++count > 50000 ||
           size > 1_500_000_000 ||
           entry.uncompressedSize > 800_000_000 ||
-          (fileType !== 0 && fileType !== 0x8000 && fileType !== 0x4000) ||
-          paths.has(target.toLowerCase())
+          (fileType !== 0 &&
+            fileType !== 0x8000 &&
+            fileType !== 0x4000 &&
+            !(macPackage && isLink)) ||
+          (fileType === 0x4000 && !isDirectory) ||
+          (isDirectory &&
+            (entry.uncompressedSize !== 0 || (fileType !== 0 && fileType !== 0x4000))) ||
+          (isLink && entry.uncompressedSize > 4096)
         )
           throw new Error('ARCHIVE_UNSAFE')
-        paths.add(target.toLowerCase())
-        if (entry.fileName.endsWith('/')) await mkdir(target, { recursive: true })
+        const name = entry.fileName.replace(/\/$/, '')
+        registerZipPath(paths, name, isDirectory ? 'directory' : isLink ? 'link' : 'file')
+        if (isDirectory)
+          await mkdir(target, { recursive: true, ...(macPackage ? { mode: 0o700 } : {}) })
         else {
-          await mkdir(dirname(target), { recursive: true })
+          await mkdir(dirname(target), { recursive: true, ...(macPackage ? { mode: 0o700 } : {}) })
           const source = await new Promise<import('node:stream').Readable>(
             (resolveStream, rejectStream) =>
               zip.openReadStream(entry, (error, stream) =>
@@ -92,9 +192,12 @@ export async function extractZip(archive: string, destination: string, signal: A
                   : resolveStream(stream),
               ),
           )
-          await pipeline(source, createWriteStream(target, { flags: 'wx', mode: 0o600 }), {
-            signal,
-          })
+          if (isLink) links.push({ name, target: await readZipLink(source, signal) })
+          else {
+            // Preserve only owner execution, never group/other permissions or set-id bits.
+            const mode = 0o600 | (macPackage ? (entry.externalFileAttributes >>> 16) & 0o100 : 0)
+            await pipeline(source, createWriteStream(target, { flags: 'wx', mode }), { signal })
+          }
         }
         signal.throwIfAborted()
       })().then(
@@ -110,8 +213,102 @@ export async function extractZip(archive: string, destination: string, signal: A
       )
     })
     if (signal.aborted) abort()
+    else if (zip.entryCount > 50000) finish(new Error('ARCHIVE_UNSAFE'))
     else zip.readEntry()
   })
+  return { paths, links }
+}
+
+function macPackageRoot(paths: Map<string, ZipPath>): { root: string; bundle: string } {
+  const bundles = [...paths.values()].filter(
+    (entry) => entry.kind === 'directory' && entry.name.split('/').at(-1) === 'Chromium.app',
+  )
+  if (bundles.length !== 1) throw new Error('ARCHIVE_INVALID')
+  const bundle = bundles[0].name
+  const parts = bundle.split('/')
+  if (parts.length > 2) throw new Error('ARCHIVE_INVALID')
+  const root = parts.slice(0, -1).join('/')
+  // A wrapper must own ALL entries: never discard sibling licenses, resources or another root.
+  if (
+    root &&
+    [...paths.values()].some((entry) => entry.name !== root && !entry.name.startsWith(root + '/'))
+  )
+    throw new Error('ARCHIVE_INVALID')
+  return { root, bundle }
+}
+
+function assertZipLinks(
+  paths: Map<string, ZipPath>,
+  links: ZipLink[],
+  root: string,
+  bundle: string,
+  signal: AbortSignal,
+): void {
+  const targets = new Map(links.map((link) => [link.name, link.target]))
+  for (const link of links) {
+    signal.throwIfAborted()
+    const boundary = link.name.startsWith(bundle + '/') ? bundle : root
+    const depth = boundary ? boundary.split('/').length : 0
+    const resolved = link.name.split('/').slice(0, -1)
+    let pending = link.target.split('/')
+    let hops = 0
+    while (pending.length) {
+      const part = pending.shift()!
+      if (part === '.') continue
+      if (part === '..') {
+        if (resolved.length <= depth) throw new Error('ARCHIVE_UNSAFE')
+        resolved.pop()
+        continue
+      }
+      resolved.push(part)
+      const name = resolved.join('/')
+      const entry = paths.get(zipPathKey(name))
+      if (!entry || entry.name !== name) throw new Error('ARCHIVE_UNSAFE')
+      if (entry.kind === 'link') {
+        const target = targets.get(name)
+        // Bound chains (including cycles) before any symlink is materialized.
+        if (!target || ++hops > 40) throw new Error('ARCHIVE_UNSAFE')
+        resolved.pop()
+        pending = [...target.split('/'), ...pending]
+      } else if (pending.length && entry.kind !== 'directory') throw new Error('ARCHIVE_UNSAFE')
+    }
+    const target = resolved.join('/')
+    // Directory aliases to their own ancestors also create recursive traversal cycles.
+    if (!target || link.name.startsWith(target + '/')) throw new Error('ARCHIVE_UNSAFE')
+  }
+}
+
+async function extractMacZip(
+  archive: string,
+  payload: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const { paths, links } = await extractZipContents(archive, payload, signal, true)
+  const { root, bundle } = macPackageRoot(paths)
+  assertZipLinks(paths, links, root, bundle, signal)
+  for (const link of links) {
+    signal.throwIfAborted()
+    await symlink(link.target, safeArchivePath(payload, link.name))
+  }
+  signal.throwIfAborted()
+  const app = safeArchivePath(payload, bundle)
+  if (!(await lstat(app)).isDirectory()) throw new Error('ARCHIVE_INVALID')
+  // Check the whole payload AND the app boundary, not just framework links inside the app.
+  try {
+    await assertBundleLinks(payload, signal)
+    await assertBundleLinks(app, signal)
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      ['ENOENT', 'ENOTDIR', 'ELOOP'].includes(String(error.code))
+    )
+      throw new Error('ARCHIVE_UNSAFE', { cause: error })
+    throw error
+  }
+  signal.throwIfAborted()
+  return root ? safeArchivePath(payload, root) : payload
 }
 export async function assertBundleLinks(
   root: string,
@@ -151,7 +348,10 @@ export async function extractBrowserArchive(
   signal: AbortSignal,
 ): Promise<string> {
   const payload = join(stage, 'payload')
-  await mkdir(payload)
+  // Package recognition is not installation admission; the installation service keeps that gate.
+  const macZip = manifest.platform === 'darwin' && fingerprintArchiveFormat(manifest) === 'zip'
+  await mkdir(payload, macZip ? { mode: 0o700 } : {})
+  if (macZip) return extractMacZip(archive, payload, signal)
   if (manifest.platform === 'darwin') {
     await withKernelDmg(archive, stage, signal, async (mount) => {
       const app = join(mount, 'Chromium.app')

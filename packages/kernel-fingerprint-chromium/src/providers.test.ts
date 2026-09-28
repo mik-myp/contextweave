@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { kernelManifestSchema, type KernelManifest } from '@contextweave/contracts'
 import {
   createFingerprintChromiumManifest,
+  fingerprintArchiveFormat,
   fingerprintKernelId,
   fingerprintKernelProviderId,
   fingerprintManifestProvider,
@@ -115,5 +116,75 @@ describe('platform-specific provider identities', () => {
         `/releases/download/${release.releaseTag}/`,
       )
     }
+  })
+})
+
+describe('pinned archive layout does not grant candidate admission', () => {
+  const providerId = 'fingerprint-chromium-apostate'
+  function candidate(platform: 'darwin' | 'win32' = 'darwin'): KernelManifest {
+    const arch = platform === 'darwin' ? 'arm64' : 'x64'
+    const release = fingerprintProviderRelease(providerId, platform, arch, '152.0.7977.83')!
+    return {
+      ...createFingerprintChromiumManifest(platform, arch),
+      id: fingerprintKernelId(release.version, providerId),
+      providerId,
+      version: release.version,
+      source: fingerprintProvider(providerId)!.source,
+      package: { ...release.package },
+      dataDirCompatibility: [release.version],
+    }
+  }
+  it.each(['darwin', 'win32'] as const)(
+    'identifies the fixed %s ZIP without granting notices or execution',
+    (platform) => {
+      const manifest = candidate(platform)
+      expect(fingerprintArchiveFormat(manifest)).toBe('zip')
+      expect(fingerprintProvider(providerId)?.admission).toBe('audit-only')
+      const release = fingerprintProviderRelease(
+        providerId,
+        platform,
+        manifest.arch,
+        manifest.version,
+      )!
+      expect(release).toMatchObject({ releaseTag: 'v0.4.3', admission: 'audit-only' })
+      expect(release.version).not.toBe(release.releaseTag)
+      expect(() => fingerprintProviderNotice(manifest)).toThrow('PROVIDER_UNVERIFIED')
+    },
+  )
+  it.each([
+    { providerId: undefined },
+    { providerId: 'fingerprint-chromium' },
+    { source: 'https://github.com/other/apostate' },
+    { sourceType: 'custom' as const },
+    { version: '152.0.7977.82' },
+    { id: 'fingerprint-chromium-apostate-152-0-7977-82' },
+    { arch: 'x64' as const },
+    { platform: 'linux' as const },
+    { package: undefined },
+  ])('rejects mismatched identity/platform/version/package: %j', (change) => {
+    expect(fingerprintArchiveFormat({ ...candidate(), ...change })).toBeUndefined()
+  })
+  it.each([
+    { url: 'https://mirror.example.test/archive.zip' },
+    { sha256: 'a'.repeat(64) },
+    { sizeBytes: 1 },
+    { sha256: undefined },
+    { sizeBytes: undefined },
+  ])('does not derive a package type from unpinned bytes: %j', (change) => {
+    const manifest = candidate()
+    manifest.package = { ...manifest.package, ...change }
+    expect(fingerprintArchiveFormat(manifest)).toBeUndefined()
+  })
+  it('preserves legacy package layouts and accepts the same SHA-256 in upper case', () => {
+    expect(fingerprintArchiveFormat(legacy())).toBe('zip')
+    const mac = createFingerprintChromiumManifest('darwin', 'arm64')
+    delete mac.providerId
+    expect(fingerprintArchiveFormat(mac)).toBe('dmg')
+    const manifest = candidate()
+    manifest.package!.sha256 = manifest.package!.sha256!.toUpperCase()
+    expect(fingerprintArchiveFormat(manifest)).toBe('zip')
+    expect(
+      fingerprintProviderRelease(providerId, 'darwin', 'x64', manifest.version),
+    ).toBeUndefined()
   })
 })

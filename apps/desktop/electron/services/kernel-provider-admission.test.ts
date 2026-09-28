@@ -180,37 +180,66 @@ describe('runtime provider admission is separate from verification labels', () =
       })
     },
   )
-  it('does not open the generic 152 whitelist or custom route for an audit-only Intel candidate', () => {
-    const providerId = 'fingerprint-chromium-pocchian-intel'
-    const release = fingerprintProviderRelease(providerId, 'darwin', 'x64', '152.0.7977.82')!
+  it.each([
+    ['fingerprint-chromium-pocchian-intel', 'darwin', 'x64', '152.0.7977.82'],
+    ['fingerprint-chromium-apostate', 'darwin', 'arm64', '152.0.7977.83'],
+    ['fingerprint-chromium-apostate', 'win32', 'x64', '152.0.7977.83'],
+  ] as const)(
+    'does not open the generic whitelist or custom route for %s on %s/%s',
+    (providerId, platform, arch, version) => {
+      const release = fingerprintProviderRelease(providerId, platform, arch, version)!
+      const manifest = {
+        ...bundledRelease('win32', 'x64').manifest!,
+        id: fingerprintKernelId(release.version, providerId),
+        providerId,
+        version: release.version,
+        platform: release.platform,
+        arch: release.arch,
+        package: { ...release.package },
+        source: fingerprintProvider(providerId)!.source,
+        executable: platform === 'darwin' ? 'Chromium.app/Contents/MacOS/Chromium' : 'chrome.exe',
+      }
+      expect(supportsFingerprintVersion(release.version)).toBe(false)
+      expect(isCompatibleFingerprintManifest(manifest)).toBe(false)
+      expect(isPinnedOfficialPackage(manifest)).toBe(false)
+      expect(() => requireKernelProvider(providerId)).toThrow('PROVIDER_UNVERIFIED')
+      expect(() =>
+        createCustomKernelEntry(
+          {
+            providerId,
+            url: release.package.url,
+            version: release.version,
+            sha256: release.package.sha256,
+            trustedSource: true,
+          },
+          platform,
+          arch,
+        ),
+      ).toThrow('PROVIDER_UNVERIFIED')
+    },
+  )
+  it('rejects a saved Apostate payload before download or environment creation', async () => {
+    const providerId = 'fingerprint-chromium-apostate'
+    const release = fingerprintProviderRelease(providerId, 'win32', 'x64', '152.0.7977.83')!
     const manifest = {
       ...bundledRelease('win32', 'x64').manifest!,
       id: fingerprintKernelId(release.version, providerId),
       providerId,
       version: release.version,
-      platform: release.platform,
-      arch: release.arch,
       package: { ...release.package },
       source: fingerprintProvider(providerId)!.source,
-      executable: 'Chromium.app/Contents/MacOS/Chromium',
+      dataDirCompatibility: [release.version],
     }
-    expect(supportsFingerprintVersion(release.version)).toBe(false)
-    expect(isCompatibleFingerprintManifest(manifest)).toBe(false)
-    expect(isPinnedOfficialPackage(manifest)).toBe(false)
-    expect(() => requireKernelProvider(providerId)).toThrow('PROVIDER_UNVERIFIED')
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('UNEXPECTED_NETWORK'))
+    const { kernels, environments, repository } = fixture(manifest)
+    expect(kernels.hasCompatibleProvider({ kernelId: manifest.id })).toBe(false)
+    await expect(kernels.install(manifest.id)).rejects.toThrow('PROVIDER_UNVERIFIED')
     expect(() =>
-      createCustomKernelEntry(
-        {
-          providerId,
-          url: release.package.url,
-          version: release.version,
-          sha256: release.package.sha256,
-          trustedSource: true,
-        },
-        'darwin',
-        'x64',
-      ),
+      environments.create({ name: 'Audit only', kernelId: manifest.id, commonConfig: {} }),
     ).toThrow('PROVIDER_UNVERIFIED')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(repository.listAll()).toHaveLength(0)
+    expect(repository.getSetting(`kernel-manifest:${manifest.id}`)).toEqual(manifest)
   })
   it('refuses incompatible saved manifests and missing installed payloads', async () => {
     const manifest = {

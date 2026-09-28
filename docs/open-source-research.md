@@ -67,6 +67,8 @@ Camoufox 的源码可见语言/地区处理、指纹配置及按平台选包逻�
 
 #### 3.3.1 v0.3.0 提供方准入复核
 
+**路线更新（2026-09-28）：** 维护者已允许按平台分别审核、接入不同社区发行方。下列2026-09-27的取证与当时准入结论保留；“不同提供方”本身不再是阻塞，但任何具体候选仍须满足源码/许可对应、完整性与原生验收，不能据此默认获准。
+
 核验日期：2026-09-27（UTC）。
 
 本次只读取上游源文件并检查下载物，不改动提供方注册、不执行候选浏览器、不把社区移植自动加入正式矩阵。以下结果补充 R06/T05，不改变三平台、开源和不维护内核源码的要求。
@@ -92,6 +94,29 @@ Camoufox 的源码可见语言/地区处理、指纹配置及按平台选包逻�
 **其他候选的排除理由。** [BotBrowser固定源码](https://github.com/botswin/BotBrowser/tree/518614cc6e872da115d9baa1e4b139a7dbbaba66)的155.0.8059.5发行列表确有Win x64、Mac ARM64和Mac x64文件；但其[patches说明](https://github.com/botswin/BotBrowser/blob/518614cc6e872da115d9baa1e4b139a7dbbaba66/patches/README.md)和README明确说明完整内核为专有、公开补丁只是示例，150及以上配置还需订阅或联系上游。仓库MIT标签不覆盖“内核已开源”的证明，不能作为本项目开源内核要求的直接替代。CloakBrowser的二进制专有条款、Camoufox的Firefox/扩展协议差异仍适用前述结论。另核查[0131LWG发行库](https://github.com/0131LWG/fingerprint-chromium-builds/tree/0b349dfe9e78cb4ac5285cf43eb41248543e39a5)：列出的142运行包覆盖Windows x64/ARM64 Mac，但没有Intel；该树只有README并称源码另处维护，本次未从该发行库取得具体源码链接或许可，因此不能作为三平台已合格提供方。没有从这些项目复制代码或新增依赖。
 
 **结论：** 已找到可进一步评估的Intel社区发行物，但没有证明一个符合原范围的正式开源上游覆盖三平台。v0.3.0进入提供方决定/补证阶段，不宣布完成，不静默删除Intel要求或源代码门槛，也不跳至v0.3.1。后续需要维护者决定候选/范围；持续开发授权不等于已批准改变产品边界。
+
+#### 3.3.2 多发行方授权后的增量核验（2026-09-28）
+
+授权后扩大到其他Chromium源级实现，不重复下载前述Intel/ARM DMG，也不运行未知候选。本次发现新的Windows/ARM64候选，不能再把“缺少单一上游”作为等待理由。
+
+**Apostate v0.4.3：具备进一步接入核验价值，尚未正式准入。**
+
+- 以[发布源码commit](https://github.com/heretic-tech/apostate/tree/2d7e93aaea12b024ddedd65f5041a59ca5c6ecb4)而非主分支取证。实际浏览器版本为152.0.7977.83，tag为v0.4.3；两者不是同一个版本字段。发布源码归档的331个blob（含一个仅作为数据核对的符号链接）与该commit的Git tree逐一匹配。
+- 补丁series列出134项；独立计算series SHA-256 `5ae3ba78ce2170c433494dec7785bc006edcf015e2b658c6be900c2ce4432a30`、有序补丁内容SHA-256 `2bfee4b0092d1424eaa1384dbe0941427c1319c5267fb889f03e982ccd8a9cf7`，均匹配下面两份发行物的内置build manifest。未执行上游审计/构建脚本，未自建浏览器。
+- 实际下载Windows x64 ZIP（185,408,775字节；SHA-256 `4c52f8b328c1760322f5ae9f1b6fda0edbc7dd6b388f56383ab9bac42aaa5b00`）及Mac ARM64 ZIP（154,179,972字节；SHA-256 `b857553645740c974556bae02a8552aa025e65f174a634174292c08a104eb031`）。文件大小/摘要匹配GitHub API和各自发布附件manifest；附件manifest的source_revision均等于上述tag commit，内置build manifest摘要也匹配。
+- 两个实际ZIP均通过`gh attestation verify --repo heretic-tech/apostate`的密码学验证；随后对结果逐项固定检查GitHub OIDC issuer、仓库/owner ID、v0.4.3 ref、源码commit、`build-target.yml`签名工作流、`release.yml`调用工作流及subject摘要。记录指向上游run `36217678100/attempts/1`，runner为self-hosted。它证明对应发布身份签署了这些摘要/来源声明，不等于独立重现编译、Apple Developer ID、公证或Windows Authenticode验收。
+- Windows主程序PE machine为0x8664；独立校验build manifest列出的5个PE/DLL输出摘要。Mac主程序为ARM64 Mach-O（CPU type 0x0100000c），Info.plist为152.0.7977.83、声明最低macOS13.0，ZIP含5个framework内部符号链接。没有把ZIP文件名当作架构证明，也没有把静态头检查当作签名或启动验收。
+- 源码和两包外层LICENSE正文逐字一致，为GPLv3文本；这是候选许可证事实，不是ContextWeave根许可证决定，也不是对独立进程集成法律效果的承诺。不复制其实现、引入其npm/Python包装层或自动采用其联网默认值。完整notices、操作系统签名/执行策略和集成边界仍须逐项审核。
+- **明确适配差异：** 其文档声明语言由`--fingerprint-locale`控制，persona下`--lang`不生效；时区使用`--fingerprint-timezone`，核数不能超过宿主。不能把现有三个参数加上通用152白名单就称兼容。Mac ZIP也不适用当前按平台选DMG的提取器；须在受控包型/符号链接策略与原生回归完成后才可接入。
+- **证据边界：** 未执行浏览器、未完成Mac bundle输出树摘要重建、没有独立重现编译，也没有原生生命周期、代理、身份、扩展或profile兼容结果。tag源码中的npm包装层release-manifest仍指向上一v0.4.2，不能拿它核验本次v0.4.3；本次使用与实际v0.4.3二进制一同发布且摘要匹配的附件manifest和内置build manifest。
+
+**其他新增候选不自动采用。**
+
+- `pppi21/anti-fingerprint-browser`的153.0.8010.47-1确有Windows产物和补丁，但[发布源码LICENSE.txt](https://github.com/pppi21/anti-fingerprint-browser/blob/724ef061002feb8c5136cdffc2bd94332d241ba0/LICENSE.txt)是限制修改、再分发和竞品使用的EULA，不以GitHub API的BSD标签覆盖具体文件；本轮不下载/执行其浏览器或复制补丁。
+- `clearcotelabs/clearcote-browser`本次检查的最近3个发行条目均为149的预发布，只提供Windows/Linux包；`furyteamtop/fury-antidetect-browser`最近3个条目为Windows预发布；`babelcloud/fingerprint-chromium-arm64`定位Linux ARM64，不能冒充Mac ARM64。它们的源码或发行物可继续作为候选信息，但本次未取得目标平台的完整准入闭环。
+- `mmonkeys`系列的本次发行列表最高Windows144/Mac139；旧版本源码对应可研究，但不为凑矩阵自动降级或迁移现有148环境。`shawarmahasan/chromium-stealth-builds`与`lang315/camoucrome`本次API没有公开Release条目，不把有README/补丁当作已取得合格二进制。
+
+上述只补充v0.3.0的提供方/包型/协议调查，未改变后续v0.3.1～v1.0.2的功能顺序，不发布空v0.3.0、不重开旧版本线。
 
 ### 3.4 BrowserForge 与 fingerprint-suite：受约束的配置而非独立乱填字段
 

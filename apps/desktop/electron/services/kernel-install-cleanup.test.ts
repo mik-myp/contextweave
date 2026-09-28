@@ -83,6 +83,26 @@ async function fixture(mode: 'success' | 'partial' | 'cancelled' | 'detach' | 'i
 }
 
 describe('kernel installation cleanup boundary', () => {
+  it('rejects a foreign provider before downloads or creating installation directories', async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), 'cw-provider-notice-'))
+    roots.push(root)
+    const destination = join(root, 'not-created')
+    const download = vi.spyOn(downloads, 'downloadVerifiedFile')
+    const manifest = {
+      ...createFingerprintChromiumManifest('darwin', 'arm64'),
+      providerId: 'fingerprint-chromium-pocchian-intel',
+    }
+    await expect(
+      installation.installBrowserPackage(
+        manifest,
+        destination,
+        new AbortController().signal,
+        vi.fn(),
+      ),
+    ).rejects.toThrow('PROVIDER_UNVERIFIED')
+    expect(download).not.toHaveBeenCalled()
+    await expect(fs.stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   it.each(['partial', 'cancelled', 'detach'] as const)(
     'retains the backing image and private stage after %s cleanup failure without finalizing an install',
     async (mode) => {

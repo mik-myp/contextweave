@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rename, rm, statfs, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { KernelManifest, KernelSummary } from '@contextweave/contracts'
-import { fingerprintChromiumLicense } from '@contextweave/kernel-fingerprint-chromium'
+import { fingerprintProviderNotice } from '@contextweave/kernel-fingerprint-chromium'
 import { extractBrowserArchive, verifyBrowserExecutable } from './kernel-archive'
 
 export type InstallProgress = NonNullable<KernelSummary['installation']>
@@ -33,6 +33,8 @@ export async function installBrowserPackage(
   signal: AbortSignal,
   report: (progress: InstallProgress) => void,
 ) {
+  // Resolve provenance before any download, temporary directory or package publication.
+  const providerNotice = fingerprintProviderNotice(manifest)
   await mkdir(root, { recursive: true })
   const space = await statfs(root)
   if (space.bavail * space.bsize < 2_000_000_000) throw new Error('LOW_DISK')
@@ -57,7 +59,7 @@ export async function installBrowserPackage(
     report({ phase: 'extracting', totalBytes, receivedBytes })
     const payload = await extractBrowserArchive(archive, stage, manifest, signal)
     await verifyBrowserExecutable(join(payload, manifest.executable), manifest)
-    await writeFile(join(payload, 'FINGERPRINT_CHROMIUM_LICENSE.txt'), fingerprintChromiumLicense, {
+    await writeFile(join(payload, 'FINGERPRINT_CHROMIUM_LICENSE.txt'), providerNotice, {
       mode: 0o600,
     })
     signal.throwIfAborted()

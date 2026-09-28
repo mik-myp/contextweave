@@ -115,6 +115,7 @@ export const kernelPackageSchema = z.object({
 
 export const kernelManifestSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
+  providerId: z.string().regex(/^[a-z0-9-]+$/).optional(),
   family: kernelFamilySchema,
   version: z.string().trim().min(1),
   platform: platformSchema,

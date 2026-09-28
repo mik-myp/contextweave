@@ -422,6 +422,8 @@ export function createKernelService(
     // A refreshed temporary URL may change while the package identity stays pinned.
     const manifest = customEntries.get(id)?.manifest ?? registry.get(id).getManifest()
     if (!manifest.package || !root) return Promise.reject(new Error('PLATFORM_UNSUPPORTED'))
+    if (!isCompatibleFingerprintManifest(manifest))
+      return Promise.reject(new Error('PROVIDER_UNVERIFIED'))
     if (executableFor({ kernelId: id }))
       return Promise.resolve(list().find((item) => item.id === id)!)
     if (manifest.sourceType !== 'custom' && !isPinnedOfficialPackage(manifest))

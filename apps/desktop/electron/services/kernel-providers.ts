@@ -2,12 +2,14 @@ import type { KernelManifest, TargetArchitecture, TargetPlatform } from '@contex
 import {
   createFingerprintChromiumManifest,
   fingerprintKernelId,
+  fingerprintManifestProvider,
+  fingerprintProviders,
 } from '@contextweave/kernel-fingerprint-chromium'
 
 // Downloadable provider registrations. Native browser discovery remains separate.
-export const kernelProviders = [
-  { id: 'fingerprint-chromium', label: 'Fingerprint Chromium', license: 'BSD-3-Clause' },
-] as const
+export const kernelProviders = fingerprintProviders.filter(
+  (provider) => provider.admission === 'legacy-candidate',
+)
 export function requireKernelProvider(id: string) {
   const provider = kernelProviders.find((provider) => provider.id === id)
   if (!provider) throw new Error('PROVIDER_UNVERIFIED')
@@ -31,6 +33,8 @@ export function supportsFingerprintVersion(version: string): boolean {
 
 // Adapter compatibility is not a source, signature, or fingerprint verification claim.
 export function isCompatibleFingerprintManifest(manifest: KernelManifest): boolean {
+  const provider = fingerprintManifestProvider(manifest)
+  if (!provider || provider.admission !== 'legacy-candidate') return false
   const base = createFingerprintChromiumManifest(manifest.platform, manifest.arch)
   if (
     !base.package ||

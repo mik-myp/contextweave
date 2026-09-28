@@ -65,7 +65,10 @@ function PendingCommand({ entry }: { entry: Readonly<PendingEnvironmentCommand> 
           {receipt ? t(`commands.${receipt.status}`) : t('commands.pendingTitle')}
         </AlertTitle>
         <AlertDescription>
-          <p className="break-all font-mono">{entry.requestId}</p>
+          <details>
+            <summary className="cursor-pointer">{t('commands.details')}</summary>
+            <p className="break-all font-mono text-xs">{entry.requestId}</p>
+          </details>
           <p>
             {observation?.state === 'not-found'
               ? t('commands.notFound')
@@ -139,7 +142,10 @@ function PendingCommand({ entry }: { entry: Readonly<PendingEnvironmentCommand> 
             <AlertDialogTitle>{t('commands.ackTitle')}</AlertDialogTitle>
             <AlertDialogDescription>{t('commands.ackHelp')}</AlertDialogDescription>
           </AlertDialogHeader>
-          <Badge variant="outline">{entry.requestId}</Badge>
+          <details>
+            <summary className="cursor-pointer text-sm">{t('commands.details')}</summary>
+            <Badge variant="outline">{entry.requestId}</Badge>
+          </details>
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>

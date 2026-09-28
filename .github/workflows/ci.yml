@@ -1,10 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - master
-      - main
   pull_request:
 
 permissions:
@@ -47,6 +43,9 @@ jobs:
 
       - name: Verify workspace versions
         run: node scripts/release-tools.mjs check-version
+
+      - name: Verify versioned release notes
+        run: node scripts/release-notes.mjs check
 
       - name: Run checks
         run: pnpm check

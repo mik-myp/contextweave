@@ -1,4 +1,9 @@
 export const lifecycleMessages = {
+  'storage.diagnostics': 'Advanced diagnostics: screenshots and task outputs',
+  'storage.diagnosticsHelp':
+    'For development tests and troubleshooting, not everyday environment management or total disk cleanup. Collapsing this section does not delete files, change budgets or stop tasks.',
+  'cleanup.details': 'Diagnostic details',
+
   'error.ORGANIZATION_NAME_EXISTS':
     'This name already exists. Choose a different group or view name.',
   'error.ORGANIZATION_CONFLICT':

@@ -159,14 +159,6 @@ export function HistoryCleanup() {
               <dt className="inline">{t('cleanup.completedAt')}: </dt>
               <dd className="inline">{date(saved.completedAt)}</dd>
             </div>
-            <div>
-              <dt className="inline">{t('cleanup.batchId')}: </dt>
-              <dd className="inline break-all font-mono text-xs">{saved.previewId}</dd>
-            </div>
-            <div>
-              <dt className="inline">{t('cleanup.cutoffLabel')}: </dt>
-              <dd className="inline">{date(saved.cutoffAt)}</dd>
-            </div>
             {(['sessions', 'operations'] as const).map((kind) => (
               <div key={kind}>
                 <dt className="inline">
@@ -180,6 +172,26 @@ export function HistoryCleanup() {
                 </dd>
               </div>
             ))}
+            <div>
+              <dt className="sr-only">{t('cleanup.details')}</dt>
+              <dd>
+                <details>
+                  <summary className="cursor-pointer text-muted-foreground">
+                    {t('cleanup.details')}
+                  </summary>
+                  <dl className="mt-2 flex flex-col gap-1">
+                    <div>
+                      <dt className="inline">{t('cleanup.batchId')}: </dt>
+                      <dd className="inline break-all font-mono text-xs">{saved.previewId}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline">{t('cleanup.cutoffLabel')}: </dt>
+                      <dd className="inline">{date(saved.cutoffAt)}</dd>
+                    </div>
+                  </dl>
+                </details>
+              </dd>
+            </div>
           </dl>
         ) : (
           <p className="text-sm text-muted-foreground">{t('cleanup.noReceipt')}</p>

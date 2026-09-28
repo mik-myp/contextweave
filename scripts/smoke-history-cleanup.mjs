@@ -154,6 +154,8 @@ try {
   desktop = undefined
   page = await launch()
   section = await settings(page)
+  assert.equal(await section.getByText(receipt.data.previewId, { exact: true }).isVisible(), false)
+  await section.locator('summary').filter({ hasText: '诊断详情' }).click()
   await section.getByText(receipt.data.previewId, { exact: true }).waitFor()
   const afterRestart = await page.evaluate(
     async (previewId) => window.contextweave.storage.confirmHistoryCleanup({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, { previewId }),

@@ -1,5 +1,6 @@
 import type { commandMessages as zh } from './zh-CN-commands'
 export const commandMessages: Record<keyof typeof zh, string> = {
+  'commands.details': 'Diagnostic details',
   'commands.title': 'Command receipts',
   'commands.help':
     'Receipts survive navigation and restart. Starts run sequentially without limiting running browsers. Unknown outcomes are never retried automatically.',

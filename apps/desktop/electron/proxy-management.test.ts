@@ -2,7 +2,7 @@ import type { WorkspaceCredentialReference } from '@contextweave/contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EnvironmentRepository, openLocalDatabase } from '@contextweave/storage'
 import { drainCredentialCleanup, saveProxyConfiguration, toProxySummary } from './proxy-management'
 const directories: string[] = []
@@ -27,8 +27,14 @@ function setup() {
 }
 const config = { type: 'http', host: '127.0.0.1', port: 8080, username: 'tester' }
 describe('proxy credential lifecycle', () => {
+  let fixture: ReturnType<typeof setup>
+  beforeEach(() => {
+    // Prepare the real disk/WAL database, migrations and integrity checks separately
+    // from the credential behavior; every test still gets its own database and vault.
+    fixture = setup()
+  })
   it('creates, preserves, replaces and explicitly clears a secret without returning its reference', () => {
-    const { database, repository, secrets, credentials } = setup()
+    const { database, repository, secrets, credentials } = fixture
     try {
       const created = saveProxyConfiguration(repository, { config, password: 'first' }, credentials)
       expect(created.hasPassword).toBe(true)
@@ -61,7 +67,7 @@ describe('proxy credential lifecycle', () => {
     }
   })
   it('rolls back a new secret when persistence fails, keeping the old password intact', () => {
-    const { database, repository, secrets, credentials } = setup()
+    const { database, repository, secrets, credentials } = fixture
     try {
       const created = saveProxyConfiguration(repository, { config, password: 'old' }, credentials)
       const save = vi.spyOn(repository, 'saveProxy').mockImplementation(() => {
@@ -81,7 +87,7 @@ describe('proxy credential lifecycle', () => {
     }
   })
   it('keeps the committed configuration and retries old credential cleanup without a database rollback', () => {
-    const { database, repository, secrets, credentials } = setup()
+    const { database, repository, secrets, credentials } = fixture
     try {
       const created = saveProxyConfiguration(repository, { config, password: 'old' }, credentials)
       const oldReference = repository.getProxy(created.proxyId)!.credentialRef!
@@ -107,7 +113,7 @@ describe('proxy credential lifecycle', () => {
   })
 
   it('keeps existing data if secure storage is unavailable and rejects stale edits', () => {
-    const { database, repository, credentials } = setup()
+    const { database, repository, credentials } = fixture
     try {
       expect(() =>
         saveProxyConfiguration(

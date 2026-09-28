@@ -4,7 +4,7 @@ import { ChildProcess } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   environmentConfigSchema,
   type IpcResult,
@@ -36,6 +36,18 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 const cleanup: (() => void | Promise<void>)[] = []
+let root: string
+let db: ReturnType<typeof openLocalDatabase>
+beforeEach(() => {
+  // Empty-database migration is fixture preparation, not the runtime operation's
+  // deadline. Keep a fresh real WAL database and profile directory for every test.
+  root = mkdtempSync(join(tmpdir(), 'cw-supervisor-'))
+  const directory = root
+  cleanup.push(() => rmSync(directory, { recursive: true, force: true }))
+  db = openLocalDatabase(join(root, 'data.sqlite'))
+  const database = db
+  cleanup.push(() => database.close())
+})
 afterEach(async () => {
   vi.useRealTimers()
   for (const clean of cleanup.splice(0).reverse()) await clean()
@@ -45,14 +57,8 @@ function fixture(
   automatic = false,
   proxyType?: 'http' | 'https' | 'socks5',
 ) {
-  const root = mkdtempSync(join(tmpdir(), 'cw-supervisor-')),
-    dir = join(root, 'env-a')
+  const dir = join(root, 'env-a')
   mkdirSync(dir)
-  const db = openLocalDatabase(join(root, 'data.sqlite'))
-  cleanup.push(() => {
-    db.close()
-    rmSync(root, { recursive: true, force: true })
-  })
   const repository = new EnvironmentRepository(db.sqlite)
   repository.create({
     config: environmentConfigSchema.parse({

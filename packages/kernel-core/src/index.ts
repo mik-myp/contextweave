@@ -12,6 +12,8 @@ export type LaunchInput = {
   proxyArgs: string[]
   commonArgs: string[]
   kernelArgs: string[]
+  /** Trusted host capacity supplied by Main; never part of the persisted identity. */
+  hostLogicalCores?: number
 }
 
 export type LaunchPlan = {

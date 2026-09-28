@@ -148,8 +148,19 @@ function seedProfile(options: {
     const fd = openSync(temporary, 'wx', 0o600)
     try {
       temporaryStat = lstatSync(temporary, { bigint: true })
-      if (!temporaryStat.isFile() || temporaryStat.isSymbolicLink() || !fstatSync(fd).isFile())
+      const opened = fstatSync(fd, { bigint: true })
+      if (
+        !temporaryStat.isFile() ||
+        temporaryStat.isSymbolicLink() ||
+        !opened.isFile() ||
+        opened.dev !== temporaryStat.dev ||
+        opened.ino !== temporaryStat.ino
+      )
         throw new Error('BOOKMARKS_PROFILE_UNSAFE')
+      // Opening can follow a concurrently replaced parent. Revalidate before placing any
+      // user content in the descriptor; do not try to clean up through a changed anchor.
+      // These guards are not an atomic sandbox against another same-user writer.
+      assertAnchors()
       writeFileSync(fd, content, 'utf8')
       fsyncSync(fd)
     } finally {

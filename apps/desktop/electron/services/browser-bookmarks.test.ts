@@ -4,6 +4,7 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -30,6 +31,7 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
   return {
     ...actual,
+    openSync: vi.fn(actual.openSync),
     fsyncSync: vi.fn(actual.fsyncSync),
     linkSync: vi.fn(actual.linkSync),
     unlinkSync: vi.fn(actual.unlinkSync),
@@ -38,6 +40,7 @@ vi.mock('node:fs', async (importOriginal) => {
 const cleanup: (() => void)[] = []
 afterEach(async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+  vi.mocked(openSync).mockReset().mockImplementation(actual.openSync)
   vi.mocked(fsyncSync).mockReset().mockImplementation(actual.fsyncSync)
   vi.mocked(linkSync).mockReset().mockImplementation(actual.linkSync)
   vi.mocked(unlinkSync).mockReset().mockImplementation(actual.unlinkSync)
@@ -192,35 +195,60 @@ describe('first-launch default bookmarks', () => {
 })
 
 describe('profile write safety and recovery', () => {
-  it.each(['profile', 'bookmarks', 'preferences', 'dataDir', 'environmentRoot'] as const)(
-    'refuses %s symlinks without touching the destination',
-    (kind, context) => {
-      if (process.platform === 'win32' && (kind === 'bookmarks' || kind === 'preferences'))
-        context.skip(
-          'File symlinks require Windows privileges; directory junctions remain covered.',
-        )
-      const f = fixture()
-      const outside = join(f.root, 'outside')
-      mkdirSync(outside)
-      const protectedFile = join(outside, 'keep')
-      writeFileSync(protectedFile, 'protected')
-      if (kind === 'profile') symlinkSync(outside, f.profile, 'junction')
-      else if (kind === 'dataDir' || kind === 'environmentRoot') {
-        const path = kind === 'dataDir' ? f.record.dataDir : dirname(f.record.dataDir)
-        renameSync(path, `${path}-original`)
-        symlinkSync(outside, path, 'junction')
-      } else {
-        mkdirSync(f.profile)
-        symlinkSync(
-          protectedFile,
-          join(f.profile, kind === 'bookmarks' ? 'Bookmarks' : 'Preferences'),
-        )
-      }
-      expect(f.initialize).toThrow(/UNSAFE/)
-      expect(readdirSync(outside)).toEqual(['keep'])
-      expect(readFileSync(protectedFile, 'utf8')).toBe('protected')
-    },
-  )
+  for (const kind of [
+    'profile',
+    'bookmarks',
+    'preferences',
+    'dataDir',
+    'environmentRoot',
+  ] as const) {
+    // File symlinks require Windows privileges; directory junctions remain covered.
+    it.skipIf(process.platform === 'win32' && (kind === 'bookmarks' || kind === 'preferences'))(
+      `refuses ${kind} symlinks without touching the destination`,
+      () => {
+        const f = fixture()
+        const outside = join(f.root, 'outside')
+        mkdirSync(outside)
+        const protectedFile = join(outside, 'keep')
+        writeFileSync(protectedFile, 'protected')
+        if (kind === 'profile') symlinkSync(outside, f.profile, 'junction')
+        else if (kind === 'dataDir' || kind === 'environmentRoot') {
+          const path = kind === 'dataDir' ? f.record.dataDir : dirname(f.record.dataDir)
+          renameSync(path, `${path}-original`)
+          symlinkSync(outside, path, 'junction')
+        } else {
+          mkdirSync(f.profile)
+          symlinkSync(
+            protectedFile,
+            join(f.profile, kind === 'bookmarks' ? 'Bookmarks' : 'Preferences'),
+          )
+        }
+        expect(f.initialize).toThrow(/UNSAFE/)
+        expect(readdirSync(outside)).toEqual(['keep'])
+        expect(readFileSync(protectedFile, 'utf8')).toBe('protected')
+      },
+    )
+  }
+  it('detects a parent replacement during open before writing any bookmark content', async () => {
+    const f = fixture()
+    const outside = join(f.root, 'outside')
+    mkdirSync(outside)
+    const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
+    vi.mocked(openSync).mockImplementationOnce((path, flags, mode) => {
+      renameSync(f.profile, `${f.profile}-original`)
+      symlinkSync(outside, f.profile, 'junction')
+      return actual.openSync(path, flags, mode)
+    })
+    expect(f.initialize).toThrow('BOOKMARKS_PROFILE_RECOVERY_REQUIRED')
+    expect(f.settings.profileState('env-a')).toBe('pending')
+    // Node cannot atomically anchor openat across supported platforms: a raced open may
+    // leave an empty exclusive file. Never write content or delete through the new parent.
+    const files = readdirSync(outside)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toMatch(/^\.contextweave-bookmarks-.*\.tmp$/)
+    expect(readFileSync(join(outside, files[0]!))).toHaveLength(0)
+    expect(f.initialize).toThrow('BOOKMARKS_PROFILE_RECOVERY_REQUIRED')
+  })
   it('rejects a persisted path outside the workspace or a traversal alias', () => {
     const f = fixture()
     for (const dataDir of [f.root, `${f.record.dataDir}/../env-a`]) {

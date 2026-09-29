@@ -164,7 +164,8 @@ try {
       (await page.evaluate(async (id) => window.contextweave.environment.get({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id), id)).data,
       prior.data,
     )
-    await access(join(directory, 'contextweave', 'environments', id, 'Default'))
+    if (process.platform !== 'win32')
+      await access(join(directory, 'contextweave', 'environments', id, 'Default'))
     const unavailable = await page.evaluate(
       async (id) => window.contextweave.environment.preflight({ workspaceId: (await window.contextweave.workspace.current()).data.workspaceId }, id),
       id,

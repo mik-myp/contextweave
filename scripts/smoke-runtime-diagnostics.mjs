@@ -17,6 +17,11 @@ export async function installRuntimeDiagnostics(desktop) {
         executable: basename(String(file)),
         pid: child.pid,
         controlArguments: args.filter((arg) => arg.startsWith('--remote-debugging-')),
+        // Keep only the two launch flags this smoke explicitly audits; never
+        // expose profile paths, proxy credentials, URLs, or arbitrary argv.
+        auditedLaunchArguments: args.filter((arg) =>
+          arg === '--host-resolver-rules' || arg === '--test-type',
+        ),
         stdio: options.stdio,
         inputWritable: Boolean(child.stdio[3]?.writable),
         outputReadable: Boolean(child.stdio[4]?.readable),

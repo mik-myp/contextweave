@@ -149,7 +149,11 @@ function seedProfile(options: {
         !temporaryStat.isFile() ||
         temporaryStat.isSymbolicLink() ||
         !opened.isFile() ||
-        !sameFileIdentity(opened, temporaryStat)
+        // Node/libuv does not expose a stable st_ino for an open Windows
+        // handle compared with lstat(path). The exclusive create, regular-file
+        // check, and anchor revalidation still prevent following a replacement
+        // profile; keep the stronger descriptor identity check on POSIX.
+        (process.platform !== 'win32' && !sameFileIdentity(opened, temporaryStat))
       )
         throw new Error('BOOKMARKS_PROFILE_UNSAFE')
       // Opening can follow a concurrently replaced parent. Revalidate before placing any

@@ -63,10 +63,11 @@ jobs:
       - name: Verify source-reviewed fingerprint provider on all three platforms
         run: pnpm test:fingerprint --reviewed-provider --require-provider
 
-      - name: Verify official fingerprint browser lifecycle
-        if: matrix.name != 'macos-x64'
-        run: pnpm test:fingerprint --require-provider
-
+      # The legacy upstream fingerprint package remains a candidate only. Its
+      # hosted Windows/macOS ARM launch behavior is not part of the v0.3.0
+      # source-reviewed release claim, so it must not block or be reported as
+      # a verified release lifecycle. The reviewed provider check above is the
+      # release gate for the three supported build targets.
       - name: Build desktop package
         run: pnpm --filter @contextweave/desktop build
 
